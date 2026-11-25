@@ -35,6 +35,9 @@ export async function disconnectCalendar(supabase: SupabaseClient): Promise<void
   const { data, error } = await supabase.functions.invoke('calendar-disconnect', {
     body: {},
   })
-  if (error) throw new Error(error.message)
+  if (error) {
+    const body = await parseFunctionErrorBody(error)
+    throw new Error((body?.error as string | undefined) ?? error.message)
+  }
   if (data?.error) throw new Error(data.error)
 }

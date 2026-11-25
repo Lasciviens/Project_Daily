@@ -5,7 +5,7 @@ import {
   addMonths, subMonths, isSameMonth, isToday, isSameDay,
 } from 'date-fns'
 import { formatMonthYear, formatWeekdayDate } from '../../../shared/utils/dateFormat'
-import { useDayTasks, useOpenOnDay, useTasksByMonth } from '../../todo/hooks/useTodos'
+import { useDayTasks, useTasksByMonth } from '../../todo/hooks/useTodos'
 import { closedOn, countTasks, isOpenTask, onDay } from '../../todo/taskRules'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { DateNav } from '../../../shared/components/DateNav'
@@ -16,7 +16,7 @@ import { useRepeatDays } from '../hooks/useSchedule'
 import { useMonthKinds } from '../hooks/useMonthKinds'
 import { useMonthLines } from '../hooks/useMonthLines'
 import {
-  MONTH_KIND, MONTH_KINDS, dayAccessibleName, dayCounts, dayTexts, monthLineRoom, shownSlots, type MonthKind, type MonthSlotLine,
+  MONTH_KIND, MONTH_KINDS, dayAccessibleName, dayCounts, dayTexts, monthLineRoom, onTasksLine, shownSlots, type MonthKind, type MonthSlotLine,
 } from '../monthLines'
 import type { Task } from '../../todo/types'
 import { monthRoomKey } from '../dailyBoards'
@@ -71,22 +71,24 @@ export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
   // plus the repeat days still to do; done = closed as done on that day; missed =
   // closed as missed that day (156) plus the past repeat days with no task of
   // their own; cancelled = cancelled that day (not missed). Past days are a record.
+  // While Training is shown, training sessions and their repeats are its line's, not Tasks' (each counts once).
   const today = todayStr()
   const todayList = useDayTasks(today)
-  const repeats = useRepeatDays(tasks)
-  const openOn = useOpenOnDay(tasks)
+  const trainingShown = !hidden.includes('training')
+  const repeats = useRepeatDays(tasks, { withoutTraining: trainingShown })
+  const counted = (list: readonly Task[]) => list.filter(t => onTasksLine(t, trainingShown))
   function taskFacts(dateStr: string) {
-    const list: readonly Task[] = dateStr === today ? [...todayList.open, ...todayList.done, ...todayList.cancelled] : tasks.filter(t => onDay(t, dateStr, today))
+    const list = counted(dateStr === today ? [...todayList.open, ...todayList.done, ...todayList.cancelled] : tasks.filter(t => onDay(t, dateStr, today)))
     const counts = countTasks(list, dateStr, today)
     // Missed (156: closed as missed on its own day) is one of countTasks' cancelled.
     const missedTasks = list.filter(t => t.closed_reason === 'missed' && closedOn(t, dateStr)).length
     return {
-      open: openOn(dateStr) + repeats.toDoOn(dateStr), done: counts.done,
+      open: counts.open + repeats.toDoOn(dateStr), done: counts.done,
       missed: missedTasks + repeats.missedOn(dateStr), cancelled: counts.cancelled - missedTasks,
     }
   }
 
-  const openCount = tasks.filter(isOpenTask).length + repeats.toDoBetween(fromStr, toStr)
+  const openCount = counted(tasks).filter(isOpenTask).length + repeats.toDoBetween(fromStr, toStr)
   const failed = [...(tasksQ.isError ? ['tasks' as const] : []), ...lines.failed]
 
   // Lines where they fit (a grid of 34rem: a day about 4.6rem wide), never on a phone — sideways, its
@@ -103,7 +105,10 @@ export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
   const monthSlots = new Map(days.filter(day => isSameMonth(day, viewDate)).map(day => [format(day, 'yyyy-MM-dd'), slotsOf(day)]))
   // Each day keeps room for the most lines any day of the month has (3 before the reads answer), so the month fits
   // one screen; a phone's counts take one row, two on a narrow grid with more than three kinds shown.
-  const lineRoom = Math.min(monthLineRoom([...monthSlots.values()], linesReady), MONTH_KINDS.length - hidden.length)
+  // About how many 12px characters a day's line holds: a day is a seventh of the grid less the 0.25rem gaps, its
+  // padding (0.75rem) and the dot (0.625rem); a character is about 0.41rem. A longer line wraps once.
+  const charsPerLine = Math.floor((((gridWidth ?? 0) - 1.5) / 7 - 1.375) / 0.41)
+  const lineRoom = Math.min(monthLineRoom([...monthSlots.values()], linesReady, charsPerLine), 2 * (MONTH_KINDS.length - hidden.length))
   const countRows = (gridWidth ?? 0) < 30 && MONTH_KINDS.length - hidden.length > 3 ? 2 : 1
 
   return (
@@ -226,9 +231,9 @@ function DayLines({ slots, room, ready }: { slots: readonly MonthSlotLine[]; roo
   return (
     <span aria-hidden className="mt-0.5 flex min-w-0 flex-col text-left text-meta text-fg-2" style={{ minHeight: `${room}rem` }}>
       {ready && slots.filter(s => s.text).map(s => (
-        <span key={s.kind} className="flex h-4 min-w-0 items-center gap-1">
-          <span data-tint={MONTH_KIND[s.kind].tint} className="tint-dot h-1.5 w-1.5 shrink-0 rounded-full" />
-          <Truncate className="min-w-0">{s.text}</Truncate>
+        <span key={s.kind} className="flex min-h-4 min-w-0 items-start gap-1 leading-4">
+          <span data-tint={MONTH_KIND[s.kind].tint} className="tint-dot mt-[0.3125rem] h-1.5 w-1.5 shrink-0 rounded-full" />
+          <Truncate lines={2} className="min-w-0">{s.text}</Truncate>
         </span>
       ))}
     </span>

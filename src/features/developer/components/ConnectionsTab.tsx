@@ -64,6 +64,9 @@ function GoogleCard() {
   const login = useGoogleLogin({
     flow: 'auth-code',
     scope: GOOGLE_SCOPES.join(' '),
+    // Only what GOOGLE_SCOPES asks: never fold in an earlier grant (a token from before 25.11.2026 carried Calendar
+    // write access).
+    include_granted_scopes: false,
     ux_mode: 'popup',
     onSuccess: async ({ code }) => {
       setBusy(true); setError(null)
@@ -78,11 +81,16 @@ function GoogleCard() {
     onError: () => setError('Sign-in was cancelled or failed'),
   })
 
+  // The server revokes the grant at Google, then forgets the token; until Google confirms, the app stays connected
+  // and says so, so Disconnect can be tried again (a grant left at Google keeps its access).
   async function handleDisconnect() {
-    setBusy(true)
-    setAccessToken(null)   // clear immediately so the UI reacts at once
-    try { await disconnectGoogle() } catch { /* server cleanup is best-effort */ }
-    setBusy(false)
+    setBusy(true); setError(null)
+    try {
+      await disconnectGoogle()
+      setAccessToken(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't disconnect Google — try again")
+    } finally { setBusy(false) }
   }
 
   return (

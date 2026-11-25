@@ -41,6 +41,13 @@ console.log('\n== 1. Where it goes: the default, the problems, the labels (Apple
     same(R.googleTargetProblem({ repeat: null, google: 'calendar' }, 'none'), { level: 'warning', message: 'Its area has no calendar — turn it on in Settings → Calendar' })
     && same(R.googleTargetProblem({ repeat: weekly, google: 'both' }, 'none'), { level: 'warning', message: 'Its area has no calendar — turn it on in Settings → Calendar' })
     && R.googleTargetProblem({ repeat: null, google: 'tasks' }, 'none') === null && R.googleTargetProblem({ repeat: null, google: 'none' }, 'none') === null)
+  check('iCloud not connected: the chip, the menu and the warning say so — never "Apple Calendar" (owner-critic, 25.11.2026)',
+    R.googleTargetLabel({ time: '9:00', durationMinutes: 60, repeat: null }, 'calendar', 'icloud-off') === 'iCloud not connected'
+    && R.googleTargetLabel({ time: '9:00', durationMinutes: 60, repeat: null }, 'both', 'icloud-off') === 'Google Tasks · iCloud not connected'
+    && !/Apple Calendar/.test(R.googleChoices({ time: null, durationMinutes: null, repeat: null }, 'icloud-off')[0].hint)
+    && same(R.googleTargetProblem({ repeat: null, google: 'calendar' }, 'icloud-off'), { level: 'warning', message: 'iCloud not connected — connect it in Settings → Subscriptions' })
+    && R.googleTargetProblem({ repeat: null, google: 'tasks' }, 'icloud-off') === null)
+  check('Both has one name: the menu line is the chip\'s', R.googleChoices({ time: null, durationMinutes: null, repeat: null })[2].label === R.googleTargetLabel({ time: null, durationMinutes: null, repeat: null }, 'both'))
   check('a picked choice wins while it fits', R.effectiveGoogleTarget({ time: '9:00', repeat: null }, 'tasks') === 'tasks')
   check('…Tasks for a repeat is kept (156)', R.effectiveGoogleTarget({ time: null, repeat: weekly }, 'tasks') === 'tasks')
   check('nothing picked → the default', R.effectiveGoogleTarget({ time: null, repeat: null }, null) === 'tasks')
@@ -64,7 +71,7 @@ console.log('\n== 1. Where it goes: the default, the problems, the labels (Apple
   const one = { time: '17:30', durationMinutes: 60, repeat: null }
   check('Both says both apps; a repeat\'s Both is one Google Task per day',
     R.googleTargetLabel(one, 'both', 'apple') === 'Google Tasks + Apple Calendar'
-    && R.googleTargetLabel({ ...one, repeat: weekly }, 'both', 'apple') === 'Apple Calendar + Google Tasks · one per day'
+    && R.googleTargetLabel({ ...one, repeat: weekly }, 'both', 'apple') === 'Google Tasks + Apple Calendar · one per day'
     && R.googleTargetLabel(one, 'tasks', 'apple') === 'Google Tasks')
   const off = R.googleChoices(one, 'none')
   check('an area that is off: the row says so, and the menu\'s calendar choices say why',

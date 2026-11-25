@@ -27,6 +27,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } f
 import { ReadAsLine } from '../../../features/items/components/ReadAsLine'
 import { effectiveGoogleTarget, hasGoogleTasks } from '../../../features/items/sheetRules'
 import type { GoogleTarget } from '../../../features/items/itemTypes'
+import type { CalendarApp } from '../../../features/items/itemRules'
 import { AlertRows, ShowAsRow, TravelRow, UrlRow } from './CalendarFieldRows'
 import { FieldMark, MarkHost } from './FieldMark'
 import { FilledMark, FilledRows } from './FillMark'
@@ -60,7 +61,7 @@ interface Props {
   /** The Calendar row's choice can be shown: Google (Tasks) is connected here, or the item's area is in Apple Calendar. */
   googleConnected: boolean
   /** Where the item's calendar event lives (the server's rule, worked out by the sheet). */
-  calendarApp: 'apple' | 'none'
+  calendarApp: CalendarApp
   /** Where an edit stays when this device can't show the choice (its saved target). */
   keptTarget?: GoogleTarget
   /** A repeating item opened on one of its days (its This day | All days is in the header). */

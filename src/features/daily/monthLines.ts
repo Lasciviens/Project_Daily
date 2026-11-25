@@ -9,6 +9,8 @@
 import { add, minus, ZERO, type Amount } from '../shop/ownModel'
 import { amountWords } from '../shop/components/shopFormat'
 import { DAY_MARK_LABEL, type DayMark } from '../training/components/calendar/monthGridModel'
+import { isTrainingTask } from '../todo/taskRules'
+import type { Task } from '../todo/types'
 
 /** The kinds, in the order their lines stand in every day. */
 export const MONTH_KINDS = ['tasks', 'training', 'plans', 'media', 'money'] as const
@@ -57,10 +59,17 @@ export function moneyText(spent: Amount | null | undefined): string | null {
   return amountWords(spent) ?? 'Amount unknown'
 }
 
-/** The app's own slots per day (a training slot is the training line's). */
-export function plansByDay(slots: readonly { date: string; category: string }[]): Map<string, { slots: number }> {
+/** Whether a task counts on the Tasks line: a training session is the Training line's while that kind is shown,
+ *  and counts under Tasks again when it is hidden — each thing counts once (owner-critic, 25.11.2026). */
+export function onTasksLine(task: Pick<Task, 'source_type' | 'hevy_routine_id'>, trainingShown: boolean): boolean {
+  return !trainingShown || !isTrainingTask(task)
+}
+
+/** The app's own slots per day with no task of their own: a timed task is the Tasks line's, a training slot the
+ *  training line's — each thing counts once. */
+export function plansByDay(slots: readonly { date: string; category: string; task_id?: string | null }[]): Map<string, { slots: number }> {
   const out = new Map<string, { slots: number }>()
-  for (const s of slots) if (s.category !== 'training') out.set(s.date, { slots: (out.get(s.date)?.slots ?? 0) + 1 })
+  for (const s of slots) if (s.category !== 'training' && !s.task_id) out.set(s.date, { slots: (out.get(s.date)?.slots ?? 0) + 1 })
   return out
 }
 
@@ -140,11 +149,17 @@ export function shownSlots(texts: Record<MonthKind, string | null>, hidden: read
   return MONTH_KINDS.filter(k => !hidden.includes(k)).map(kind => ({ kind, text: texts[kind], count: texts[kind] ? (counts?.[kind] ?? 0) : 0 }))
 }
 
-/** The lines a day's room keeps: the most any day of the month has once every shown kind answered, else 3 — so the
+/** How many rows a line takes in a day `charsPerLine` characters wide: one, or two when it is longer (a line wraps
+ *  once rather than being cut — "1 done · 2 missed · 1 cancelled" at 1469; owner-critic, 25.11.2026). */
+export function lineRows(text: string, charsPerLine: number): 1 | 2 {
+  return text.length > charsPerLine ? 2 : 1
+}
+
+/** The rows a day's room keeps: the most any day of the month has once every shown kind answered, else 3 — so the
  *  month fits one screen (owner-critic, 25.11.2026) and nothing moves when a read lands within it. */
-export function monthLineRoom(perDay: readonly (readonly MonthSlotLine[])[], ready: boolean, before = 3): number {
+export function monthLineRoom(perDay: readonly (readonly MonthSlotLine[])[], ready: boolean, charsPerLine = Infinity, before = 3): number {
   if (!ready) return before
-  return Math.max(0, ...perDay.map(slots => slots.filter(s => s.text).length))
+  return Math.max(0, ...perDay.map(slots => slots.reduce((n, s) => n + (s.text ? lineRows(s.text, charsPerLine) : 0), 0)))
 }
 
 /** What a day's button reads aloud and shows on hover: the date, then each shown line ("Wed 25.11.2026 — Tasks: 3 open; Training: Trained"). */

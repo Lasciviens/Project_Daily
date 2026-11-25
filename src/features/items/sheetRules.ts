@@ -16,7 +16,7 @@ import type { TaskDomain } from '../todo/types'
 import { repeatSummary, weekdayOfIso } from '../daily/recurrence'
 import { formatWeekdayDate } from '../../shared/utils/dateFormat'
 import { formatDurationMinutes } from '../../shared/utils/formatDuration'
-import { defaultGoogleTarget, googleTargetProblem, repeatInputFromColumns, type RepeatColumns } from './itemRules'
+import { defaultGoogleTarget, googleTargetProblem, repeatInputFromColumns, type CalendarApp, type RepeatColumns } from './itemRules'
 
 export {
   defaultGoogleTarget, googleTargetProblem, sectionForItem, itemFromRows, storedGoogleTarget, presentGoogleTarget,
@@ -42,16 +42,22 @@ function calendarKind(input: Shape): string {
 /** A repeat on Google Tasks: each day's task (made on its day, 156) is a Google Task. */
 export const REPEAT_TASKS_LABEL = 'Google Tasks · one per day'
 
-/** Whether the item's area has a calendar (Settings → Calendar): Apple Calendar when it is in use, none when it is
- *  off. Google Tasks is Google Tasks either way. (Google Calendar was the other app until 25.11.2026.) */
-export type CalendarApp = 'apple' | 'none'
+export type { CalendarApp }
+
+/** What an area that has no calendar now says in place of "Apple Calendar". */
+const noCalendarWords = (app: CalendarApp) => (app === 'icloud-off' ? 'iCloud not connected' : 'area off')
+
+/** Both's one name, in the menu and on the chip. */
+export const BOTH_LABEL = 'Google Tasks + Apple Calendar'
 
 /** The chip's text — the actual target, never "Auto". */
 export function googleTargetLabel(input: Shape, target: GoogleTarget, app: CalendarApp = 'apple'): string {
   switch (target) {
-    case 'calendar': return app === 'apple' ? `Apple Calendar · ${calendarKind(input)}` : 'Apple Calendar · area off'
+    case 'calendar': return app === 'apple' ? `Apple Calendar · ${calendarKind(input)}`
+      : app === 'icloud-off' ? 'iCloud not connected' : 'Apple Calendar · area off'
     case 'tasks':    return input.repeat ? REPEAT_TASKS_LABEL : 'Google Tasks'
-    case 'both':     return input.repeat ? 'Apple Calendar + Google Tasks · one per day' : 'Google Tasks + Apple Calendar'
+    case 'both':     return app === 'icloud-off' ? `${input.repeat ? REPEAT_TASKS_LABEL : 'Google Tasks'} · iCloud not connected`
+      : input.repeat ? `${BOTH_LABEL} · one per day` : BOTH_LABEL
     case 'none':     return 'Only in this app'
   }
 }
@@ -74,7 +80,8 @@ export function googleChoices(input: Shape, app: CalendarApp = 'apple'): GoogleC
     const problem = googleTargetProblem({ repeat: input.repeat, google: target }, app)
     return problem?.level === 'blocked' ? problem.message : undefined
   }
-  const off = app === 'none' ? 'Its area is off (Settings → Calendar)' : null
+  const off = app === 'none' ? 'Its area is off (Settings → Calendar)'
+    : app === 'icloud-off' ? `${noCalendarWords(app)} (Settings → Subscriptions)` : null
   return [
     {
       target: 'calendar', label: 'Apple Calendar',
@@ -84,7 +91,7 @@ export function googleChoices(input: Shape, app: CalendarApp = 'apple'): GoogleC
     input.repeat
       ? { target: 'tasks', label: REPEAT_TASKS_LABEL, hint: "Each day's to-do in the Google Tasks widget", disabled: blocked('tasks') }
       : { target: 'tasks', label: 'Google Tasks', hint: 'A to-do in the Google Tasks widget', disabled: blocked('tasks') },
-    { target: 'both', label: 'Tasks and Calendar', hint: off ?? 'In Apple Calendar and as a Google Task', disabled: blocked('both') },
+    { target: 'both', label: BOTH_LABEL, hint: off ?? 'In Apple Calendar and as a Google Task', disabled: blocked('both') },
     { target: 'none', label: 'Only in this app', hint: 'Not in Apple Calendar or Google Tasks' },
   ]
 }

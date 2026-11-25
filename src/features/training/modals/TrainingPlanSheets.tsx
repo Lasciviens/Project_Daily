@@ -31,7 +31,7 @@ const shiftHHMM = (hhmm: string, min: number) => {
 }
 
 /** `training-plan-move`: a new day and time for one planned session. The
- *  task and its block move together (migration 142), and its Google Calendar
+ *  task and its block move together (migration 142), and its Apple Calendar
  *  event with them. */
 export function TrainingPlanMoveModal({ request, onClose }: EntityModalProps<'training-plan-move'>) {
   const { plan, toDate } = request

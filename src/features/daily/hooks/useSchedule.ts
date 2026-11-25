@@ -36,8 +36,13 @@ export function useScheduleBlocks() {
  * `tasks`: the range the caller reads (and today's list), so no day counts
  * twice. A past day nobody ticked is missed — on its day, not open.
  */
-export function useRepeatDays(tasks: readonly Task[] = []) {
-  const { data: templates = [] } = useScheduleBlocks()
+export function useRepeatDays(tasks: readonly Task[] = [], { withoutTraining = false }: { withoutTraining?: boolean } = {}) {
+  const { data: allTemplates = [] } = useScheduleBlocks()
+  // Personal → Month leaves training repeats to its Training line while that kind is shown.
+  const templates = useMemo(
+    () => (withoutTraining ? allTemplates.filter(t => t.category !== 'training') : allTemplates),
+    [allTemplates, withoutTraining],
+  )
   const today = todayStr()
   const todayList = useDayTasks(today)
   const asTasks = useMemo(

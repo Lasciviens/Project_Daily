@@ -2,9 +2,9 @@
 // Calendar went (owner, 25.11.2026: "Google calendar can be removed"; "Calendar only" — Google Tasks stays) that is
 // Google Tasks alone. The single refresh token stored by calendar-oauth serves it.
 //
-// A token given before 25.11.2026 still carries `calendar.events` and `calendar.calendarlist.readonly` until the owner
-// revokes the app's access (docs/deploy-checklist.md); nothing uses them, and Google Tasks keeps working on it with no
-// reconnect. A new consent asks for Tasks only.
+// A token given before 25.11.2026 still carries `calendar.events` and `calendar.calendarlist.readonly` until it is
+// revoked: Disconnect revokes the grant at Google (calendar-disconnect), and the new consent asks for Tasks only, with
+// `include_granted_scopes: false` so no earlier grant is folded back in. The owner's step: docs/deploy-checklist.md.
 //
 // Lives in its own module so the consent list has exactly one definition: the connect button sits in Settings →
 // Subscriptions, and nothing else should ever hard-code a second copy of this array.

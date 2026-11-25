@@ -25,7 +25,7 @@ import { CALENDAR_SETTINGS_BOARD, type CalendarSettingsSection } from '../settin
 
 const sameDoc = (a: CalendarPrefs, b: CalendarPrefs) => JSON.stringify(a) === JSON.stringify(b)
 
-function AreaRow({ areaKey, area, locked, ready, failure, open, onOpen, onChange }: {
+function AreaRow({ areaKey, area, locked, ready, icloudOff, failure, open, onOpen, onChange }: {
   areaKey: AreaKey
   area: CalendarArea
   /** Its settings show (one area at a time). */
@@ -34,6 +34,8 @@ function AreaRow({ areaKey, area, locked, ready, failure, open, onOpen, onChange
   /** The saved settings aren't loaded yet: an edit now would be made on the defaults. */
   locked: boolean
   ready: boolean | undefined
+  /** iCloud says it is not connected: an area in use says so, never "Apple Calendar". */
+  icloudOff: boolean
   failure: string | undefined
   onChange: (next: CalendarArea) => void
 }) {
@@ -50,7 +52,7 @@ function AreaRow({ areaKey, area, locked, ready, failure, open, onOpen, onChange
         <span aria-hidden className="h-3 w-3 shrink-0 rounded-full" style={{ background: area.color }} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="text-meta font-semibold text-fg-2">{label}</span>
-          <Truncate className="text-meta text-fg-muted">{`${area.emoji ? `${area.emoji} ` : ''}${area.name} · ${area.enabled ? 'Apple Calendar' : 'not in use'}`}</Truncate>
+          <Truncate className="text-meta text-fg-muted">{`${area.emoji ? `${area.emoji} ` : ''}${area.name} · ${!area.enabled ? 'not in use' : icloudOff ? 'iCloud not connected' : 'Apple Calendar'}`}</Truncate>
         </span>
         {!area.enabled ? <TonePill tone="neutral">Off</TonePill>
           : failure ? <TonePill tone="danger">Not made</TonePill>
@@ -220,7 +222,7 @@ function AreasCard() {
         <>
           <ul className="flex flex-col">
             {AREA_KEYS.map(k => (
-              <AreaRow key={k} areaKey={k} area={form.areas[k]} locked={!loaded} ready={connected ? ready(k) : undefined}
+              <AreaRow key={k} areaKey={k} area={form.areas[k]} locked={!loaded} ready={connected ? ready(k) : undefined} icloudOff={status.data?.connected === false}
                 failure={failures.get(k)} open={opened === k} onOpen={() => openPart(k)}
                 onChange={next => setEdits(e => ({ ...e, [k]: next }))} />
             ))}
@@ -238,8 +240,8 @@ function AreasCard() {
                 <Button size="sm" onClick={() => status.refetch()}>Retry</Button>
               </span>
             ) : status.data?.connected === false && (
-              <p className="text-meta text-fg-muted">
-                To make them in Apple Calendar, connect iCloud in <Link to={{ search: '?tab=subscriptions' }} className="text-accent-600 underline">Settings → Subscriptions</Link>.
+              <p role="status" className="text-meta text-warn">
+                iCloud not connected: nothing reaches Apple Calendar, and items in an area in use wait in the app. Connect iCloud in <Link to={{ search: '?tab=subscriptions' }} className="text-accent-600 underline">Settings → Subscriptions</Link>.
               </p>
             )}
           </div>

@@ -31,6 +31,7 @@ import {
 import type {
   ConvertPreview, ConvertResult, DeleteItemScope, DeleteItemTarget, ItemInput, RepeatDayInput, SavedItem,
 } from './itemTypes'
+import type { CalendarApp } from './itemRules'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const googleConnected = () => !!useCalendarStore.getState().accessToken
@@ -83,8 +84,8 @@ export async function saveItemVia<A extends SaveItemAnswer>(
 /**
  * THE item save — Add and edit, one-off or repeating, one day of a repeat
  * (scope 'day') or every day of it ('all'). "Added · 15.10.2026 17:30–18:30 ·
- * on Google Calendar" — "· sending to Apple Calendar" when the caller says the
- * item's area shows there (`calendarApp`). A caller whose save means more than
+ * sending to Apple Calendar" when the caller says the item's area shows there
+ * (`calendarApp`), else where it is (Google Tasks, only in this app). A caller whose save means more than
  * that (a training session moved out of its week, 167/169) reads back what
  * happened (`after`, once the database answered) and says it (`describe` —
  * undefined keeps the usual line).
@@ -93,7 +94,7 @@ export function useSaveItem(own?: {
   after?: (input: ItemInput, saved: SavedItem) => Promise<unknown>
   describe?: (input: ItemInput, after: unknown) => string | undefined
   /** Whether the item's area has a calendar (useItemCalendarApp); Apple Calendar when not said. */
-  calendarApp?: 'apple' | 'none'
+  calendarApp?: CalendarApp
 }) {
   const qc = useQueryClient()
   return useMutationWithFeedback<SavedItem, ItemInput>({

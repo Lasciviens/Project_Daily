@@ -60,9 +60,10 @@ console.log('Counts per day')
     { date: '2026-11-03', category: 'work' },
     { date: '2026-11-03', category: 'training' },
     { date: '2026-11-04', category: 'personal' },
+    { date: '2026-11-04', category: 'personal', task_id: 'task-1' },
   ])
   eq(p.get('2026-11-03'), { slots: 2 }, "the day's slots; a training slot is the training line's")
-  eq(p.get('2026-11-04'), { slots: 1 }, 'a day with one slot')
+  eq(p.get('2026-11-04'), { slots: 1 }, "a day with one slot; a timed task's slot is the Tasks line's, never counted twice (owner-critic, 25.11.2026)")
   eq(p.has('2026-11-06'), false, 'a day with nothing has no entry')
   const hook = require('fs').readFileSync(require('path').join(__dirname, '../src/features/daily/hooks/useMonthLines.ts'), 'utf8')
   eq(/useCalendar|calendar\/hooks/.test(hook), false, 'the month reads no Google Calendar events')
@@ -102,6 +103,19 @@ console.log('The phone\'s counts and the room a day keeps')
   eq(M.monthLineRoom([day(0), day(2), day(1)], true), 2, 'a day keeps room for the most lines any day of the month has')
   eq(M.monthLineRoom([day(3)], false), 3, '…3 lines until every read answered')
   eq(M.monthLineRoom([day(0)], true), 0, 'an empty month keeps no line room')
+  const long = [{ kind: 'tasks', text: '1 done · 2 missed · 1 cancelled', count: 4 }, { kind: 'plans', text: '1 plan', count: 1 }]
+  eq([M.lineRows('1 done · 2 missed · 1 cancelled', 16), M.lineRows('1 plan', 16)], [2, 1], 'a line longer than the day wraps once (1469), a short one keeps one row')
+  eq(M.monthLineRoom([long], true, 16), 3, "the room counts a wrapped line's two rows")
+  eq(M.monthLineRoom([long], true, 40), 2, '…and one row where the day is wide enough (1795)')
+}
+
+console.log('Training counts once')
+{
+  const session = { source_type: 'training_session', hevy_routine_id: null }
+  const routine = { source_type: 'manual', hevy_routine_id: 'r1' }
+  const chore = { source_type: 'manual', hevy_routine_id: null }
+  eq([M.onTasksLine(session, true), M.onTasksLine(routine, true), M.onTasksLine(chore, true)], [false, false, true], 'Training shown: a training session is its line\'s, not Tasks\'')
+  eq([M.onTasksLine(session, false), M.onTasksLine(routine, false)], [true, true], 'Training hidden: it counts under Tasks again')
 }
 
 console.log('Hiding and showing')
@@ -130,7 +144,10 @@ console.log('Reads: once per month, never per day; the choice is per device and 
   const reads = ['useHevyWorkoutsRange(from, to', 'useStravaActivities({ from: bounds.fromISO', 'useTrainingPlansByDate(from, to)', 'useTimeBlocksRange(from, to', 'useWatchesBetween(from, to)', 'useShopItems(', 'useShopCosts(']
   ok(reads.every(r => hook.includes(r)), 'each kind is one ranged (or shared) read in useMonthLines')
   ok(!/days\.(map|forEach)\([^)]*use[A-Z]/.test(widget) && !/factsOf[\s\S]{0,200}useQuery/.test(hook), 'no hook is called per day')
-  ok(/useTasksByMonth\(monthStart, monthEnd\)/.test(widget) && /countTasks\(/.test(widget) && /useOpenOnDay\(tasks\)/.test(widget), "the task line counts through taskRules over the month's one task read")
+  ok(/useTasksByMonth\(monthStart, monthEnd\)/.test(widget) && /countTasks\(/.test(widget) && /open: counts\.open \+ repeats\.toDoOn\(dateStr\)/.test(widget), "the task line counts through taskRules over the month's one task read")
+  ok(/useRepeatDays\(tasks, \{ withoutTraining: trainingShown \}\)/.test(widget) && /onTasksLine\(t, trainingShown\)/.test(widget)
+    && /withoutTraining \? allTemplates\.filter\(t => t\.category !== 'training'\)/.test(src('src/features/daily/hooks/useSchedule.ts')),
+    'while Training is shown, its sessions and training repeats stay off the Tasks line (open, done, missed, cancelled and the header count)')
   ok(!/\.status\s*===\s*'done'/.test(widget), 'no hand-written done check (taskRules.countTasks)')
   const keyHook = src('src/features/daily/hooks/useMonthKinds.ts')
   const key = /MONTH_KINDS_KEY = '([^']+)'/.exec(keyHook)?.[1]
@@ -147,7 +164,7 @@ console.log('Reads: once per month, never per day; the choice is per device and 
     ok(!/neq\('status', 'cancelled'\)/.test(byMonth), "the month's task read keeps cancelled tasks (missed and cancelled are counted; a closed repeat day is not counted twice)")
   }
   ok(/workouts\.isError \|\| activities\.isError \|\| plans\.isError/.test(hook), 'a failed Strava read names Training as not loaded')
-  ok(/const lineRoom = Math\.min\(monthLineRoom\(/.test(widget) && /!inMonth && 'self-start'/.test(widget), 'each day keeps the month\'s most lines; a day of another month is its number only')
+  ok(/const lineRoom = Math\.min\(monthLineRoom\(\[\.\.\.monthSlots\.values\(\)\], linesReady, charsPerLine\)/.test(widget) && /<Truncate lines=\{2\}/.test(widget) && /!inMonth && 'self-start'/.test(widget), 'each day keeps the month\'s most lines; a day of another month is its number only')
   ok(/text-meta text-fg-2" style=\{\{ minHeight: `\$\{room\}rem` \}\}/.test(widget) && !/text-micro'\)/.test(widget), 'the lines are 12px at every grid width (no 11px step)')
   ok(/<DayCounts slots=\{slots\}/.test(widget) && !/DayDots/.test(widget) && /className="tint-ink">\{s\.count\}/.test(widget), 'a phone shows tiny counts in each kind\'s tint, never dots')
   ok(!/min-h-\[44px\]/.test(widget) && !/pointer:coarse/.test(src('src/shared/ui/Checkbox.tsx')), 'no 44px touch step on the day buttons or the checkboxes')

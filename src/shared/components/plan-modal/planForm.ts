@@ -432,7 +432,7 @@ export function keepQuickText(form: PlanForm, base: QuickBase, typed: string): P
 
 /**
  * "All day" (owner, 16.10.2026: "there are no options to mark as all day"):
- * no time and no length, on Google Calendar — an item with a day and no time
+ * no time and no length, on Apple Calendar — an item with a day and no time
  * is an all-day event there (155). Both stays Both; anything else becomes
  * Calendar.
  */

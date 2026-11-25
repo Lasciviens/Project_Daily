@@ -17,6 +17,7 @@ import { eventUrl } from '../../../features/calendar/calendarEventRules'
 import { cleanItemUrl } from '../../../features/items/itemCalendarFields'
 import { notInAppleText, type AppleSend } from '../../../features/calendar/areas/appleSendRules'
 import type { GoogleTarget } from '../../../features/items/itemTypes'
+import type { CalendarApp } from '../../../features/items/itemRules'
 
 export const DAY_MINUTES = 1440
 /** The wheels and the timeline move in five-minute steps, as the iPhone's Calendar does. */
@@ -165,7 +166,7 @@ export interface GoesContext {
   /** Where the item saves to (the Calendar row's choice; 'none' when the device has no choice to show). */
   target: GoogleTarget
   /** Whether the item's area has a calendar (Settings → Calendar): Apple Calendar, or none (the area is off). */
-  calendarApp: 'apple' | 'none'
+  calendarApp: CalendarApp
   /** It has a day: a calendar needs one. */
   dated: boolean
   /** What Apple Calendar's notes carry (Settings → Calendar → Every Apple Calendar event). */

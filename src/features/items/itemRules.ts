@@ -74,12 +74,21 @@ export function defaultGoogleTarget(input: Pick<ItemInput, 'time' | 'repeat'>): 
  *  Calendar) is said in the sheet. Google Tasks can't repeat through its API, but since 156 a repeat on Google Tasks
  *  is "one per day": each day's task (made on its day) is a Google Task — so nothing is blocked. (Both used to warn
  *  "Shows twice in Google Calendar"; with Apple Calendar the event and the Google Task are in two apps.) */
-export function googleTargetProblem(input: Pick<ItemInput, 'repeat' | 'google'>, app: 'apple' | 'none' = 'apple'): GoogleTargetProblem | null {
+export function googleTargetProblem(input: Pick<ItemInput, 'repeat' | 'google'>, app: CalendarApp = 'apple'): GoogleTargetProblem | null {
   if ((input.google === 'calendar' || input.google === 'both') && app === 'none') {
     return { level: 'warning', message: 'Its area has no calendar — turn it on in Settings → Calendar' }
   }
+  if ((input.google === 'calendar' || input.google === 'both') && app === 'icloud-off') {
+    return { level: 'warning', message: 'iCloud not connected — connect it in Settings → Subscriptions' }
+  }
   return null
 }
+
+/** Whether the item's area has a calendar (Settings → Calendar): Apple Calendar when it is in use and iCloud is
+ *  connected; 'icloud-off' when it is in use but iCloud is not connected (nothing reaches Apple, so nothing may say
+ *  "Apple Calendar"); 'none' when the area is off. Google Tasks is Google Tasks either way. (Google Calendar was the
+ *  other app until 25.11.2026.) */
+export type CalendarApp = 'apple' | 'none' | 'icloud-off'
 
 /** Anything that stops a save (null = it can be saved); the database refuses the same. */
 export function itemInputProblem(input: ItemInput): string | null {
@@ -333,7 +342,7 @@ export function itemWhenText(input: Pick<ItemInput, 'date' | 'time' | 'durationM
  * only · …", "Added · Every week on Sun · on Google Tasks, one per day".
  * `calendarApp`: whether the item's area has a calendar (useItemCalendarApp).
  */
-export function describeSaved(input: ItemInput, saved: SavedItem, calendarApp: 'apple' | 'none' = 'apple'): string {
+export function describeSaved(input: ItemInput, saved: SavedItem, calendarApp: CalendarApp = 'apple'): string {
   const created = saved.created ?? (!input.taskId && !input.blockId && !input.scheduleBlockId)
   const day = saved.occurrenceDate ?? (input.scope === 'day' ? input.occurrenceDate : null)
   const verb = day ? `Saved for ${formatDate(day)} only` : created ? 'Added' : 'Saved'

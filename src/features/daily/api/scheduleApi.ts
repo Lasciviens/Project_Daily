@@ -91,8 +91,8 @@ export async function fetchTrainingBlocksRange(from: string, to: string): Promis
   return ((data ?? []) as unknown as (TimeBlock & TaskEmbed)[]).map(withTaskState)
 }
 
-/** A slot as the month calendar counts it: its day, its kind and the Google event it made (if any). */
-export type MonthSlot = Pick<TimeBlock, 'id' | 'date' | 'category' | 'google_calendar_event_id'>
+/** A slot as the month calendar counts it: its day, its kind and its task (a timed task counts on the Tasks line). */
+export type MonthSlot = Pick<TimeBlock, 'id' | 'date' | 'category' | 'task_id'>
 
 /** Every slot from `from` to `to` (inclusive), narrow columns, read in pages
  *  (PostgREST answers at most 1 000 rows a request). One read for a month. */
@@ -102,7 +102,7 @@ export async function fetchTimeBlocksRange(from: string, to: string): Promise<Mo
   for (let start = 0; ; start += PAGE) {
     const { data, error } = await supabase
       .from('time_blocks')
-      .select('id, date, category, google_calendar_event_id')
+      .select('id, date, category, task_id')
       .gte('date', from)
       .lte('date', to)
       .order('date', { ascending: true })
