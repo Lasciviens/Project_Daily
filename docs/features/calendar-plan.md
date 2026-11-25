@@ -36,7 +36,7 @@ From the list of Google Calendar features, kept here by number so later sessions
 
 Also asked for on 29.10.2026:
 - **Diary** under Personal: "what, where, with whom and when I have eaten, watched, played, trained, planned, done tasks … and a text where I speak about my day". Built (migration 170, `docs/features/daily.md`); "where" and "with whom" live in the owner's own words for now.
-- **Invitations**: can the app invite someone, or send an invitation the owner can answer with Maybe? Proposed, not built: an "invite test" (the app invites one of the owner's other addresses, the owner answers Maybe there, Check changes reads the answer back). The owner can't answer an event they organise themselves, which is likely why "Maybe" showed nothing.
+- **Invitations**: can the app invite someone, or send an invitation the owner can answer with Maybe? The "invite test" is built (25.11.2026, migration 208: Settings → Subscriptions → Invite test — the app invites 1–2 of the owner's other addresses, the owner answers Maybe and Yes there, Check reads the answers back; `docs/integrations/icloud-caldav.md` → The invite test); not run live yet. The owner can't answer an event they organise themselves, which is likely why "Maybe" showed nothing.
 - **Apple Reminders**: not reachable from a server (closed to sync since iOS 13); only a script on the iPhone (Scriptable / Shortcuts) can write them.
 
 ## What the app can read (29.10.2026)

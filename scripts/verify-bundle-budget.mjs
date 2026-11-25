@@ -31,7 +31,7 @@ const PAGE_KB = {                                          // the shell plus the
   'src/features/home/pages/HomePage.tsx': 555,             // [527]
   'src/features/daily/pages/DailyPage.tsx': 540,           // [512]
   'src/features/games/test-game/TestGamePage.tsx': 525,    // [499] Games
-  'src/features/settings/pages/SettingsPage.tsx': 524,     // [495] main was at 520 on 23.11.2026; +3 that day: Food → a preset's Suggest options
+  'src/features/settings/pages/SettingsPage.tsx': 526,     // [495] main was at 520 on 23.11.2026; +3 that day: Food → a preset's Suggest options; +1 on 25.11.2026 (524 → 525): Subscriptions' Invite test slot (the card itself loads apart)
                                                            // reports its save for AI learning (the call's id and a hook; the report itself loads at the save);
                                                            // 524 on 24.11.2026 (main at 523.00): the Trakt api refuses deleting the Queue (+0.04) and Places' stop search — the anchored list and readable stop kinds (+0.3)
   'src/features/recipes/pages/RecipesPage.tsx': 505,       // [479] Food

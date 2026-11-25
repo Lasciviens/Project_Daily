@@ -389,6 +389,8 @@ export const qk = {
     freshSignIn: () => ['icloud', 'fresh-sign-in'] as const,
     /** The item screen's red dot: what the queue did with one item's row, asked once per version of the row. */
     itemSend: (entity: string, id: string, version: string) => ['icloud', 'item-send', entity, id, version] as const,
+    /** The invite test's event as iCloud had it at the last action (only ever set by an action's answer, never fetched). */
+    inviteTest: () => ['icloud', 'invite-test'] as const,
   },
   // Settings → Calendar: the app's calendars per area (calendar_prefs, 172).
   calendarPrefs: ['calendar-prefs'] as const,

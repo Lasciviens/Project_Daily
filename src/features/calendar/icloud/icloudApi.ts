@@ -114,7 +114,8 @@ export interface ICloudRead {
   series:    ICloudReadRow[]
 }
 
-async function call<T>(action: string, extra: Record<string, unknown> = {}): Promise<T> {
+/** One call of the `icloud-calendar` function; its own refusal text, else a plain one. */
+export async function call<T>(action: string, extra: Record<string, unknown> = {}): Promise<T> {
   const { data, error } = await supabase.functions.invoke('icloud-calendar', { body: { action, ...extra } })
   if (error) {
     const body = await parseFunctionErrorBody(error)
@@ -160,3 +161,4 @@ export const drainICloudQueue = (look = false, items?: DrainItemRef[]) => call<I
 export const moveAreaToApple = (area: AreaKey, from: 'today' | 'all', dryRun: boolean) => call<ICloudMove>('move', { area, from, dryRun })
 /** What Remove took: the whole calendar the app made, or only the check's events from one the owner made. */
 export const removeICloudTest = () => call<{ removed: 'calendar' | 'events' | null; message?: string }>('remove')
+
