@@ -12,7 +12,8 @@ export type ChangeTone = 'success' | 'warn' | 'neutral'
 export interface FigureChange {
   /** The signed difference, written by code: "+3 286 · +55 %", "+47 min", "-0.5 kg". */
   text: string
-  /** The same in a few characters, for Home's card: the percent when there is one ("+55 %"), else the difference. */
+  /** The same in a few characters, on the tile's number line: the percent when there is one ("+55 %"), else the
+   *  difference ("+47 min", "-1 kg"). */
   short: string
   dir: 'up' | 'down' | 'same'
   tone: ChangeTone
@@ -73,7 +74,8 @@ export function changeOf(cur: number, prev: number, opts: { better: 'up' | 'down
   const main = same ? 'no change' : `${signed(diff, show)}${opts.unit ? ` ${opts.unit}` : ''}`
   const tone: ChangeTone = dir === 'same' || opts.better === 'none' ? 'neutral' : dir === opts.better ? 'success' : 'warn'
   const pctText = pct !== null && pct !== 0 ? `${pct > 0 ? '+' : '-'}${Math.abs(pct)} %` : null
-  return { text: pctText ? `${main} · ${pctText}` : main, short: pctText ?? main, dir, tone, against: opts.against }
+  // A duration reads best as itself ("+47 min"); a count or an amount as its percent.
+  return { text: pctText ? `${main} · ${pctText}` : main, short: opts.show && opts.show !== figure ? main : pctText ?? main, dir, tone, against: opts.against }
 }
 
 /** Set against a target: on target (within `near` of it, or at or above it for `atLeast`) is good, otherwise a warning. */
@@ -93,30 +95,31 @@ export const AGAINST = { training: 'vs 4-week avg', health: 'vs last week' } as 
 export function sessionsTile(t: Rec): ReportTile | null {
   const count = num(t.session_count), prev = num(t.previous_weeks_avg_sessions)
   if (count === null) return null
-  return { key: 'sessions', label: 'Sessions', value: figure(count), change: prev !== null ? changeOf(count, prev, { better: 'up', against: AGAINST.training }) : undefined, hint: prev !== null ? `${figure(prev)} a week before` : undefined }
+  return { key: 'sessions', label: 'Sessions', value: figure(count), change: prev !== null ? changeOf(count, prev, { better: 'up', against: AGAINST.training }) : undefined }
 }
 
 export function sleepTile(sleep: Rec | null): ReportTile | null {
   const avg = num(sleep?.avg_hours), prev = num(sleep?.previous_avg_hours)
   if (!sleep || avg === null) return null
-  const nights = num(sleep.nights), under = num(sleep.under_6h_nights)
+  // The nights themselves are the chart; a short night is worth its own words.
+  const under = num(sleep.under_6h_nights)
   return {
     key: 'sleep', label: 'Sleep', value: duration(avg), change: prev !== null ? changeOf(avg, prev, { better: 'up', against: AGAINST.health, show: duration }) : undefined,
-    hint: [nights !== null ? `${nights} ${nights === 1 ? 'night' : 'nights'}` : '', under ? `${under} under 6 h` : ''].filter(Boolean).join(' · ') || undefined,
+    hint: under ? `${under} ${under === 1 ? 'night' : 'nights'} under 6 h` : undefined,
   }
 }
 
-export function stepsTile(steps: Rec | null): ReportTile | null {
+/** Steps a day; the active energy rides along as its line (one figure less to scroll past). */
+export function stepsTile(steps: Rec | null, activeKcal: number | null = null): ReportTile | null {
   const avg = num(steps?.avg_per_day), prev = num(steps?.previous_avg_per_day)
   if (!steps || avg === null) return null
-  const best = num(steps.best_day)
-  return { key: 'steps', label: 'Steps', value: figure(avg), unit: 'a day', change: prev !== null ? changeOf(avg, prev, { better: 'up', against: AGAINST.health }) : undefined, hint: best !== null ? `best day ${figure(best)}` : undefined }
+  return { key: 'steps', label: 'Steps', value: figure(avg), unit: 'a day', change: prev !== null ? changeOf(avg, prev, { better: 'up', against: AGAINST.health }) : undefined, hint: activeKcal !== null ? `${figure(activeKcal)} kcal active` : undefined }
 }
 
 export function kcalTile(f: Rec): ReportTile | null {
   const kcal = num(f.avg_kcal_on_logged_days), target = targetOf(f.target_kcal)
   if (kcal === null) return null
-  return { key: 'kcal', label: 'Calories', value: figure(kcal), unit: 'kcal', change: target !== null ? againstTarget(kcal, target, 'kcal', { near: 0.1 }) : undefined, hint: target !== null ? `target ${figure(target)}` : 'a day logged' }
+  return { key: 'kcal', label: 'Calories', value: figure(kcal), unit: 'kcal', change: target !== null ? againstTarget(kcal, target, 'kcal', { near: 0.1 }) : undefined }
 }
 
 export function doneTile(k: Rec, areas: string | undefined): ReportTile | null {
@@ -126,22 +129,28 @@ export function doneTile(k: Rec, areas: string | undefined): ReportTile | null {
 
 // ── Home's card ─────────────────────────────────────────────────────────────
 
-export interface HeadlineFigure { key: string; label: string; value: string; unit?: string; change?: FigureChange }
+export interface HeadlineFigure { key: string; label: string; value: string }
 
 /**
- * Home's card: three or four figures of the week from the saved figures (never the model's text) — sessions, steps a day,
- * calories, tasks done; sleep stands in for one that is missing. Empty when there are none.
+ * Home's card: four figures of the week in one row, from the saved figures (never the model's text), each label
+ * carrying its unit — Sessions, Steps/day, kcal/day ("1 933 of 2 200" against the target), Tasks done; sleep stands in
+ * for a missing one. No change on the card (owner-critic, 25.11.2026: a percent with no visible basis says nothing);
+ * the popup has them. Empty when there are none.
  */
 export function reportHeadline(factsRaw: unknown): HeadlineFigure[] {
   const facts = rec(factsRaw) ?? {}
   const t = section(facts, 'training'), h = section(facts, 'health'), f = section(facts, 'food'), k = section(facts, 'tasks')
-  const sessions = t && sessionsTile(t)
+  const sessions = t && num(t.session_count)
+  const steps = h && num(rec(h.steps)?.avg_per_day)
+  const kcal = f && num(f.avg_kcal_on_logged_days), target = f && targetOf(f.target_kcal)
+  const done = k && num(k.done)
+  const sleep = h && num(rec(h.sleep)?.avg_hours)
   const candidates: (HeadlineFigure | null)[] = [
-    sessions ? { key: 'sessions', label: 'Training', value: sessions.value, unit: sessions.value === '1' ? 'session' : 'sessions', change: sessions.change } : null,
-    h && stepsTile(rec(h.steps)),
-    f && kcalTile(f),
-    k ? (() => { const d = doneTile(k, undefined); return d && { key: 'done', label: 'Tasks', value: d.value, unit: 'done' } })() : null,
-    h && sleepTile(rec(h.sleep)),
+    sessions != null ? { key: 'sessions', label: sessions === 1 ? 'Session' : 'Sessions', value: figure(sessions) } : null,
+    steps != null ? { key: 'steps', label: 'Steps/day', value: figure(steps) } : null,
+    kcal != null ? { key: 'kcal', label: 'kcal/day', value: target != null ? `${figure(kcal)} of ${figure(target)}` : figure(kcal) } : null,
+    done != null ? { key: 'done', label: 'Tasks done', value: figure(done) } : null,
+    sleep != null ? { key: 'sleep', label: 'Sleep', value: duration(sleep) } : null,
   ]
-  return candidates.filter((c): c is HeadlineFigure => !!c).slice(0, 4).map(c => ({ key: c.key, label: c.label, value: c.value, unit: c.unit, change: c.change }))
+  return candidates.filter((c): c is HeadlineFigure => !!c).slice(0, 4)
 }

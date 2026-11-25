@@ -1123,7 +1123,7 @@ function buildTables(now = new Date()) {
   })
   tables.ai_reports = [
     reportRow(1, addDays(thisMonday, -7), {}),
-    reportRow(2, addDays(thisMonday, -14), { content: REPORT_TEXT.replace('Three sessions', 'Two sessions') }),
+    reportRow(2, addDays(thisMonday, -14), { content: REPORT_TEXT.replace('A fuller week', 'A lighter week') }),
     reportRow(3, addDays(thisMonday, -21), { status: 'failed', content: null, failure: 'The batch request expired before it was answered.', ready_at: osloInstant(addDays(thisMonday, -20), '23:35'), pushed_at: osloInstant(addDays(thisMonday, -20), '23:35') }),
   ]
   // The suggestions (migration 199): ideas for needing AI less, in each state, and the weekly look's last run.

@@ -8,7 +8,7 @@
 
 import { reportDay, reportSections } from './reportRules'
 import {
-  AGAINST, againstTarget, changeOf, doneTile, duration, figure, kcalTile, num, rec, section, signed, sessionsTile, sleepTile, stepsTile, targetOf,
+  AGAINST, againstTarget, changeOf, doneTile, duration, figure, kcalTile, num, rec, section, sessionsTile, sleepTile, stepsTile, targetOf,
   type ChangeTone, type Rec, type ReportTile,
 } from './reportTiles'
 
@@ -52,6 +52,8 @@ export interface ReportSectionView {
   tiles: ReportTile[]
   charts: ReportChart[]
   rows: ReportRow[]
+  /** Short lines code wrote under the tiles ("Done: work 6 · personal 3"), each cut on screen. */
+  lines: string[]
   /** What the section's changes are set against, named once in its header ("vs last week"); a tile set against
    *  something else (the weight "in the week") says so itself. Null with no change. */
   against: string | null
@@ -88,11 +90,11 @@ function dayChart(key: string, label: string, values: (number | null)[], days: s
   return { kind: 'days', key, label, values, texts: values.map(v => (v === null ? null : show(v))), days, reference, summary }
 }
 
-/** "best Thu 19.11.2026 · 12 400 steps" — the highest bar, named. */
+/** "best Thu · 12 400 steps" — the highest bar, by its weekday (the line is short; a picked bar names its date). */
 function bestOf(values: (number | null)[], days: string[], show: (v: number) => string): string {
   let at = -1
   values.forEach((v, i) => { if (v !== null && (at < 0 || v > (values[at] as number))) at = i })
-  return at < 0 ? '' : `best ${days[at]} · ${show(values[at] as number)}`
+  return at < 0 ? '' : `best ${days[at].slice(0, 3)} · ${show(values[at] as number)}`
 }
 
 // ── The sections ────────────────────────────────────────────────────────────
@@ -104,9 +106,10 @@ function training(t: Rec, days: string[]): Omit<ReportSectionView, 'key' | 'titl
   const against = AGAINST.training
   const sessions = sessionsTile(t)
   if (sessions) tiles.push(sessions)
-  if (volume !== null) tiles.push({ key: 'volume', label: 'Volume', value: figure(volume), unit: 'kg', change: prevVolume !== null ? changeOf(volume, prevVolume, { better: 'up', against, unit: 'kg' }) : undefined })
-  const muscles = list(t.muscles, 8).map(m => ({ muscle: text(m.muscle, 30), sets: num(m.sets) })).filter(m => m.muscle && m.sets !== null)
-  if (sets !== null) tiles.push({ key: 'sets', label: 'Working sets', value: figure(sets), hint: muscles.length ? `most: ${muscles.slice(0, 2).map(m => `${m.muscle} ${figure(m.sets as number)}`).join(', ')}` : undefined })
+  // The working sets ride along as Volume's line: two tiles a row, none alone.
+  const setsLine = sets !== null ? `${figure(sets)} working sets` : undefined
+  if (volume !== null) tiles.push({ key: 'volume', label: 'Volume', value: figure(volume), unit: 'kg', change: prevVolume !== null ? changeOf(volume, prevVolume, { better: 'up', against, unit: 'kg' }) : undefined, hint: setsLine })
+  else if (sets !== null) tiles.push({ key: 'sets', label: 'Working sets', value: figure(sets) })
 
   // Volume by day, from the sessions' own dates (DD.MM.YYYY, as code wrote them).
   const byDay: (number | null)[] = days.map(() => null)
@@ -132,7 +135,7 @@ function training(t: Rec, days: string[]): Omit<ReportSectionView, 'key' | 'titl
     const before = num(l.best_before_kg)
     return [{ label, value: top, badge: l.change === 'lower' && before !== null ? `Below ${figure(before)} kg` : badge?.[0] ?? null, tone: badge?.[1] ?? 'neutral' }]
   })
-  return { tiles, charts, rows }
+  return { tiles, charts, rows, lines: [] }
 }
 
 function health(h: Rec, days: string[]): Omit<ReportSectionView, 'key' | 'title' | 'text' | 'note' | 'against'> {
@@ -141,28 +144,27 @@ function health(h: Rec, days: string[]): Omit<ReportSectionView, 'key' | 'title'
   const against = AGAINST.health
   const sleep = rec(h.sleep), steps = rec(h.steps), energy = rec(h.active_energy), resting = rec(h.resting_heart_rate), weight = rec(h.weight)
   const sleepPrev = num(sleep?.previous_avg_hours), stepsPrev = num(steps?.previous_avg_per_day)
-  for (const tile of [sleepTile(sleep), stepsTile(steps)]) if (tile) tiles.push(tile)
   const kcal = num(energy?.avg_kcal_per_day), kcalPrev = num(energy?.previous_avg_kcal_per_day)
-  if (kcal !== null) tiles.push({ key: 'energy', label: 'Active energy', value: figure(kcal), unit: 'kcal', change: kcalPrev !== null ? changeOf(kcal, kcalPrev, { better: 'up', against, unit: 'kcal' }) : undefined })
+  // The active energy is Steps' line; with no steps it keeps a tile of its own.
+  const stepsT = stepsTile(steps, kcal)
+  for (const tile of [sleepTile(sleep), stepsT]) if (tile) tiles.push(tile)
+  if (!stepsT && kcal !== null) tiles.push({ key: 'energy', label: 'Active energy', value: figure(kcal), unit: 'kcal', change: kcalPrev !== null ? changeOf(kcal, kcalPrev, { better: 'up', against, unit: 'kcal' }) : undefined })
   const bpm = num(resting?.avg_bpm), bpmPrev = num(resting?.previous_avg_bpm)
   if (bpm !== null) tiles.push({ key: 'resting', label: 'Resting HR', value: figure(bpm), unit: 'bpm', change: bpmPrev !== null ? changeOf(bpm, bpmPrev, { better: 'down', against, unit: 'bpm' }) : undefined })
   const kg = num(weight?.latest_kg)
   if (weight && kg !== null) {
-    const inWeek = num(weight.change_in_week_kg), since = num(weight.change_since_before_week_kg)
-    tiles.push({
-      key: 'weight', label: 'Weight', value: figure(kg), unit: 'kg',
-      change: inWeek !== null ? changeOf(kg, kg - inWeek, { better: 'none', against: 'in the week', unit: 'kg', percent: false }) : undefined,
-      hint: since !== null ? `${since === 0 ? 'no change' : signed(since, figure) + ' kg'} since the week before` : undefined,
-    })
+    // Against the last weigh-in before the week (the section's "vs last week"); never good or bad.
+    const since = num(weight.change_since_before_week_kg)
+    tiles.push({ key: 'weight', label: 'Weight', value: figure(kg), unit: 'kg', change: since !== null ? changeOf(kg, kg - since, { better: 'none', against, unit: 'kg', percent: false }) : undefined })
   }
   const stepDays = week7(steps?.per_day)
   if (stepDays) {
     const show = (v: number) => `${figure(v)} steps`
-    charts.push(dayChart('steps', 'Steps', stepDays, days, show, stepsPrev !== null ? { value: stepsPrev, label: `last week ${figure(stepsPrev)}` } : null, bestOf(stepDays, days, show)))
+    charts.push(dayChart('steps', 'Steps', stepDays, days, show, stepsPrev !== null ? { value: stepsPrev, label: 'last week' } : null, bestOf(stepDays, days, show)))
   }
   const nights = week7(sleep?.per_night)
-  if (nights) charts.push(dayChart('sleep', 'Sleep', nights, days, duration, sleepPrev !== null ? { value: sleepPrev, label: `last week ${duration(sleepPrev)}` } : null, bestOf(nights, days, duration)))
-  return { tiles, charts, rows: [] }
+  if (nights) charts.push(dayChart('sleep', 'Sleep', nights, days, duration, sleepPrev !== null ? { value: sleepPrev, label: 'last week' } : null, bestOf(nights, days, duration)))
+  return { tiles, charts, rows: [], lines: [] }
 }
 
 function food(f: Rec, days: string[]): Omit<ReportSectionView, 'key' | 'title' | 'text' | 'note' | 'against'> {
@@ -173,15 +175,15 @@ function food(f: Rec, days: string[]): Omit<ReportSectionView, 'key' | 'title' |
   const logged = num(f.days_logged), onTarget = num(f.days_within_10pct_of_kcal_target), proteinDays = num(f.days_protein_target_met)
   const kcal = kcalTile(f)
   if (kcal) tiles.push(kcal)
-  if (logged !== null) tiles.push({ key: 'days', label: 'Days logged', value: figure(logged), unit: 'of 7', hint: onTarget !== null ? `${onTarget} near the calorie target` : undefined })
+  if (logged !== null) tiles.push({ key: 'days', label: 'Days logged', value: figure(logged), unit: 'of 7', hint: onTarget !== null ? `${onTarget} near target` : undefined })
   if (protein !== null) tiles.push({ key: 'protein', label: 'Protein', value: figure(protein), unit: 'g', change: proteinTarget !== null ? againstTarget(protein, proteinTarget, 'g', { atLeast: true }) : undefined, hint: proteinDays !== null ? `target met ${proteinDays} ${proteinDays === 1 ? 'day' : 'days'}` : undefined })
   if (water !== null) tiles.push({ key: 'water', label: 'Water', value: figure(water), unit: 'ml', change: waterTarget !== null ? againstTarget(water, waterTarget, 'ml', { atLeast: true }) : undefined })
   const perDay = week7(f.kcal_per_day)
   const show = (v: number) => `${figure(v)} kcal`
   const charts: ReportChart[] = perDay
-    ? [dayChart('kcal', 'Calories by day', perDay, days, show, kcalTarget !== null ? { value: kcalTarget, label: `target ${figure(kcalTarget)}` } : null, bestOf(perDay, days, show).replace(/^best/, 'most'))]
+    ? [dayChart('kcal', 'Calories by day', perDay, days, show, kcalTarget !== null ? { value: kcalTarget, label: 'target' } : null, bestOf(perDay, days, show).replace(/^best/, 'most'))]
     : []
-  return { tiles, charts, rows: [] }
+  return { tiles, charts, rows: [], lines: [] }
 }
 
 function tasks(k: Rec): Omit<ReportSectionView, 'key' | 'title' | 'text' | 'note' | 'against'> {
@@ -189,14 +191,19 @@ function tasks(k: Rec): Omit<ReportSectionView, 'key' | 'title' | 'text' | 'note
   const slipped = num(k.slipped), older = num(k.carried_over_open), created = num(k.created)
   const areas = list(k.done_by_area, 6).map(a => ({ area: text(a.area, 30), count: num(a.count) })).filter(a => a.area && a.count !== null)
   const titles = (Array.isArray(k.slipped_titles) ? k.slipped_titles : []).slice(0, 5).map(x => text(x, 60)).filter((x): x is string => !!x)
-  const done = doneTile(k, areas.length ? areas.slice(0, 3).map(a => `${a.area} ${a.count}`).join(' · ') : undefined)
+  // Four small numbers make one row of tiles; what they are made of follows as lines.
+  const done = doneTile(k, undefined)
   if (done) tiles.push(done)
-  if (slipped !== null) tiles.push({ key: 'slipped', label: 'Slipped', value: figure(slipped), hint: titles.length ? titles.join(' · ') : slipped === 0 ? 'none due this week left open' : undefined })
-  if (older !== null) tiles.push({ key: 'older', label: 'Older open', value: figure(older) })
+  if (slipped !== null) tiles.push({ key: 'slipped', label: 'Slipped', value: figure(slipped) })
+  if (older !== null) tiles.push({ key: 'older', label: 'Overdue', value: figure(older) })
   if (created !== null) tiles.push({ key: 'created', label: 'Created', value: figure(created) })
   const rows = list(k.scheduled_hours_by_area, 8).map(a => ({ label: text(a.area, 30), value: num(a.hours) })).filter(a => a.label && a.value !== null && (a.value as number) > 0)
     .map(a => ({ label: a.label as string, value: a.value as number, text: duration(a.value as number) }))
-  return { tiles, charts: rows.length ? [{ kind: 'areas', key: 'time', label: 'Scheduled time', rows }] : [], rows: [] }
+  const lines = [
+    ...(areas.length ? [`Done: ${areas.slice(0, 4).map(a => `${a.area} ${a.count}`).join(' · ')}`] : []),
+    ...(titles.length ? [`Slipped: ${titles.join(' · ')}`] : []),
+  ]
+  return { tiles, charts: rows.length ? [{ kind: 'areas', key: 'time', label: 'Scheduled time', rows }] : [], rows: [], lines }
 }
 
 const SECTION_TITLE: Record<Exclude<ReportSectionKey, 'intro' | 'other'>, string> = { training: 'Training', health: 'Health', food: 'Food', tasks: 'Tasks & time', next: 'Next week' }
@@ -217,15 +224,15 @@ export function reportView(factsRaw: unknown, content: string | null, weekStart:
   for (const s of reportSections(content ?? '')) {
     const key = s.heading ? HEADING_KEY[s.heading.toLowerCase()] : 'intro'
     if (key) words.set(key, [...(words.get(key) ?? []), ...s.lines])
-    else others.push({ key: 'other', title: s.heading, tiles: [], charts: [], rows: [], against: null, note: null, text: s.lines })
+    else others.push({ key: 'other', title: s.heading, tiles: [], charts: [], rows: [], lines: [], against: null, note: null, text: s.lines })
   }
   const out: ReportSectionView[] = []
   const intro = words.get('intro')
-  if (intro?.length) out.push({ key: 'intro', title: '', tiles: [], charts: [], rows: [], against: null, note: null, text: intro })
+  if (intro?.length) out.push({ key: 'intro', title: '', tiles: [], charts: [], rows: [], lines: [], against: null, note: null, text: intro })
   const build = { training: (r: Rec) => training(r, days), health: (r: Rec) => health(r, days), food: (r: Rec) => food(r, days), tasks: (r: Rec) => tasks(r) }
   for (const key of ['training', 'health', 'food', 'tasks'] as const) {
     const figures = section(facts, key)
-    const body = figures ? build[key](figures) : { tiles: [], charts: [], rows: [] }
+    const body = figures ? build[key](figures) : { tiles: [], charts: [], rows: [], lines: [] }
     const failed = unreadable.includes(key)
     const note = failed ? 'Could not be read this week (a database error).' : key === 'health' && figures?.truncated === true ? 'Some readings could not be read in full, so these figures may be partial.' : null
     const text = words.get(key) ?? []
@@ -234,6 +241,6 @@ export function reportView(factsRaw: unknown, content: string | null, weekStart:
   }
   out.push(...others)
   const next = words.get('next')
-  if (next?.length) out.push({ key: 'next', title: SECTION_TITLE.next, tiles: [], charts: [], rows: [], against: null, note: null, text: next })
+  if (next?.length) out.push({ key: 'next', title: SECTION_TITLE.next, tiles: [], charts: [], rows: [], lines: [], against: null, note: null, text: next })
   return out
 }

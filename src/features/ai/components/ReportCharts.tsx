@@ -7,8 +7,8 @@ import type { AreaChart, DayChart, ReportChart } from '../claude/reportFigures'
 // (`motion-safe:animate-barGrow`; reduced motion drops it). Each day's value is on the bar's button: hover with a mouse,
 // a tap or the keyboard writes it in the line under the chart (never a hover-only tooltip, W5).
 
-/** Each chart's series, by its key: Food's calories keep Food's colour (series 2). */
-const SERIES: Record<string, number> = { volume: 0, steps: 0, sleep: 2, kcal: 1, time: 0 }
+/** Each chart's series, by its key: Food's calories keep Food's colour (series 2, violet); sleep is rose, clearly apart. */
+const SERIES: Record<string, number> = { volume: 0, steps: 0, sleep: 3, kcal: 1, time: 0 }
 
 function DayBars({ chart }: { chart: DayChart }) {
   const c = useChartColors()
@@ -27,7 +27,7 @@ function DayBars({ chart }: { chart: DayChart }) {
           </span>
         )}
       </figcaption>
-      <div className="relative mt-2 h-16" role="group" aria-label={chart.label}>
+      <div className="relative mt-1.5 h-12" role="group" aria-label={chart.label}>
         <div aria-hidden className="absolute inset-x-0 bottom-0 border-t" style={{ borderColor: c.grid }} />
         <div className="flex h-full items-end gap-1">
           {chart.values.map((v, i) => (

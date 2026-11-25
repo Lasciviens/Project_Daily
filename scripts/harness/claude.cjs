@@ -155,7 +155,7 @@ PHASE_2A_JOBS.push(
 // Phase 3: the weekly report, a batch job for the schedule and the app.
 const WEEKLY_REPORT_JOB = {
   ...phase2a('weekly_report', 'The weekly report', "On Monday at 05:00 the function works out the week that just ended with code (training, health, food, tasks and time) and queues one request at half price; the model's short written report is saved, shown as a card on Home during the next week and announced with a push notification at 07:00.", 3000, ['schedule', 'app']),
-  mode: 'batch', version: '2026-11-22.2', answerSchema: null,
+  mode: 'batch', version: '2026-11-25.1', answerSchema: null,
   defaults: { model: 'claude-haiku-5-5', effort: 'medium', maxOutputTokens: 3000 },
   sourceFiles: ['supabase/claude-src/job-weekly-report.ts', 'supabase/claude-src/week-facts.ts', 'supabase/claude-src/week-data.ts', 'supabase/claude-src/batch.ts'],
 }
@@ -167,7 +167,7 @@ PHASE_2A_JOBS.push({
   defaults: { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 2000 },
   sourceFiles: ['supabase/claude-src/job-suggest-weekly.ts', 'supabase/claude-src/suggest-rules.ts', 'supabase/claude-src/suggest-batch.ts', 'supabase/claude-src/suggest-store.ts'],
 })
-const REPORT_TEXT = '**Training**\nThree sessions this week against about two a week before, and 13 180 kg of volume, +2 240 kg on the four-week average. Bench press reached a new best: 85 kg for 3. Barbell row stayed under its best at 70 kg, so the back got less work than the chest this week.\n\n**Health**\nSleep averaged 6 h 47 min, +47 min on the week before, with one night under 6 h. Steps averaged 9 286 a day, +3 286 steps a day (+55 %). Resting heart rate came down to 56 bpm.\n\n**Food**\nFood was logged on 5 of 7 days, averaging 1 933 kcal against the 2 200 kcal target (-267 kcal, -12 %). Protein reached its target on 2 of those days.\n\n**Tasks & time**\n11 tasks were done and 2 slipped: "Renew passport" and "Book dentist". Work took 14 h of scheduled time, training 4 h 30 min.\n\n**Next week**\n1. Log food on every day so the averages mean something.\n2. Aim for 7 hours of sleep on five nights.\n3. Add one back session to balance the chest work.'
+const REPORT_TEXT = '**Training**\nA fuller week than your recent average, and the bench is moving up while the row slipped, so the back got less work than the chest. One more pulling session would even it out.\n\n**Health**\nMore walking and a little more sleep than the week before, with one short night midweek. Keeping the evenings calm would protect the gains.\n\n**Food**\nYou logged most days but stayed under the calorie target, and protein held up. Logging every day would make the picture clearer.\n\n**Tasks & time**\nA productive week, though "Renew passport" and "Book dentist" slipped again. Give them a fixed slot early in the week.\n\n**Next week**\n1. Add one back session to balance the chest work.\n2. Log food on every day so the averages mean something.\n3. Book the two slipped tasks into Monday morning.'
 // The figures the function saves with a report (week-facts.ts `WeekFacts`, made-up numbers that match the text above).
 const dmyOf = (day) => `${day.slice(8, 10)}.${day.slice(5, 7)}.${day.slice(0, 4)}`
 function reportFacts(weekStart) {

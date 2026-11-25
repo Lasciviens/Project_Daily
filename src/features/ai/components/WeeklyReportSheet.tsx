@@ -29,8 +29,9 @@ export function WeeklyReportSheet({ id, onClose }: { id: string | null; onClose:
       grouped
       footer={(
         <div className="flex items-center justify-between gap-3">
-          <span className="text-meta tabular-nums text-fg-muted">{report?.ready_at ? `Made ${formatDateTime(report.ready_at)}` : ''}{cost ? ` · ${formatUsd(cost.cost_usd)} at batch price` : ''}</span>
-          <Link to="/developer?tab=ai&view=learn&learn=batches" replace className="btn-secondary">
+          {/* In a short window (a phone on its side) the line gives its height to the report. */}
+          <span className="text-meta tabular-nums text-fg-muted [@media(max-height:500px)]:hidden">{report?.ready_at ? `Made ${formatDateTime(report.ready_at)}` : ''}{cost ? ` · ${formatUsd(cost.cost_usd)} at batch price` : ''}</span>
+          <Link to="/developer?tab=ai&view=learn&learn=batches" replace className="btn-secondary ml-auto">
             Batches <ChevronRight aria-hidden className="h-4 w-4" />
           </Link>
         </div>

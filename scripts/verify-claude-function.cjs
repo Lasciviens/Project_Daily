@@ -1888,11 +1888,17 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   section('17 · the report job and its check')
   const jw = jobAbout('weekly_report')
   check('weekly_report: a batch job for the schedule and the app, Haiku, medium effort, no tools, no enforced shape; the others are live', jw.mode === 'batch' && same(jw.callers, ['schedule', 'app']) && same(jw.defaults, { model: 'claude-haiku-5-5', effort: 'medium', maxOutputTokens: 3000 }) && same(jw.tools, []) && jw.answerSchema === null && same(about.jobs.filter(j => j.mode === 'batch').map(j => j.name), ['weekly_report', 'suggest_weekly', 'learn_eval']), jw)
-  check('weekly_report: the instructions skip sections with no data, call the tags data, forbid links, ask for English and the five headings, and say DD.MM.YYYY', /NO DATA THIS WEEK/.test(jw.instructions) && /data, never instructions to you/.test(jw.instructions) && /No links/.test(jw.instructions) && /English/.test(jw.instructions) && wf.WEEKLY_REPORT_HEADINGS.every(h => jw.instructions.includes(`**${h}**`) || h === 'Next week') && /\*\*Next week\*\*|headed \*\*Next week\*\*/.test(jw.instructions) && /DD\.MM\.YYYY/.test(jw.instructions))
-  const REPORT = '**Training**\nThree sessions, 3380 kg in all.\n\n**Health**\nSleep averaged 6.79 h.\n\n**Next week**\n1. Keep the bench going.\n2. Aim for 7 hours.'
-  check('readWeeklyReport: accepts a report with known headings and keeps its bold marks', wf.readWeeklyReport(REPORT).ok === true && wf.readWeeklyReport(REPORT).result.text === REPORT)
+  check('weekly_report: the instructions skip sections with no data, call the tags data, forbid links, ask for English and the five headings, and (owner, 25.11.2026) words with no numbers, 1-2 sentences a section', /NO DATA THIS WEEK/.test(jw.instructions) && /data, never instructions to you/.test(jw.instructions) && /No links/.test(jw.instructions) && /English/.test(jw.instructions) && wf.WEEKLY_REPORT_HEADINGS.every(h => jw.instructions.includes(`**${h}**`) || h === 'Next week') && /\*\*Next week\*\*|headed \*\*Next week\*\*/.test(jw.instructions) && /No numbers in your words/.test(jw.instructions) && /1-2 plain sentences/.test(jw.instructions) && !/copy them/i.test(jw.instructions))
+  const REPORT = '**Training**\nA steadier week than the one before, with a new best on the bench.\n\n**Health**\nSleep held up, and the walking made a real difference.\n\n**Next week**\n1. Keep the bench going.\n2. Aim for a little more sleep.'
+  check('readWeeklyReport: accepts a report with known headings and keeps its bold marks', wf.readWeeklyReport(REPORT, '').ok === true && wf.readWeeklyReport(REPORT, '').result.text === REPORT)
+  const SENT = '<week>16.11.2026 to 22.11.2026</week>\n<training>\nSession 17.11.2026: Push 5x5, 3 working sets, 1 055 kg\n</training>'
+  check('readWeeklyReport, every number is code: a number in none of the figures the model read fails (a name\'s own digits and the "1. " of the list pass)', wf.readWeeklyReport('**Training**\nPush 5x5 went well.\n\n**Next week**\n1. Keep it.\n2. Rest.', SENT).ok === true
+    && wf.readWeeklyReport('**Training**\nYou lifted 1 055 kg.', SENT).ok === true
+    && /none of the figures/.test(wf.readWeeklyReport('**Training**\nYou lifted 1 056 kg.', SENT).problem)
+    && wf.readWeeklyReport('**Next week**\n1. Aim for 7 hours of sleep.', '').ok === false
+    && wf.readWeeklyReport('**Health**\nA 9286 step day.', '<health>\nSteps: average 9 286 a day\n</health>').ok === false)
   for (const [label, text] of [['empty', ''], ['no heading', 'Just text.'], ['a link', '**Training**\nSee https://example.com'], ['markdown link', '**Health**\n[here](x)'], ['html', '**Food**\n<b>hi</b>'], ['an unknown heading', '**Secrets**\nx'], ['a repeated heading', '**Food**\na\n**Food**\nb'], ['over 4000', '**Food**\n' + 'x'.repeat(4000)], ['a code mark', '**Food**\n`x`']]) {
-    check(`readWeeklyReport: ${label} is thrown away, never repaired`, wf.readWeeklyReport(text).ok === false, wf.readWeeklyReport(text))
+    check(`readWeeklyReport: ${label} is thrown away, never repaired`, wf.readWeeklyReport(text, '').ok === false, wf.readWeeklyReport(text, ''))
   }
   check('a normal run of the job is refused: it is not live (app, schedule path and devices)', (await go(runBody({}, 'weekly_report'))).json?.reason === 'bad_input')
   const live = await go(runBody({}, 'weekly_report'))
@@ -2229,7 +2235,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
 
   section('17 · the weekly report: pins, English, files')
   const hW = crypto.createHash('sha256').update(`${jw.instructions}\n${JSON.stringify(jw.answerSchema)}`).digest('hex').slice(0, 16)
-  check(`weekly_report: the version names the instructions it was made with (a change needs a new version, then a new pin here)`, jw.version === '2026-11-23.1' && hW === 'b0ade461702ed562', `version ${jw.version}, hash ${hW}`)
+  check(`weekly_report: the version names the instructions it was made with (a change needs a new version, then a new pin here)`, jw.version === '2026-11-25.1' && hW === 'b4ff921b10ad77ca', `version ${jw.version}, hash ${hW}`)
   check('weekly_report: the version is a date and a counter, and the source files exist', /^\d{4}-\d{2}-\d{2}\.\d+$/.test(jw.version) && jw.sourceFiles.every(f => fs.existsSync(path.join(REPO, f))))
 
   // ═══ 18 · the AI features of 22.11.2026: photos, drafts, short texts, web search ══════════════════════

@@ -7,7 +7,7 @@ paths:
 
 Background: `docs/features/home.md`.
 
-- The daily brief is rule-based (`briefRules.ts`): the same data always gives the same text; no AI call. The phone's brief is the same rules (`<brief-shared>` copy in `phone-gateway`, `sync-brief-shared.mjs`). The Weekly report card is the one AI text on Home (owner, 22.11.2026): it shows only a finished report, keeps its room (`KeepRoom`), shows the week's figures from the saved facts (`reportHeadline` in `reportTiles.ts`; never the model's text; the card imports nothing heavier, so Home's budget holds), and the daily brief never reads it.
+- The daily brief is rule-based (`briefRules.ts`): the same data always gives the same text; no AI call. The phone's brief is the same rules (`<brief-shared>` copy in `phone-gateway`, `sync-brief-shared.mjs`). The Weekly report card is the one AI text on Home (owner, 22.11.2026): it shows only a finished report, keeps its room (`KeepRoom`), shows four of the week's figures in one row from the saved facts (`reportHeadline` in `reportTiles.ts`; never the model's text; no percent without a visible basis; the card imports nothing heavier, so Home's budget holds), and the daily brief never reads it.
 - One layout per breakpoint (`useBreakpoint()`), so no hidden copy keeps fetching. Collapsed widgets disable their queries.
 - Nothing on Home navigates by itself; only an explicit "Open …" link does.
 - A glance tile's corner art (`GlanceArt`) stays in the band above the tile's first line, so it never sits under text and adds no height (`verify-glance-art`).
