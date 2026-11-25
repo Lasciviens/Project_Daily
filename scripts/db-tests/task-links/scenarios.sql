@@ -240,3 +240,32 @@ select t_ok((t_task((select (v ->> 'taskId')::uuid from public.t_keep where k = 
 delete from public.tasks where id = '70000000-0000-0000-0000-000000000011';
 select t_ok((select task_id from public.shop_items where id = '30000000-0000-0000-0000-000000000001') is null,
   'D6 deleting the task clears the old pointer as before');
+
+-- ═══ G. Guardian's points (25.11.2026) ═══════════════════════════════════════
+-- G1: a task the save can't read back is never reported as linked (a test-only trigger takes it away right after it is made).
+create or replace function public.t_vanish() returns trigger language plpgsql as $$
+begin
+  delete from public.tasks where id = new.id;
+  return null;
+end $$;
+create trigger t_vanish after insert on public.tasks for each row when (new.title = 'Vanishes') execute function public.t_vanish();
+set role authenticated;
+select t_ok(t_refused($$select public.app_save_item(public.t_item('Vanishes', '{"time":null,"durationMinutes":null}'), '{"kind":"game","id":"50000000-0000-0000-0000-000000000001"}')$$) like 'IT004%'
+        and not exists (select 1 from public.tasks where title = 'Vanishes'),
+  'G1 a task the save can''t read back fails the save (IT004), never "linked"');
+reset role;
+drop trigger t_vanish on public.tasks;
+-- G2: an old pointer moved to a task that can't take the link leaves the open plan's link where it is.
+insert into public.shop_items (id, user_id, title) values ('30000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000001', 'Ladder');
+set role authenticated;
+insert into public.t_keep values ('g2', public.app_save_item(public.t_item('Buy a ladder'), '{"kind":"shop_item","id":"30000000-0000-0000-0000-000000000007"}'));
+update public.shop_items set task_id = (select (v ->> 'taskId')::uuid from public.t_keep where k = 'e8') where id = '30000000-0000-0000-0000-000000000007';
+select t_ok((t_task((select (v ->> 'taskId')::uuid from public.t_keep where k = 'g2'))).shop_item_id = '30000000-0000-0000-0000-000000000007'
+        and (t_task((select (v ->> 'taskId')::uuid from public.t_keep where k = 'e8'))).book_id = '60000000-0000-0000-0000-000000000001'
+        and (t_task((select (v ->> 'taskId')::uuid from public.t_keep where k = 'e8'))).shop_item_id is null,
+  'G2 a pointer moved to a task that plans something else: the open plan keeps its link (nothing left dangling)');
+reset role;
+select t_ok(has_function_privilege('authenticated', 'public.app_save_item(jsonb, jsonb)', 'execute')
+        and not has_function_privilege('service_role', 'public.app_save_item(jsonb, jsonb)', 'execute')
+        and not has_function_privilege('anon', 'public.app_save_item(jsonb, jsonb)', 'execute'),
+  'G3 the save with a link is the browser''s only, as the 1-argument save');

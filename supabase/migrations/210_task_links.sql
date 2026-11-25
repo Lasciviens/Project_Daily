@@ -139,7 +139,7 @@ begin
      and new.source_id is not null and new.source_type in ('movie', 'tv_series')
      and (tg_op = 'INSERT' or (new.source_type, new.source_id) is distinct from (old.source_type, old.source_id)) then
     if new.source_type = 'movie' and public.task_link_ok(new.user_id, 'movie', new.source_id::text) then
-      select exists (select 1 from public.tasks x where x.movie_entry_id = new.source_id and x.id <> new.id
+      select exists (select 1 from public.tasks x where x.movie_entry_id = new.source_id and x.id <> new.id and x.user_id = new.user_id
                        and x.status not in ('done', 'cancelled')) into v_other;
       if not v_other or new.status in ('done', 'cancelled') then new.movie_entry_id := new.source_id; end if;
     elsif new.source_type = 'tv_series' and public.task_link_ok(new.user_id, 'tv', new.source_id::text) then
@@ -253,6 +253,7 @@ declare
   v_col  text := tg_argv[0];
   v_task uuid;
   v_was  uuid;
+  v_can  boolean := false;
 begin
   if tg_table_name = 'wish_items' then
     v_task := new.promoted_task_id;
@@ -265,11 +266,19 @@ begin
   if v_col not in ('shop_item_id', 'wish_item_id', 'football_plan_id') then
     raise exception 'task_link_from_old: unknown column' using errcode = '22023';
   end if;
-  if v_was is not null then
+  -- The task the pointer now names can take the link: open or closed, with no other link of its own (or this one).
+  if v_task is not null then
+    execute format('select exists (select 1 from public.tasks t where t.id = $1 and t.user_id = $2'
+                   || ' and (t.%I = $3 or num_nonnulls(t.hevy_routine_id, t.movie_entry_id, t.tv_entry_id, t.shop_item_id,'
+                   || ' t.wish_item_id, t.football_plan_id, t.game_id, t.book_id) = 0))', v_col)
+      into v_can using v_task, new.user_id, new.id;
+  end if;
+  -- Only when the link can move (the pointer cleared, or a task that can take it): never a link lost on the way.
+  if v_was is not null and (v_task is null or v_can) then
     execute format('update public.tasks set %I = null where id = $1 and user_id = $2 and %I = $3', v_col, v_col)
       using v_was, new.user_id, new.id;
   end if;
-  if v_task is not null then
+  if v_task is not null and v_can then
     execute format('update public.tasks set %I = null where %I = $1 and user_id = $2 and id <> $3'
                    || ' and status not in (''done'', ''cancelled'')'
                    || ' and exists (select 1 from public.tasks t where t.id = $3 and t.user_id = $2 and t.status not in (''done'', ''cancelled''))',
@@ -470,6 +479,9 @@ begin
   end if;
 
   select x.status into v_status from public.tasks x where x.id = v_task and x.user_id = v_user;
+  if not found then
+    raise exception 'This item is not there any more' using errcode = 'IT004';
+  end if;
   if v_status not in ('done', 'cancelled') and v_kind <> 'training' then
     select exists (
       select 1 from public.tasks x
@@ -500,11 +512,14 @@ begin
     game_id          = case when v_kind = 'game' then v_raw::uuid end,
     book_id          = case when v_kind = 'book' then v_raw::uuid end
   where id = v_task and user_id = v_user;
+  if not found then
+    raise exception 'This item is not there any more' using errcode = 'IT004';
+  end if;
 
   return v_answer || jsonb_build_object('link', jsonb_build_object('kind', v_kind, 'id', v_raw));
 end
 $$;
-revoke all on function public.app_save_item(jsonb, jsonb) from public, anon;
-grant execute on function public.app_save_item(jsonb, jsonb) to authenticated, service_role;
+revoke all on function public.app_save_item(jsonb, jsonb) from public, anon, service_role;
+grant execute on function public.app_save_item(jsonb, jsonb) to authenticated;
 comment on function public.app_save_item(jsonb, jsonb) is
   'The item save with its link (210): app_save_item(p_item) and the task''s link to its thing ({kind, id[, season, episode]}), in one transaction. Edit the save itself in app_save_item(jsonb).';
