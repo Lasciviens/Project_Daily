@@ -49,6 +49,8 @@ export function useRepeatDays(tasks: readonly Task[] = []) {
     toDoOn: (day: string) => repeatsToDoOn(templates, day, today, asTasks),
     /** Any repeat day on `day` (a past one too: the day view lists it as missed). */
     on: (day: string) => repeatDaysOn(templates, day),
+    /** Repeat days that passed with no task of their own (no tick, no split): missed on their day (156). */
+    missedOn: (day: string) => (day < today ? repeatDaysOn(templates, day, asTasks) : 0),
     toDoBetween: (from: string, to: string) => repeatsToDoBetween(templates, from, to, today, asTasks),
   }), [templates, today, asTasks])
 }

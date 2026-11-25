@@ -14,7 +14,7 @@ import { localDayBoundsIso } from '../../training/workoutDates'
 import { dayDataFor, type CalendarPlanItem } from '../../training/components/calendar/calendarModel'
 import { planStartHHMM } from '../../training/components/calendar/calendarSessions'
 import { dayMarkOf } from '../../training/components/calendar/monthGridModel'
-import { mediaByDay, moneyByDay, plansByDay, type MonthDayFacts, type MonthKind } from '../monthLines'
+import { mediaByDay, moneyByDay, moneyCountByDay, plansByDay, type MonthDayFacts, type MonthKind } from '../monthLines'
 import { useTimeBlocksRange } from './useSchedule'
 
 /**
@@ -64,20 +64,22 @@ export function useMonthLines(from: string, to: string, hidden: readonly MonthKi
   const planCounts = useMemo(() => plansByDay(slots.data ?? []), [slots.data])
   const watched = useMemo(() => mediaByDay(media.watches), [media.watches])
   const spent = useMemo(() => {
-    if (!items.data) return new Map()
-    return moneyByDay(moneyEvents(items.data, moneyCtx(costs.data ?? [], null), from.slice(0, 7), to.slice(0, 7)))
+    if (!items.data) return { sums: new Map(), counts: new Map<string, number>() }
+    const events = moneyEvents(items.data, moneyCtx(costs.data ?? [], null), from.slice(0, 7), to.slice(0, 7))
+    return { sums: moneyByDay(events), counts: moneyCountByDay(events) }
   }, [items.data, costs.data, from, to])
 
   const factsOf = useCallback((day: string): Omit<MonthDayFacts, 'tasks'> => ({
     training: training.get(day),
     plans:    planCounts.get(day),
     media:    watched.get(day),
-    money:    spent.get(day),
+    money:    spent.sums.get(day),
+    moneyItems: spent.counts.get(day),
   }), [training, planCounts, watched, spent])
 
   // A failed read is named, never read as "nothing" (THEME §5); Try again reads the failed ones again.
   const failed: MonthKind[] = []
-  if (on('training') && (workouts.isError || plans.isError)) failed.push('training')
+  if (on('training') && (workouts.isError || activities.isError || plans.isError)) failed.push('training')
   if (on('plans') && slots.isError) failed.push('plans')
   if (on('media') && media.failed) failed.push('media')
   if (on('money') && (items.isError || costs.isError)) failed.push('money')

@@ -43,11 +43,16 @@ export function glanceInColumn(step: PageStep): boolean {
 // visible."): every day carries a line per kind, so the width is used, never
 // empty squares. Until then it stopped at 40rem and the picked day took two
 // tracks at 2450.
+/** Where the month card remembers its height (MonthWidget's KeepRoom); the lazy part's fallback reads it (DailyPage). */
+export const monthRoomKey = (phone: boolean) => `dailyMonth:${phone ? 'phone' : 'wide'}`
+
 export const PICKER_SECTIONS = ['pair', 'picker', 'pickedOrUpcoming', 'picked', 'upcoming'] as const
 export type PickerSection = typeof PICKER_SECTIONS[number]
 
-/** No cap: the calendar takes what the side panes leave (as Shop's Owned board does). */
-export const PICKER_MAIN = '200rem'
+/** A main track this wide is never reached on any screen: in effect no cap (PageBoard takes a width, not "none"). */
+const NO_CAP = '200rem'
+/** The calendar takes what the side panes leave (as Shop's Owned board does). */
+export const PICKER_MAIN = NO_CAP
 export const MONTH_BOARD: BoardLayouts<PickerSection> = {
   1: ['pair'],
   2: { main: PICKER_MAIN, columns: [['picker'], ['pickedOrUpcoming']] },

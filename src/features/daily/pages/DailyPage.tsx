@@ -17,7 +17,9 @@ import { isOpenTask } from '../../todo/taskRules'
 import { formatLocalDate, mondayOfStr } from '../../../shared/utils/dateUtils'
 import { useFollowToday } from '../../../shared/hooks/useToday'
 import { usePrefetchWeek } from '../../home/hooks/usePrefetchWeek'
-import { DAY_BOARD, MONTH_BOARD, glanceInColumn, type DaySection, type PickerSection } from '../dailyBoards'
+import { DAY_BOARD, MONTH_BOARD, glanceInColumn, monthRoomKey, type DaySection, type PickerSection } from '../dailyBoards'
+import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
+import { rememberedLayout } from '../../../shared/hooks/useLayoutMemory'
 import { DiaryView } from '../../diary/components/DiaryView'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
 import { lazyPart } from '../../../shared/utils/lazyPage'
@@ -188,9 +190,12 @@ function MonthSection({ onDayClick, selectedDate }: { onDayClick: (d: Date) => v
   const [picked, setPicked] = useState<Date | null>(!isToday(selectedDate) ? selectedDate : null)
   const focus = picked ?? new Date()
 
-  // Until its code is in (only before the idle read-ahead): a card of the calendar's place.
+  // Until its code is in (only before the idle read-ahead): a card of the calendar's own height — the one it took
+  // last time on this device (KeepRoom in MonthWidget), else about a month's with three lines a day.
+  const phone = useBreakpoint() === 'phone'
+  const monthRoom = rememberedLayout(monthRoomKey(phone))
   const picker = (
-    <Suspense fallback={<Card aria-busy="true" className="min-h-[24rem]" />}>
+    <Suspense fallback={<Card aria-busy="true" style={{ minHeight: `${typeof monthRoom === 'number' && monthRoom > 0 ? monthRoom : phone ? 24 : 40}rem` }} />}>
       <MonthWidget big onDayClick={setPicked} highlightDate={picked ?? undefined} />
     </Suspense>
   )

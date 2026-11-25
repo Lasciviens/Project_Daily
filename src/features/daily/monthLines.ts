@@ -14,20 +14,23 @@ import { DAY_MARK_LABEL, type DayMark } from '../training/components/calendar/mo
 export const MONTH_KINDS = ['tasks', 'training', 'plans', 'media', 'money'] as const
 export type MonthKind = typeof MONTH_KINDS[number]
 
-/** The checkbox's word, its tooltip, and the category tint of its dot (THEME §2.5 — an identity, never a status). */
-export const MONTH_KIND: Record<MonthKind, { label: string; tip: string; tint: 1 | 2 | 3 | 4 | 5 }> = {
-  tasks:    { label: 'Tasks',    tip: 'Tasks — open and done on each day', tint: 1 },
+/** The checkbox's word, its tooltip, and the category tint of its dot (THEME §2.5 — an identity, never a status).
+ *  Plans is the slate (6): the plum (3) beside Training's violet (2) read as one purple at a dot's size. */
+export const MONTH_KIND: Record<MonthKind, { label: string; tip: string; tint: 1 | 2 | 3 | 4 | 5 | 6 }> = {
+  tasks:    { label: 'Tasks',    tip: 'Tasks — open, done, missed and cancelled on each day', tint: 1 },
   training: { label: 'Training', tip: 'Training — trained, planned or missed', tint: 2 },
-  plans:    { label: 'Plans',    tip: 'Plans — the day\'s slots', tint: 3 },
+  plans:    { label: 'Plans',    tip: 'Plans — the day\'s slots', tint: 6 },
   media:    { label: 'Media',    tip: 'Media — films and episodes watched', tint: 4 },
   money:    { label: 'Money',    tip: 'Money — spent in Shop (purchases and costs, less refunds)', tint: 5 },
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
-/** "3 open · 2 done", "3 open", "2 done" — or nothing on a day with neither. */
-export function tasksText(open: number, done: number): string | null {
-  const parts = [open > 0 && `${open} open`, done > 0 && `${done} done`].filter(Boolean)
+/** "3 open · 2 done · 1 missed · 1 cancelled" — each part only when there is one; nothing on a day with none. A
+ *  missed day (a repeat day that passed unticked, 156) and a cancelled task are part of the day's record. */
+export function tasksText(open: number, done: number, missed = 0, cancelled = 0): string | null {
+  const parts = [open > 0 && `${open} open`, done > 0 && `${done} done`, missed > 0 && `${missed} missed`, cancelled > 0 && `${cancelled} cancelled`]
+    .filter(Boolean)
   return parts.length ? parts.join(' · ') : null
 }
 
@@ -42,9 +45,9 @@ export function plansText(slots: number): string | null {
   return slots > 0 ? plural(slots, 'plan') : null
 }
 
-/** "1 film · 3 episodes". */
+/** "1 film · 3 ep" — short, so it fits a day's line (the whole words are in the day's name: dayAccessibleName). */
 export function mediaText(films: number, episodes: number): string | null {
-  const parts = [films > 0 && plural(films, 'film'), episodes > 0 && plural(episodes, 'episode')].filter(Boolean)
+  const parts = [films > 0 && plural(films, 'film'), episodes > 0 && `${episodes} ep`].filter(Boolean)
   return parts.length ? parts.join(' · ') : null
 }
 
@@ -84,19 +87,28 @@ export function moneyByDay(events: readonly { day: string; kind: 'bought' | 'cos
   return out
 }
 
+/** How many money events (purchases, extra costs, refunds) fall on each day — the phone's count for Money. */
+export function moneyCountByDay(events: readonly { day: string; kind: 'bought' | 'cost' | 'sold' | 'refund' }[]): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const e of events) if (e.kind !== 'sold') out.set(e.day, (out.get(e.day) ?? 0) + 1)
+  return out
+}
+
 /** One day's facts per kind; a kind that is not read (or has nothing) is left out. */
 export interface MonthDayFacts {
-  tasks?:    { open: number; done: number }
+  tasks?:    { open: number; done: number; missed?: number; cancelled?: number }
   training?: { sessions: number; mark: DayMark | null }
   plans?:    { slots: number }
   media?:    { films: number; episodes: number }
   money?:    Amount
+  /** Money events that day (moneyCountByDay). */
+  moneyItems?: number
 }
 
 /** Every kind's line for one day (null: nothing that day). */
 export function dayTexts(f: MonthDayFacts): Record<MonthKind, string | null> {
   return {
-    tasks:    f.tasks ? tasksText(f.tasks.open, f.tasks.done) : null,
+    tasks:    f.tasks ? tasksText(f.tasks.open, f.tasks.done, f.tasks.missed, f.tasks.cancelled) : null,
     training: f.training ? trainingText(f.training.sessions, f.training.mark) : null,
     plans:    f.plans ? plansText(f.plans.slots) : null,
     media:    f.media ? mediaText(f.media.films, f.media.episodes) : null,
@@ -104,15 +116,35 @@ export function dayTexts(f: MonthDayFacts): Record<MonthKind, string | null> {
   }
 }
 
-export interface MonthSlotLine { kind: MonthKind; text: string | null }
+/** Every kind's count for one day — the phone's tiny numbers (owner, 25.11.2026: counts instead of dots): the day's
+ *  task rows, its workouts (1 for a plan mark), its slots, its watches, its money events. 0: nothing that day. */
+export function dayCounts(f: MonthDayFacts): Record<MonthKind, number> {
+  const t = f.tasks
+  return {
+    tasks:    t ? t.open + t.done + (t.missed ?? 0) + (t.cancelled ?? 0) : 0,
+    training: f.training ? (f.training.sessions || (f.training.mark ? 1 : 0)) : 0,
+    plans:    f.plans?.slots ?? 0,
+    media:    f.media ? f.media.films + f.media.episodes : 0,
+    money:    f.moneyItems ?? (f.money ? 1 : 0),
+  }
+}
+
+export interface MonthSlotLine { kind: MonthKind; text: string | null; count: number }
 
 /**
  * The day's lines in fixed slots: one per shown kind, always in MONTH_KINDS'
- * order, an empty slot kept (null text) — so a kind stands on the same line in
- * every day and nothing moves when a read lands. A hidden kind has no slot.
+ * order, an empty slot kept (null text, count 0) — so a kind stands in the same
+ * place in every day. A hidden kind has no slot.
  */
-export function shownSlots(texts: Record<MonthKind, string | null>, hidden: readonly MonthKind[]): MonthSlotLine[] {
-  return MONTH_KINDS.filter(k => !hidden.includes(k)).map(kind => ({ kind, text: texts[kind] }))
+export function shownSlots(texts: Record<MonthKind, string | null>, hidden: readonly MonthKind[], counts?: Record<MonthKind, number>): MonthSlotLine[] {
+  return MONTH_KINDS.filter(k => !hidden.includes(k)).map(kind => ({ kind, text: texts[kind], count: texts[kind] ? (counts?.[kind] ?? 0) : 0 }))
+}
+
+/** The lines a day's room keeps: the most any day of the month has once every shown kind answered, else 3 — so the
+ *  month fits one screen (owner-critic, 25.11.2026) and nothing moves when a read lands within it. */
+export function monthLineRoom(perDay: readonly (readonly MonthSlotLine[])[], ready: boolean, before = 3): number {
+  if (!ready) return before
+  return Math.max(0, ...perDay.map(slots => slots.filter(s => s.text).length))
 }
 
 /** What a day's button reads aloud and shows on hover: the date, then each shown line ("Wed 25.11.2026 — Tasks: 3 open; Training: Trained"). */

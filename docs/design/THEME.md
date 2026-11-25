@@ -172,8 +172,9 @@ const c = useChartColors()
   strongest ink, so initials and icons read on the fill in both themes). One tint per top category, stable by
   its id (`wishTile.tintOf`); no category is the slate. Never a status, never the accent.
   `.tint-dot` is the tint solid (a small identity mark) and `.tint-check` a checkbox in the tint when the box is
-  the key to that colour — Personal → Month's kinds (tasks 1, training 2, plans 3, media 4, money 5): the dots
-  under a date and the checkboxes that show or hide them.
+  the key to that colour — Personal → Month's kinds (tasks 1, training 2, plans 6, media 4, money 5; Plans is the slate, as the
+  plum beside Training's violet read as one purple): the dots and tiny counts under a date and the checkboxes
+  that show or hide them.
 - **Identity colours stay literal**: third-party brand colours (a transit operator's line colour, a
   fitness service's brand orange) and physiological categories that users know by colour (sleep
   stages) are data, not chrome. Keep them in one constant per feature.
@@ -289,7 +290,7 @@ Use the React primitive when one exists; the CSS class is for places a component
 | Loading | `<Skeleton>` / `<SkeletonText>` / `<SkeletonCard>` copying the real geometry; `<KeepRoom ids loading skeleton first remember>` around a part whose data comes in on its own (it keeps the room the part took last time, §5; `as="span"` inside a button); `<SkeletonTab>` as a lazy tab's Suspense fallback |
 | List row | `<ListRow leading title subtitle meta trailing onClick />` (`.row`, `.row-interactive`) |
 | On / off | `<Switch on onChange label size>` (`shared/ui`): the accent track when on; `md` keeps a 44px row of its own, `sm` sits in a row that is already the target (the item screen's All-day) |
-| Tick a choice | `<Checkbox checked onChange label tip tint>` (`shared/ui`): the browser's checkbox with its word, the whole label the target — 36px, 44 on touch; the accent, or a category tint (`tint`, §2.5) when the box is the key to that colour (Personal → Month's kinds) |
+| Tick a choice | `<Checkbox checked onChange label tip tint>` (`shared/ui`): the browser's checkbox with its word, the whole label the target — 36px, no 44px step on touch; the accent, or a category tint (`tint`, §2.5) when the box is the key to that colour (Personal → Month's kinds) |
 | Text tabs (2–5 views) | `<SegmentedControl>` (`.seg` / `.seg-btn`); `size="xs"` is a 28px pill row for a compact popup header (This day \| All days); `fit` sizes each segment to its own label, with tighter sides at every size (`.seg-fit`), instead of equal shares (five views with one long name on a phone: Developer → AI; six with three counts: AI → Learned), `label` names the group for screen readers |
 | Sub-views of a tab | `SegmentedControl size="sm"` at the right end of the page's tab row (own row with the page actions below `lg`), value in `?view=` — Training Log / Library |
 | Filter tabs with counts | `.pill-tab` + `.count-badge`, horizontally scrollable row (`.scroll-x`) |
