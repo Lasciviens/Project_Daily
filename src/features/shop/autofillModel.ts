@@ -26,10 +26,13 @@ export { FORM_FACTS, factKept, factsToSave, fieldHolds, type SavedFacts } from '
 export type Confidence = 'exact' | 'likely' | 'check'
 
 /** Which of the owner's inputs gave a fact: a new read of the same input replaces what it gave before. */
-export type FactOrigin = 'link' | 'scan' | 'title' | 'receipt' | 'page'
+export type FactOrigin = 'link' | 'scan' | 'title' | 'receipt' | 'page' | 'photo'
 
-/** Where a fact came from, as the sheet says it ("elkjop.no", "Kassalapp", "your “Sony WH-1000XM4”", "you"). */
-export interface FactSource { origin: FactOrigin; label: string }
+/**
+ * Where a fact came from, as the sheet says it ("elkjop.no", "Kassalapp", "your “Sony WH-1000XM4”", "you"). `call`: the AI call
+ * that gave it (Shop's 📷✨), so the save can tell the function what the owner kept (Developer → AI → Learned); never saved.
+ */
+export interface FactSource { origin: FactOrigin; label: string; call?: string }
 
 export interface CategoryFact { topId: string; subId: string; name: string }
 
