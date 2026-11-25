@@ -3,9 +3,7 @@ import { ChevronDown, Plus, ShoppingBag, Undo2 } from 'lucide-react'
 import { Button, EmptyState, PageBoard, Skeleton, cx } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { todayStr } from '../../../shared/utils/dateUtils'
-import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
 import { useRememberedFlag } from '../../../shared/hooks/useLayoutMemory'
-import { dealByIndex } from '../../projects/projectBoard'
 import { useTasksByIds } from '../../todo/hooks/useTodos'
 import { useFoldedFilters } from '../hooks/useFoldedFilters'
 import { useBuyNow, useDeleteShopItems, useShopItems, useUpdateShopItem } from '../hooks/useShop'
@@ -19,7 +17,7 @@ import {
   type CategoryGroup, type ShopSort, type WishlistFilters,
 } from '../shopModel'
 import { cashNeeded, chainsOf } from '../chainModel'
-import { categoryColumns, factsOf, watchedWishIds } from '../wishTile'
+import { TILE_GRID, factsOf, watchedWishIds, type TileLayout } from '../wishTile'
 import type { Amount } from '../ownModel'
 import { CategorySection, FoldAll } from './CategorySection'
 import { useCollapsedGroups } from '../hooks/useCollapsedGroups'
@@ -27,7 +25,7 @@ import { WISHLIST_BOARD } from '../shopBoard'
 import { ShopFilters } from './ShopFilters'
 import { GeneralWishTile } from './GeneralWishTile'
 import { WishTile } from './WishTile'
-import { PackedTiles, TILE_GRID, TileSkeleton } from './tileKit'
+import { PictureBlocks, PictureCategories, TileSkeleton } from './tileKit'
 import { WishlistSummaryLine } from './WishlistSummaryLine'
 import type { ShopCategory, ShopItem } from '../types'
 
@@ -57,7 +55,6 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
   const factOf = (id: string) => { const s = stats.byId.get(id); return s ? factsOf(s) : null }
   const pictures = useCategoryPictures()
   const itemsQ = useShopItems()
-  const { ref: listRef, width: listRem } = useElementWidthRem()
   const models = useMemo(() => modelsByWish(items), [items])
   const { ctx } = useShopMoney()
   const { data: links = [] } = useShopLinks()
@@ -136,24 +133,24 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
     />
   )
 
-  // Wide lists deal the category sections into column stacks by their own width (W2).
-  const stacks = dealByIndex(groups, categoryColumns(listRem))
-  const section = (group: CategoryGroup) => {
+  // Owned's Big pictures' own layout (`PictureCategories`, `PictureBlocks`): categories that fit in one row share a line,
+  // each subcategory a block of tiles packed side by side, so no strip of the width stays empty.
+  const section = (group: CategoryGroup, tiles?: TileLayout) => {
     const t = totalsIn(group.items, 'NOK', rates, models, watches)
     return (
       <CategorySection key={group.key} group={group} collapsed={fold.collapsed.has(group.key)} onToggle={() => fold.toggle(group.key)}
         aside={(t.amount > 0 || t.unconverted.length > 0) ? totalsLabel(t) : undefined} card={tile}
-        body={id => <PackedTiles id={id} subs={group.subs} card={tile} />} />
+        body={id => <PictureBlocks id={id} subs={group.subs} card={tile} layout={tiles} />} />
     )
   }
 
-  // The loading copy and the list are keyed apart (THEME §5), each measured for the stacks before it paints.
+  // The loading copy and the list are keyed apart (THEME §5).
   const tilesLoading = isLoading || watchQ.isLoading || stats.loading || !pictures.ready
   // The filter bar stays while the list loads only where it showed last time (an empty
   // wishlist has none: arriving or leaving, the bar moved the list and the rail).
   const showFilters = useRememberedFlag('shop:wishFilters', all.length > 0, !isLoading && !itemsQ.isError, true)
   const groupsSection = tilesLoading ? (
-    <div key="loading" ref={listRef} aria-busy="true" className="flex flex-col gap-4">
+    <div key="loading" aria-busy="true" className="flex flex-col gap-4">
       <Skeleton className="h-4 w-72 max-w-full" />
       <section className="flex flex-col gap-2">
         <span className="flex min-h-[44px] items-center"><Skeleton className="h-5 w-44" /></span>
@@ -165,7 +162,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
       description="Things you want to buy someday — with a price, where to buy them and when."
       action={<Button icon={<Plus />} onClick={() => modal.open({ kind: 'shop-item', defaults: { list: 'wishlist' } })} tip="Add to the wishlist">Add</Button>} />
   ) : (
-    <div key="list" ref={listRef} className="flex flex-col gap-4">
+    <div key="list" className="flex flex-col gap-4">
       {all.length > 0 && (
         <WishlistSummaryLine totals={totals} shown={shown.length} all={all.length} filtered={filtersActive(filters)}
           rates={rates} ratesDate={ratesDate} failed={failed} />
@@ -176,11 +173,7 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
           <button type="button" onClick={() => setFilters(NO_FILTERS)} className="inline-flex min-h-[44px] items-center font-semibold text-accent-600 hover:underline">Clear filters</button>
         </p>
       )}
-      {stacks.length === 1 ? stacks[0].map(section) : (
-        <div className="grid items-start gap-x-6 gap-y-4" style={{ gridTemplateColumns: `repeat(${stacks.length}, minmax(0, 1fr))` }}>
-          {stacks.map((stack, i) => <div key={i} className="flex min-w-0 flex-col gap-4">{stack.map(section)}</div>)}
-        </div>
-      )}
+      <PictureCategories items={groups.map(g => ({ key: g.key, blocks: g.subs.map(s => s.items.length) }))} render={(i, tiles) => section(groups[i], tiles)} />
       {dropped.length > 0 && (
         <section>
           <button title="Dropped — not any more" type="button" aria-expanded={showDropped} onClick={() => setShowDropped(s => !s)}
