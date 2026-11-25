@@ -1,17 +1,24 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  The item screen's marks (owner's point 7, answers 4 and 5): a small mark on
-//  a row says where that field goes — Apple's logo for Apple Calendar,
-//  Google's for Google Tasks, the app's own logo for "only
-//  the app". Shown while Settings → Calendar → "Show where each field goes" is
-//  on. A tap (or a mouse resting on it) says it in words; inside a row that is
-//  a button, the tap stays with the mark. The red dot means Apple refused it.
+//  The item screen's marks (owner's point 7, answers 4 and 5): where each field
+//  goes — Apple's logo for Apple Calendar, Google's for Google Tasks, the app's
+//  own logo for "only the app". Shown while Settings →
+//  Calendar → "Show where each field goes" is on.
+//  Since 24.11.2026 (owner: "those small images are a bit ugly.. Use them as
+//  banner instead. And like a bit shadow. So not fully fully visible") a card's
+//  marks are one banner across its top (CardBanner): each place the card's rows
+//  go, drawn large, faded and half out of the card, with a soft shadow. Its
+//  section title says it in words on a tap (or a mouse resting on it), naming
+//  the rows. A mark that is a row's value (the Calendar row's, with the red dot
+//  when Apple refused the item) stays small, in its row.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import appleMark from '../../../assets/marks/apple.svg'
 import googleMark from '../../../assets/marks/google.svg'
 import { cx } from '../../ui'
-import { FIELD_GOES_TEXT, type FieldGoes } from './itemScreenRules'
+import { useMotion } from '../../hooks/useMotion'
+import { CardContext, MarkRowContext, type CardMark, type RegisterMark } from './cardMarks'
+import { cardMarkPlaces, cardMarksText, FIELD_GOES_TEXT, type FieldGoes } from './itemScreenRules'
 
 const appMark = `${import.meta.env.BASE_URL}logo.svg`
 
@@ -50,18 +57,56 @@ export function MarkHost({ on, children }: { on: boolean; children: ReactNode })
   )
 }
 
+/** Inside a card (Section): its rows' marks go to the card's banner instead of their rows. */
+export function CardMarksScope({ register, children }: { register: RegisterMark; children: ReactNode }) {
+  return <CardContext.Provider value={register}>{children}</CardContext.Provider>
+}
+
+/**
+ * A titled card's banner: each place its rows go (cardMarkPlaces), drawn large at the card's top-right and tucked
+ * behind it — the card hides its lower part, the rest is faded, with a soft shadow (`.mark-banner` in index.css:
+ * tokens only, both themes). It sits in the free space beside the card's title, never under a row's text or control,
+ * and adds no height. A tap (or a mouse resting on it) says where the card's rows go, naming them (cardMarksText).
+ * Its fade-in and its hover fade run only under useMotion() (Reduce Motion: none).
+ */
+export function CardBanner({ marks }: { marks: readonly CardMark[] }) {
+  const { show, on } = useContext(BubbleContext)
+  const motion = useMotion()
+  const places = cardMarkPlaces(marks)
+  if (!on || !places.length) return null
+  const text = cardMarksText(marks)
+  return (
+    <button type="button" title={text} aria-label={text} onClick={e => show(e.currentTarget, text)} data-mark-banner=""
+      className={cx('mark-banner absolute -top-2 right-3 -z-10 flex cursor-help gap-1', motion && 'mark-banner-motion motion-pop-in')}>
+      {places.map(g => <span key={g} aria-hidden className="mark-banner-art"><MarkIcon goes={g} /></span>)}
+    </button>
+  )
+}
+
 /**
  * One mark: nothing while the marks are switched off, except `always` (the Calendar row's, owner's point 5).
- * `refused`: Apple didn't take the item (the red dot).
+ * `refused`: Apple didn't take the item (the red dot). Inside a card the mark is the card's banner, not the row's —
+ * except one that is the row's value (`always`, `refused`), which stays in its row.
  */
-export function FieldMark({ goes, refused, always = false, className }: {
+export function FieldMark({ goes, refused, always = false, className, row: named }: {
   goes: FieldGoes
   refused?: string | null
   always?: boolean
   className?: string
+  /** The row's name where the mark isn't in a row's label (the title, Location, URL, Notes). */
+  row?: string
 }) {
   const { show, on } = useContext(BubbleContext)
-  if (!on && !always && !refused) return null
+  const register = useContext(CardContext)
+  const row = useContext(MarkRowContext) ?? named ?? null
+  const id = useId()
+  const toCard = !!register && !always && !refused
+  useEffect(() => {
+    if (!register || !toCard || !on) return
+    register(id, { goes, row })
+    return () => register(id, null)
+  }, [register, toCard, on, id, goes, row])
+  if (toCard || (!on && !always && !refused)) return null
   const text = refused ? `${FIELD_GOES_TEXT[goes]} — ${refused}` : FIELD_GOES_TEXT[goes]
   const tap = (e: MouseEvent<HTMLSpanElement>) => { e.stopPropagation(); e.preventDefault(); show(e.currentTarget, text) }
   return (

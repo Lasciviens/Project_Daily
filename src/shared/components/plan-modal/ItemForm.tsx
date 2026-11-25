@@ -33,6 +33,7 @@ import { FilledMark, FilledRows } from './FillMark'
 import { cx } from '../../ui'
 import { LINE, Section } from './ItemRows'
 import { CalendarRow, GoogleListRow } from './OptionsSection'
+import { useCardMarks } from './cardMarks'
 import { PlaceRow } from './PlaceRow'
 import { PlanningSection } from './PlanningSection'
 import { TimeSection, type PanelKey } from './TimeSection'
@@ -128,32 +129,34 @@ export function ItemForm({
   const goes = (f: ScreenField) => fieldGoes(f, { target: marksTarget, calendarApp, dated: !!form.date || repeating, appleNotes })
   const showNotes = !hideTask('notes')
   const hasPin = form.place?.lat !== undefined && form.place?.lon !== undefined
+  // The title card has no heading to sit a banner beside: its mark joins the next card's (Location, else Time).
+  const titleMarks = useCardMarks()
 
   return (
     <FilledRows rows={fill?.rows}><MarkHost on={showMarks}>
       <div className="flex flex-col gap-4 pb-1">
-        <Section>
+        <Section marksTo={titleMarks.register}>
           <div className="flex items-start gap-2 px-3.5 py-2">
             <label htmlFor={titleId} className="sr-only">Title</label>
             <TitleField id={titleId} value={typed} onChange={onTitle} autoFocus={creating}
               placeholder={creating ? 'e.g. Gym 17:30 1h every Mon Wed Fri' : 'Title'} />
             {fill?.button}
-            <FieldMark goes={goes('title')} className="mt-1.5" />
+            <FieldMark goes={goes('title')} row="Title" className="mt-1.5" />
           </div>
           {fill?.panel}
           {parse && <div className="px-3.5 pb-2"><ReadAsLine parse={parse} start={form.date ?? today} onKeepText={onKeepText} /></div>}
         </Section>
 
         {slotFields && (
-          <Section title="Location">
+          <Section title="Location" carried={titleMarks.marks}>
             <PlaceRow value={form.place} onChange={place => patch({ place, placeTouched: true })}
-              mark={<><FilledMark row="Location" /><FieldMark goes={goes('place')} /></>} />
+              mark={<><FilledMark row="Location" /><FieldMark goes={goes('place')} row="Location" /></>} />
             <TravelRow minutes={form.travelMinutes} hasPin={hasPin} open={open} toggle={toggle} mark={<FieldMark goes={goes('travel')} />}
               onChange={travelMinutes => patch(withCalendarField(form, 'travelMinutes', travelMinutes))} />
           </Section>
         )}
 
-        <Section title="Time">
+        <Section title="Time" carried={slotFields ? undefined : titleMarks.marks}>
           <TimeSection
             form={form} patch={patch} open={open} toggle={toggle} today={today} nextTime={nextTime} config={config}
             occurrenceDate={occurrenceDate} savedKind={savedKind} savedRepeat={savedRepeat} savedZone={savedZone}
@@ -192,11 +195,11 @@ export function ItemForm({
           <Section title="Details">
             {slotFields && (
               <UrlRow url={form.url} problem={urlIssue} open={open} toggle={toggle}
-                mark={<><FilledMark row="URL" /><FieldMark goes={goes('url')} /></>}
+                mark={<><FilledMark row="URL" /><FieldMark goes={goes('url')} row="URL" /></>}
                 onChange={url => patch(withCalendarField(form, 'url', url))} />
             )}
             {showNotes && <NotesField value={form.notes} onChange={notes => patch({ notes })}
-              mark={<><FilledMark row="Notes" className="mt-3" /><FieldMark goes={goes('notes')} className="mt-3" /></>} />}
+              mark={<><FilledMark row="Notes" className="mt-3" /><FieldMark goes={goes('notes')} row="Notes" className="mt-3" /></>} />}
           </Section>
         )}
 

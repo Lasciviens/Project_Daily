@@ -734,9 +734,17 @@ in a calendar. It is drawn as iOS Calendar draws its event screen and renders `M
   scrollbar, and one caption line. Respect Reduce Motion: scrolls jump instead of gliding. An all-day item
   gets **the day band** (`AllDayBand`) instead: one `accent-50` track with the day's things as ticks and the
   caption line — no hours to drag, so no room taken for them.
-- **Marks** (`FieldMark.tsx`): a 14px mark after a row's label says where that field goes — Apple's logo
+- **Marks** (`FieldMark.tsx`): where each field goes — Apple's logo
   (a CSS mask in `bg-fg`, so it follows the theme), Google's (its own colours: an identity colour), the
-  app's logo — with the words on tap or hover; a red dot (`bg-danger`, a `surface` ring) when the outside
+  app's logo. A titled card's marks are **one banner** (owner, 24.11.2026: "Use them as banner instead. And like a
+  bit shadow"; the owner chose the "Peeking logo"): each place once, 44px, tucked behind the card's top-right in the
+  free space beside its title (the card hides its lower part), faded (`--mark-banner-opacity`, 0.5 light / 0.6
+  dark, more on hover) with a soft `drop-shadow` (`--mark-banner-shadow`: a dark shadow in light, a light halo
+  `rgba(203, 213, 225, 0.4)` in dark — a black one was lost on the dark sheet) — `.mark-banner`, never under a
+  row, no height of its own; its fade-in and its hover fade (`.mark-banner-motion`) only under `useMotion()`; in
+  the DOM (reading and Tab order) right after the card's heading; a tap or hover names the rows per place. The
+  untitled title card has no banner (only a grey sliver fitted above it): its mark joins the next card's
+  (Location, else Time). A mark that is a row's value (the Calendar row's) stays 14px in the row, with a red dot (`bg-danger`, a `surface` ring) when the outside
   calendar refused it. They show while a setting says so (Settings → Calendar); a row whose whole job is
   where the item goes (Calendar) always shows its own.
 - **✨** (step 4, `ItemFill.tsx`): a 28px icon button beside the title (`text-fg-muted`, accent while its field is open or a fill waits — a bigger one pushes the title's hint onto a second line at 402px). Under the title it opens **Describe it…** (a field with no box, growing, with **Fill** `btn-sm` and ×) and, after a fill, one review line: an accent ✨, "Filled N fields" (`Truncate`), **Cancel** (ghost) and **Use these** (`btn-sm`). Each filled row carries a 14px ✨ after its label (`FillMark.tsx`, `data-tone="accent"`: work in flight, not a status) until it is kept or put back; an edit's heading line says "Not saved until you tap Use these". Both lines fade in with `motion-pop-in` only under `useMotion()`.

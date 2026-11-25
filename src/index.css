@@ -114,6 +114,10 @@
     --shadow-card-hover: 0 2px 4px rgba(15, 23, 42, 0.06), 0 18px 36px -16px rgba(15, 23, 42, 0.3);
     --shadow-menu:       0 18px 40px -12px rgba(15, 23, 42, 0.28), 0 2px 6px rgba(15, 23, 42, 0.06);
     --shadow-float:      0 2px 10px -2px rgba(15, 23, 42, 0.18), 0 1px 2px rgba(15, 23, 42, 0.08);
+    /* The item screen's card banner (FieldMark.CardBanner): how much of a mark shows, and its soft shadow. */
+    --mark-banner-opacity: 0.5;
+    --mark-banner-opacity-hover: 0.8;
+    --mark-banner-shadow:  rgba(15, 23, 42, 0.45);
 
     /* Shell geometry — every offset derives from these. */
     --app-header-h:  56px;
@@ -182,6 +186,10 @@
     --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.45), 0 22px 44px -20px rgba(0, 0, 0, 0.85);
     --shadow-menu:       0 22px 48px -12px rgba(0, 0, 0, 0.75), 0 2px 8px rgba(0, 0, 0, 0.4);
     --shadow-float:      0 6px 18px -6px rgba(0, 0, 0, 0.8);
+    --mark-banner-opacity: 0.6;
+    --mark-banner-opacity-hover: 0.9;
+    /* A light halo: a black shadow is lost on the dark sheet (owner-critic, 24.11.2026). */
+    --mark-banner-shadow:  rgba(203, 213, 225, 0.4);
   }
 
   body {
@@ -374,6 +382,19 @@
 
   /* Eyebrow label for card and group headings. */
   .section-label { @apply text-micro font-semibold uppercase tracking-[0.09em] text-fg-muted; }
+  /* The item screen's card banner (FieldMark.CardBanner, owner 24.11.2026: "Use them as banner instead. And like a
+     bit shadow. So not fully fully visible."): a card's marks drawn large at its top-right, tucked behind the card
+     (which hides their lower part), faded, with a soft shadow. Absolute: it adds no height. */
+  .mark-banner { opacity: var(--mark-banner-opacity); }
+  /* The hover fade only while the device allows motion (CardBanner adds it under useMotion(); Reduce Motion: none). */
+  .mark-banner-motion { transition: opacity 150ms ease-out; }
+  .mark-banner:hover, .mark-banner:focus-visible { opacity: var(--mark-banner-opacity-hover); }
+  .mark-banner-art {
+    display: flex;
+    width: 2.75rem;
+    height: 2.75rem;
+    filter: drop-shadow(0 0.125rem 0.375rem var(--mark-banner-shadow));
+  }
 
   /* Chips, badges and pill tabs. */
   /* max-w-full + overflow-hidden: a long label stops at its box instead of

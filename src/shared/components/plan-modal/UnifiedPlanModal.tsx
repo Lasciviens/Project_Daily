@@ -21,6 +21,15 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-25 · v29 · Marks as banners (owner, 24.11.2026: "those small images
+//                    are a bit ugly.. Use them as banner instead. And like a
+//                    bit shadow" — the "Peeking logo"): a titled card's rows
+//                    report their marks to the card (Section, cardMarks.ts),
+//                    which draws each place once, large, faded, half behind
+//                    its top-right beside its heading (FieldMark.CardBanner);
+//                    the untitled title card passes its mark to the next card;
+//                    the Calendar row's own mark and red dot stay in the row.
+//                    Display only: no save or data path changes.
 //  2026-11-25 · v28 · Google Calendar went (owner: "Google calendar can be
 //                    removed"; "Calendar only" — Google Tasks stays). The
 //                    Calendar row's choices are Apple Calendar, Google Tasks,
