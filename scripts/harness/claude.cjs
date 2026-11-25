@@ -167,12 +167,45 @@ PHASE_2A_JOBS.push({
   defaults: { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 2000 },
   sourceFiles: ['supabase/claude-src/job-suggest-weekly.ts', 'supabase/claude-src/suggest-rules.ts', 'supabase/claude-src/suggest-batch.ts', 'supabase/claude-src/suggest-store.ts'],
 })
-const REPORT_TEXT = '**Training**\nThree sessions this week, 3380 kg of volume in all, against about one a week before. Bench press reached a new best: 85 kg for 3.\n\n**Health**\nSleep averaged 6.79 h, with one night under 6 h. Steps averaged 9286 a day, up from 6000.\n\n**Food**\nFood was logged on 3 of 7 days, near the calorie target on 2 of them.\n\n**Tasks & time**\n3 tasks were done and 2 slipped. Work took 3 h of scheduled time.\n\n**Next week**\n1. Log food on every day so the averages mean something.\n2. Aim for 7 hours of sleep on five nights.\n3. Try one more bench session at 85 kg.'
-const REPORT_FACTS = {
-  training: { has_data: true, session_count: 3 }, health: { has_data: true, steps: { avg_per_day: 9286 } },
-  food: { has_data: true, avg_kcal_on_logged_days: 1933, target_kcal: 2200 }, tasks: { has_data: true, done: 3 },
-  sent_text: '<week>09.11.2026 to 15.11.2026</week>\n<training>\nSessions: 3 (the week before: 0.3 a week on average; change: +2.7, +900 %)\nSession 10.11.2026: Push A, 3 working sets, 1 055 kg\n</training>\n<health>\nSleep: 7 nights recorded, average 6 h 47 min, best 8 h, worst 5 h 30 min, 1 under 6 h (the week before: 6 h; change: +47 min, +13 %)\nSteps: average 9 286 a day over 7 days, best day 10 000 (the week before: 6 000 a day; change: +3 286 steps a day, +55 %)\n</health>\n<food>\nNO DATA THIS WEEK\n</food>\n<tasks>\nTasks done: 3 (work 2, personal 1)\n</tasks>',
+const REPORT_TEXT = '**Training**\nThree sessions this week against about two a week before, and 13 180 kg of volume, +2 240 kg on the four-week average. Bench press reached a new best: 85 kg for 3. Barbell row stayed under its best at 70 kg, so the back got less work than the chest this week.\n\n**Health**\nSleep averaged 6 h 47 min, +47 min on the week before, with one night under 6 h. Steps averaged 9 286 a day, +3 286 steps a day (+55 %). Resting heart rate came down to 56 bpm.\n\n**Food**\nFood was logged on 5 of 7 days, averaging 1 933 kcal against the 2 200 kcal target (-267 kcal, -12 %). Protein reached its target on 2 of those days.\n\n**Tasks & time**\n11 tasks were done and 2 slipped: "Renew passport" and "Book dentist". Work took 14 h of scheduled time, training 4 h 30 min.\n\n**Next week**\n1. Log food on every day so the averages mean something.\n2. Aim for 7 hours of sleep on five nights.\n3. Add one back session to balance the chest work.'
+// The figures the function saves with a report (week-facts.ts `WeekFacts`, made-up numbers that match the text above).
+const dmyOf = (day) => `${day.slice(8, 10)}.${day.slice(5, 7)}.${day.slice(0, 4)}`
+function reportFacts(weekStart) {
+  const day = (n) => dmyOf(addDays(weekStart, n))
+  return {
+    week_start: weekStart, week_end: addDays(weekStart, 6), partial: false, unreadable: [],
+    training: {
+      has_data: true, session_count: 3, previous_weeks_avg_sessions: 2.3, working_sets: 39, volume_kg: 13180, previous_weeks_avg_volume_kg: 10940,
+      sessions: [{ date: day(0), title: 'Leg Day', working_sets: 12, volume_kg: 4820 }, { date: day(2), title: 'Push A', working_sets: 14, volume_kg: 3950 }, { date: day(4), title: 'Pull A', working_sets: 13, volume_kg: 4410 }],
+      muscles: [{ muscle: 'chest', sets: 9 }, { muscle: 'quadriceps', sets: 8 }, { muscle: 'triceps', sets: 6.5 }, { muscle: 'lats', sets: 6 }],
+      key_lifts: [
+        { exercise: 'Bench Press (Barbell)', top_set: '85 kg × 3', top_weight_kg: 85, best_before_kg: 80, change: 'new_best' },
+        { exercise: 'Squat (Barbell)', top_set: '100 kg × 5', top_weight_kg: 100, best_before_kg: 100, change: 'same' },
+        { exercise: 'Bent Over Row (Barbell)', top_set: '70 kg × 8', top_weight_kg: 70, best_before_kg: 72.5, change: 'lower' },
+      ],
+    },
+    health: {
+      has_data: true, truncated: false,
+      sleep: { nights: 7, avg_hours: 6.79, best_hours: 8, worst_hours: 5.5, previous_avg_hours: 6, under_6h_nights: 1, per_night: [7, 6.5, 5.5, 8, 7, 7.5, 6] },
+      steps: { days: 7, avg_per_day: 9286, best_day: 12400, previous_avg_per_day: 6000, per_day: [8200, 10400, 7100, 12400, 9600, 8300, 9002] },
+      active_energy: { avg_kcal_per_day: 520, previous_avg_kcal_per_day: 470 },
+      resting_heart_rate: { avg_bpm: 56, previous_avg_bpm: 57.5 },
+      weight: { latest_kg: 81, change_in_week_kg: -0.5, change_since_before_week_kg: -1 },
+    },
+    food: {
+      has_data: true, days_logged: 5, avg_kcal_on_logged_days: 1933, avg_protein_g_on_logged_days: 123, target_kcal: 2200, target_protein_g: 140,
+      days_within_10pct_of_kcal_target: 2, days_protein_target_met: 2, avg_water_ml_on_logged_days: 2300, target_water_ml: 2500,
+      kcal_per_day: [2150, 1780, null, 2240, 1610, 1885, null],
+    },
+    tasks: {
+      has_data: true, done: 11, done_by_area: [{ area: 'work', count: 6 }, { area: 'personal', count: 3 }, { area: 'home', count: 2 }],
+      slipped: 2, slipped_titles: ['Renew passport', 'Book dentist'], carried_over_open: 4, created: 9,
+      scheduled_hours_by_area: [{ area: 'work', hours: 14 }, { area: 'training', hours: 4.5 }, { area: 'personal', hours: 2 }],
+    },
+    sent_text: `<week>${dmyOf(weekStart)} to ${day(6)}</week>\n<training>\nSessions: 3 (the week before: 2.3 a week on average; change: +0.7, +30 %)\nSession ${day(2)}: Push A, 14 working sets, 3 950 kg\n</training>\n<health>\nSleep: 7 nights recorded, average 6 h 47 min, best 8 h, worst 5 h 30 min, 1 under 6 h (the week before: 6 h; change: +47 min, +13 %)\nSteps: average 9 286 a day over 7 days, best day 12 400 (the week before: 6 000 a day; change: +3 286 steps a day, +55 %)\n</health>\n<food>\nDays with food logged: 5 of 7\n</food>\n<tasks>\nTasks done: 11 (work 6, personal 3, home 2)\n</tasks>`,
+  }
 }
+const REPORT_FACTS = reportFacts('2026-11-09')
 // The AI features of 22.11.2026: photos, Dev Requests, Work, Shop, Wishes.
 PHASE_2A_JOBS.push(
   phase2a('quick_guess_photo', 'Guess a meal from a photo', 'In Food → Quick guess, "From a photo" fills in one diary line.', 1500),
@@ -621,7 +654,7 @@ function claudeMock(opts = {}) {
       calls0.push(call)
       const old = reports.findIndex(r => r.week_start === monday && r.made_by === madeBy)
       if (old >= 0) reports.splice(old, 1)
-      const row = { id: randomUUID(), user_id: store.ownerId, week_start: monday, made_by: madeBy, status: 'queued', failure: null, content: null, facts: { ...REPORT_FACTS, kind }, call_id: call.id, created_at: new Date().toISOString(), ready_at: null, pushed_at: null }
+      const row = { id: randomUUID(), user_id: store.ownerId, week_start: monday, made_by: madeBy, status: 'queued', failure: null, content: null, facts: { ...reportFacts(monday), kind }, call_id: call.id, created_at: new Date().toISOString(), ready_at: null, pushed_at: null }
       reports.push(row)
       return { ok: true, queued: true, report_id: row.id, week_start: monday, kind }
     }
@@ -700,4 +733,4 @@ function claudeMock(opts = {}) {
   }
 }
 
-module.exports = { claudeMock, REPORT_TEXT, REPORT_FACTS, about, callRow, costOf, loggedRequest, STOP_MESSAGE, ITEM_FILL_VERSION }
+module.exports = { claudeMock, REPORT_TEXT, REPORT_FACTS, reportFacts, about, callRow, costOf, loggedRequest, STOP_MESSAGE, ITEM_FILL_VERSION }

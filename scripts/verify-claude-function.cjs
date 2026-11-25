@@ -1834,8 +1834,8 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     weights: [{ at: '2026-11-10T08:00:00Z', kg: 82 }, { at: '2026-11-16T08:00:00Z', kg: 81.5 }, { at: '2026-11-21T08:00:00Z', kg: 81 }], truncated: false,
   }
   let hf = wf.healthFacts(HEALTH, WEEK)
-  check('health: sleep is merged and summed per night (the day you woke up): 7 nights, average 6.79 h, best 8, worst 5.5, one under 6 h, against the week before', same(hf.sleep, { nights: 7, avg_hours: 6.79, best_hours: 8, worst_hours: 5.5, previous_avg_hours: 6, under_6h_nights: 1 }), hf.sleep)
-  check('health: steps are an average over the days with steps (9286), the best day, and the week before', same(hf.steps, { days: 7, avg_per_day: 9286, best_day: 10000, previous_avg_per_day: 6000 }), hf.steps)
+  check('health: sleep is merged and summed per night (the day you woke up): 7 nights, average 6.79 h, best 8, worst 5.5, one under 6 h, against the week before', same(hf.sleep, { nights: 7, avg_hours: 6.79, best_hours: 8, worst_hours: 5.5, previous_avg_hours: 6, under_6h_nights: 1, per_night: [7, 6.5, 5.5, 8, 7, 7.5, 6] }), hf.sleep)
+  check('health: steps are an average over the days with steps (9286), the best day, and the week before', same(hf.steps, { days: 7, avg_per_day: 9286, best_day: 10000, previous_avg_per_day: 6000, per_day: [10000, 10000, 10000, 5000, 10000, 10000, 10000] }), hf.steps)
   check('health: resting heart rate, and the weight at the last weigh-in, its change in the week and since before it', same(hf.resting_heart_rate, { avg_bpm: 56, previous_avg_bpm: null }) && same(hf.weight, { latest_kg: 81, change_in_week_kg: -0.5, change_since_before_week_kg: -1 }) && hf.active_energy === null, [hf.resting_heart_rate, hf.weight])
   const dup = (r, qty, at) => ({ ...r, recorded_at: at, value: { qty } })
   const collapsed = wf.collapseSumRows([dup(HEALTH.metrics[0], 5000, '2026-11-16T11:00:00+00:00'), dup(HEALTH.metrics[0], 4900, '2026-11-16T11:40:00+00:00'), dup(HEALTH.metrics[0], 5000, '2026-11-16T11:00:00+00:00')])
@@ -1850,6 +1850,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   }
   let ff = wf.foodFacts(FOOD, WEEK)
   check('food: days logged, the average on logged days against the targets, days within 10% of the calorie target, days the protein target was met (a day outside the week ignored)', ff.days_logged === 3 && ff.avg_kcal_on_logged_days === 1933 && ff.avg_protein_g_on_logged_days === 123 && ff.days_within_10pct_of_kcal_target === 2 && ff.days_protein_target_met === 1 && ff.avg_water_ml_on_logged_days === 2500 && ff.target_kcal === 2200, ff)
+  check('food: the calories of each day, Monday first, for the app\'s chart (a day with nothing logged is null, never 0)', same(ff.kcal_per_day, [2000, 2300, 1500, null, null, null, null]), ff.kcal_per_day)
   ff = wf.foodFacts({ entries: [], water: [], targets: null }, WEEK)
   check('food: no entries is no data, and a missing target is "unknown", never 0', !ff.has_data && ff.target_kcal === null && ff.days_within_10pct_of_kcal_target === null)
   const TASKS = {
@@ -1872,6 +1873,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('tasks: an empty week has no data', !kf.has_data && kf.done === 0 && kf.slipped === 0)
   const FACTS = { week_start: '2026-11-16', week_end: '2026-11-22', partial: false, training: wf.trainingFacts(TRAIN, WEEK), health: wf.healthFacts(HEALTH, WEEK), food: wf.foodFacts(FOOD, WEEK), tasks: wf.taskFacts(TASKS, WEEK), unreadable: [] }
   let ft = wf.factsText(FACTS)
+  check('the per-day series are for the app\'s charts only: the text the model reads never holds them', !/per_day|per_night|kcal_per_day|10 000, 10 000/.test(ft) && !ft.includes('2 000, 2 300'), ft)
   check('the facts text is one tag per section, dates DD.MM.YYYY, the week named first', ft.startsWith('<week>16.11.2026 to 22.11.2026</week>\n<training>\n') && ['</training>', '<health>', '</health>', '<food>', '</food>', '<tasks>', '</tasks>'].every(t => ft.includes(t)) && /Days with food logged: 3 of 7/.test(ft) && /Tasks done: 3 \(work 2, personal 1\)/.test(ft), ft)
   check('code writes every difference against the week before, signed, with the percent: "+3 286 steps a day, +55 %", sessions "+2.7, +900 %", volume, resting heart rate left alone with no week before', /Steps: average 9 286 a day over 7 days, best day 10 000 \(the week before: 6 000 a day; change: \+3 286 steps a day, \+55 %\)/.test(ft) && /Sessions: 3 \(the week before: 0\.3 a week on average; change: \+2\.7, \+900 %\)/.test(ft) && /volume 3 380 kg \(the week before: 300 kg a week on average; change: \+3 080 kg, \+1027 %\)/.test(ft) && /Resting heart rate: average 56 bpm\n/.test(ft), ft)
   check('code writes every duration as hours and minutes ("6 h 47 min") and the sleep change signed ("+47 min, +13 %"); nothing is left as 6.79 h', /Sleep: 7 nights recorded, average 6 h 47 min, best 8 h, worst 5 h 30 min, 1 under 6 h \(the week before: 6 h; change: \+47 min, \+13 %\)/.test(ft) && !/6\.79/.test(ft) && /Scheduled time per area: work 3 h, training 1 h/.test(ft), ft)

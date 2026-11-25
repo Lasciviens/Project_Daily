@@ -112,11 +112,22 @@ export default {
           '45%':  { transform: 'scale(1.22)' },
           '100%': { transform: 'scale(1)' },
         },
+        // A small chart's bars grow from their baseline once (the weekly report); reduced motion drops it (index.css).
+        barGrow: {
+          '0%':   { transform: 'scaleY(0)' },
+          '100%': { transform: 'scaleY(1)' },
+        },
+        barGrowX: {
+          '0%':   { transform: 'scaleX(0)' },
+          '100%': { transform: 'scaleX(1)' },
+        },
       },
       animation: {
         fadeSlideIn: 'fadeSlideIn 0.2s ease-out',
         wiggle:      'wiggle 0.3s ease-in-out',
         tabPop:      'tabPop 0.3s ease-out',
+        barGrow:     'barGrow 0.5s cubic-bezier(0.2,0.8,0.2,1) both',
+        barGrowX:    'barGrowX 0.5s cubic-bezier(0.2,0.8,0.2,1) both',
       },
     },
   },

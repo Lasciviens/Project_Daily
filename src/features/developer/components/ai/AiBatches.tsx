@@ -8,7 +8,7 @@ import { formatUsd } from '../../../ai/claude/ledgerRules'
 import {
   REPORT_HELD_SENTENCE, REPORT_STATUS_LABEL, REPORT_STATUS_TONE, reportCostNote, reportFiguresSent, reportKindLabel, reportWeekLabel, type AiReport,
 } from '../../../ai/claude/reportRules'
-import { WeeklyReportText } from '../../../ai/components/WeeklyReportText'
+import { WeeklyReportView } from '../../../ai/components/WeeklyReportView'
 import { PlainText, ReadFailed } from './aiBits'
 
 // Developer → AI → Learn → Batches: the weekly report's queue. A batch is a job that can wait: Anthropic answers it
@@ -42,7 +42,7 @@ function Row({ report, cost, onRetry, retrying }: { report: AiReport; cost: { co
       </button>
       {open && (
         <div className="border-t border-line bg-surface-2 px-3 py-3">
-          {body ? <WeeklyReportText content={report.content as string} />
+          {body ? <WeeklyReportView facts={report.facts} content={report.content} weekStart={report.week_start} />
             : <p className="text-body text-fg-muted">{report.status === 'queued' ? 'Waiting for Anthropic to answer. It is checked every 15 minutes, and Check now reads it back at once.' : report.failure ?? 'No report was made.'}</p>}
           {report.status === 'failed' && cost && cost.cost_usd > 0 && cost.outcome === 'error' && <p data-tone="warn" className="tone-text mt-2 text-meta">{REPORT_HELD_SENTENCE}</p>}
           {report.status === 'failed' && <Button className="mt-2" size="sm" icon={<RefreshCw />} loading={retrying} onClick={onRetry}>Try again</Button>}

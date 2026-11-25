@@ -2,7 +2,9 @@
 /*
  * Verification — the weekly report's app side (AI phase 3): src/features/ai/claude/reportRules.ts, the Home card's
  * place on the board, the Batches view's place under Learn, the rule that no column the database keeps server-only
- * is ever asked for, and the harness's own copy of the function's report actions.
+ * is ever asked for, and the harness's own copy of the function's report actions. §2: the figures the cards draw
+ * (src/features/ai/claude/reportFigures.ts, 25.11.2026): every tile, change and bar is read from the saved figures,
+ * never from the model's text, and every saved figure is input.
  *
  *   node scripts/verify-ai-reports-ui.cjs
  */
@@ -10,6 +12,7 @@ require('sucrase/register')
 const fs = require('fs')
 const path = require('path')
 const R = require('../src/features/ai/claude/reportRules.ts')
+const F = require('../src/features/ai/claude/reportFigures.ts')
 const B = require('../src/features/developer/developerBoards.ts')
 const H = require('../src/features/home/pages/homeBoard.ts')
 
@@ -48,7 +51,7 @@ check('the cost: a waiting one is held, a failed one that holds its worst case s
 check('the figures sent are the saved text, cut at 20000 characters; none saved is empty', R.reportFiguresSent({ sent_text: '<week>x</week>' }) === '<week>x</week>' && R.reportFiguresSent({ sent_text: 'x'.repeat(30000) }).length === 20000 && R.reportFiguresSent({ sent_text: 5 }) === '' && R.reportFiguresSent({}) === '')
 check('the button answers name what was made: the real report again, a test copy, the week so far', /real report of last week is made again/.test(R.reportMakeMessage({ ok: true, queued: true, kind: 'redo' }).message) && /test copy/.test(R.reportMakeMessage({ ok: true, queued: true, kind: 'copy' }).message) && /week so far/.test(R.reportMakeMessage({ ok: true, queued: true, kind: 'so_far' }).message))
 const cardSrc = read('src/features/home/components/WeeklyReportCard.tsx'), batchSrc = read('src/features/developer/components/ai/AiBatches.tsx')
-check('the card cuts its text with Truncate (never a bare line-clamp), shows the code-built summary, and asks reportShownOn', /<Truncate as="p" lines=\{2\}/.test(cardSrc) && !/line-clamp/.test(cardSrc) && /reportSummary\(shown\.facts\)/.test(cardSrc) && /reportShownOn\(report, todayStr\(\)\)/.test(cardSrc))
+check('the card shows the week\'s figures built by code (reportHeadline, the change as ReportChange), falls back to the code-built summary cut with Truncate (never a bare line-clamp), and asks reportShownOn', /reportHeadline\(facts\)/.test(cardSrc) && /from '\.\.\/\.\.\/ai\/claude\/reportTiles'/.test(cardSrc) && !/reportFigures|WeeklyReportView|ReportCharts/.test(cardSrc) && /<ReportChange change=\{f\.change\} short \/>/.test(cardSrc) && /<Truncate as="p" lines=\{2\}/.test(cardSrc) && !/line-clamp/.test(cardSrc) && /reportSummary\(facts\)/.test(cardSrc) && /reportShownOn\(report, todayStr\(\)\)/.test(cardSrc) && /<ReportHeadline facts=\{shown\.facts\} \/>/.test(cardSrc))
 check('Home query reads the scheduled report only', /eq\('made_by', 'schedule'\)/.test(read('src/features/ai/claude/reportApi.ts')))
 check('the Batches view: the intro is one short line, a failed row has Try again, every row can show the Figures sent block', /Made Monday 05:00 at/.test(batchSrc) && /Try again/.test(batchSrc) && /Figures sent/.test(batchSrc) && /reportFiguresSent\(report\.facts\)/.test(batchSrc) && /REPORT_HELD_SENTENCE/.test(batchSrc))
 check('the report popup shows what the report cost', /useReportCosts/.test(read('src/features/ai/components/WeeklyReportSheet.tsx')) && /at batch price/.test(read('src/features/ai/components/WeeklyReportSheet.tsx')))
@@ -56,7 +59,7 @@ check('Batches is the fourth page of Learn, by ?learn=batches (the views under t
 check('Home\'s weekly report card is one section on every step (the card is an addition: nothing else was dropped)', H.HOME_SECTIONS.includes('report') && [1, 2, 3, 4].every(s => H.HOME_BOARD && require('../src/shared/ui/pageBoardRules.ts').resolveBoardLayout(H.HOME_BOARD, s) && JSON.stringify(require('../src/shared/ui/pageBoardRules.ts').resolveBoardLayout(H.HOME_BOARD, s)).includes('"report"')) && JSON.stringify(require('../src/shared/ui/pageBoardRules.ts').resolveBoardLayout(H.HOME_BOARD_SPLIT, 2)).includes('"report"'))
 const card = read('src/features/home/components/WeeklyReportCard.tsx')
 check('the card reads the report id from the address only through isReportId, cleans a bad one, and keeps its room (nothing jumps when it lands)', /isReportId\(asked\)/.test(card) && /n\.delete\('report'\)/.test(card) && /<KeepRoom ids="home:weekly-report"/.test(card) && /first="none"/.test(card))
-check('the card draws the model\'s text only as text: no dangerouslySetInnerHTML anywhere in the report files', !['src/features/ai/components/WeeklyReportText.tsx', 'src/features/ai/components/WeeklyReportSheet.tsx', 'src/features/home/components/WeeklyReportCard.tsx', 'src/features/developer/components/ai/AiBatches.tsx'].some(f => /dangerouslySetInnerHTML|innerHTML/.test(read(f))))
+check('the card draws the model\'s text only as text: no dangerouslySetInnerHTML anywhere in the report files', !['src/features/ai/components/WeeklyReportView.tsx', 'src/features/ai/components/ReportCharts.tsx', 'src/features/ai/components/ReportChange.tsx', 'src/features/ai/components/WeeklyReportSheet.tsx', 'src/features/home/components/WeeklyReportCard.tsx', 'src/features/developer/components/ai/AiBatches.tsx'].some(f => /dangerouslySetInnerHTML|innerHTML/.test(read(f))))
 check('the report popup is a ModalShell (never a raw dialog) and the card\'s query key is a qk key that is never kept on the device', /<ModalShell/.test(read('src/features/ai/components/WeeklyReportSheet.tsx')) && !/@headlessui\/react/.test(read('src/features/ai/components/WeeklyReportSheet.tsx')) && /'ai-reports'/.test(read('src/shared/query/persistRules.ts')))
 check('Home\'s card only reads: it imports no code that runs the function (the first download stays small)', !/from '[^']*(claudeApi|reportActions|useMutationWithFeedback)/.test(read('src/features/ai/claude/reportApi.ts') + read('src/features/ai/claude/hooks/useReports.ts')))
 check('the app\'s two buttons are mutations with feedback that name the function\'s sentence, and both refresh the reports and the ledger', /useMutationWithFeedback/.test(read('src/features/ai/claude/hooks/useReportActions.ts')) && (read('src/features/ai/claude/hooks/useReportActions.ts').match(/invalidates: \['aiReports'\]/g) || []).length === 2)
@@ -76,6 +79,78 @@ check('harness: the seed has a ready report for the newest week, an older one an
   const t = require('./harness/seed.cjs').buildTables(new Date('2026-11-22T12:00:00Z'))
   return t.ai_reports.length === 3 && t.ai_reports.filter(r => r.status === 'ready').length === 2 && t.ai_reports.every(r => t.ai_calls.some(c => c.id === r.call_id && c.mode === 'batch' && c.job === 'weekly_report'))
 })())
+
+// ── §2 The figures the cards draw (reportFigures.ts) ────────────────────────
+// The saved figures as week-facts.ts writes them (made-up numbers; the harness uses the same shape).
+const WEEK = '2026-11-16'
+const FULL = {
+  week_start: WEEK, week_end: '2026-11-22', partial: false, unreadable: [], kind: 'scheduled', sent_text: '<week>…</week>',
+  training: {
+    has_data: true, session_count: 3, previous_weeks_avg_sessions: 2.3, working_sets: 39, volume_kg: 13180, previous_weeks_avg_volume_kg: 10940,
+    sessions: [{ date: '16.11.2026', title: 'Leg Day', working_sets: 12, volume_kg: 4820 }, { date: '18.11.2026', title: 'Push A', working_sets: 14, volume_kg: 3950 }, { date: '18.11.2026', title: 'Arms', working_sets: 4, volume_kg: 50 }, { date: '01.01.2020', title: 'Not this week', working_sets: 1, volume_kg: 999 }],
+    muscles: [{ muscle: 'chest', sets: 9 }, { muscle: 'quadriceps', sets: 8 }],
+    key_lifts: [{ exercise: 'Bench Press', top_set: '85 kg × 3', top_weight_kg: 85, best_before_kg: 80, change: 'new_best' }, { exercise: 'Row', top_set: '70 kg × 8', top_weight_kg: 70, best_before_kg: 72.5, change: 'lower' }, { exercise: 'Squat', top_set: '100 kg × 5', top_weight_kg: 100, best_before_kg: null, change: 'no_history' }],
+  },
+  health: {
+    has_data: true, truncated: false,
+    sleep: { nights: 7, avg_hours: 6.79, best_hours: 8, worst_hours: 5.5, previous_avg_hours: 6, under_6h_nights: 1, per_night: [7, 6.5, 5.5, 8, 7, 7.5, 6] },
+    steps: { days: 7, avg_per_day: 9286, best_day: 12400, previous_avg_per_day: 6000, per_day: [8200, 10400, 7100, 12400, 9600, 8300, 9002] },
+    active_energy: { avg_kcal_per_day: 520, previous_avg_kcal_per_day: 520 },
+    resting_heart_rate: { avg_bpm: 56, previous_avg_bpm: 57.5 },
+    weight: { latest_kg: 81, change_in_week_kg: -0.5, change_since_before_week_kg: -1 },
+  },
+  food: { has_data: true, days_logged: 5, avg_kcal_on_logged_days: 1933, avg_protein_g_on_logged_days: 145, target_kcal: 2200, target_protein_g: 140, days_within_10pct_of_kcal_target: 2, days_protein_target_met: 3, avg_water_ml_on_logged_days: 2300, target_water_ml: 2500, kcal_per_day: [2150, 1780, null, 2240, 1610, 1885, null] },
+  tasks: { has_data: true, done: 11, done_by_area: [{ area: 'work', count: 6 }, { area: 'personal', count: 3 }], slipped: 2, slipped_titles: ['Renew passport', 'Book dentist'], carried_over_open: 4, created: 9, scheduled_hours_by_area: [{ area: 'work', hours: 14 }, { area: 'training', hours: 4.5 }, { area: 'idle', hours: 0 }] },
+}
+const TEXT = '**Training**\nYou trained 99 times and lifted 1 kg.\n\n**Health**\nSlept well.\n\n**Food**\nAte.\n\n**Tasks & time**\nBusy.\n\n**Next week**\n1. Rest.\n2. Walk.'
+const view = F.reportView(FULL, TEXT, WEEK)
+const sec = (k) => view.find(s => s.key === k)
+const tile = (k, t) => sec(k)?.tiles.find(x => x.key === t)
+check('§2 the sections in order: Training, Health, Food, Tasks & time, then Next week (words only)', J(view.map(s => s.key)) === J(['training', 'health', 'food', 'tasks', 'next']) && J(view.map(s => s.title)) === J(['Training', 'Health', 'Food', 'Tasks & time', 'Next week']) && J(sec('next').text) === J(['1. Rest.', '2. Walk.']) && sec('next').tiles.length === 0, view.map(s => s.key))
+check('§2 every tile is the saved figure, never the model\'s: the text says 99 sessions and 1 kg, the tiles 3 and 13 180 kg', tile('training', 'sessions').value === '3' && tile('training', 'volume').value === '13 180' && tile('training', 'volume').unit === 'kg' && tile('training', 'sets').value === '39' && J(sec('training').text) === J(['You trained 99 times and lifted 1 kg.']))
+check('§2 training is set against the four weeks before: "+0.7 · +30 %" and "+2 240 kg · +20 %", up is better (success), named once in the header', J(tile('training', 'sessions').change) === J({ text: '+0.7 · +30 %', short: '+30 %', dir: 'up', tone: 'success', against: 'vs 4-week avg' }) && tile('training', 'volume').change.text === '+2 240 kg · +20 %' && sec('training').against === 'vs 4-week avg', tile('training', 'sessions').change)
+check('§2 training\'s chart is the volume by day from the sessions\' own dates (two on Wednesday add up; a session outside the week is left out), its line the session titles', (() => { const c = sec('training').charts[0]; return c.kind === 'days' && J(c.values) === J([4820, null, 4000, null, null, null, null]) && c.texts[2] === '4 000 kg' && c.texts[1] === null && c.summary === 'Leg Day · Push A · Arms' && c.days[0] === 'Mon 16.11.2026' && c.days[6] === 'Sun 22.11.2026' })(), sec('training').charts[0])
+check('§2 the key lifts: the top set with a tone badge (new best success, below the best before warn and naming it, first time neutral)', J(sec('training').rows) === J([{ label: 'Bench Press', value: '85 kg × 3', badge: 'New best', tone: 'success' }, { label: 'Row', value: '70 kg × 8', badge: 'Below 72.5 kg', tone: 'warn' }, { label: 'Squat', value: '100 kg × 5', badge: 'First time', tone: 'neutral' }]), sec('training').rows)
+check('§2 health against last week: sleep "6 h 47 min" "+47 min · +13 %", steps "+3 286 · +55 %", no change is neutral, a lower resting heart rate is better (success)', tile('health', 'sleep').value === '6 h 47 min' && tile('health', 'sleep').change.text === '+47 min · +13 %' && tile('health', 'sleep').hint === '7 nights · 1 under 6 h' && tile('health', 'steps').change.text === '+3 286 · +55 %' && tile('health', 'steps').change.tone === 'success' && J(tile('health', 'energy').change) === J({ text: 'no change', short: 'no change', dir: 'same', tone: 'neutral', against: 'vs last week' }) && tile('health', 'resting').change.dir === 'down' && tile('health', 'resting').change.tone === 'success' && tile('health', 'resting').change.text === '-1.5 bpm · -3 %')
+check('§2 weight is never good or bad: its change in the week is neutral, said against "in the week", the change since the week before in its hint', tile('health', 'weight').value === '81' && J(tile('health', 'weight').change) === J({ text: '-0.5 kg', short: '-0.5 kg', dir: 'down', tone: 'neutral', against: 'in the week' }) && tile('health', 'weight').hint === '-1 kg since the week before', tile('health', 'weight'))
+check('§2 health has two day charts: steps and sleep per night, each with last week\'s average as the dashed line, and the best day named', (() => { const [s, z] = sec('health').charts; return s.key === 'steps' && J(s.values) === J(FULL.health.steps.per_day) && s.reference.value === 6000 && s.reference.label === 'last week 6 000' && s.summary === 'best Thu 19.11.2026 · 12 400 steps' && z.key === 'sleep' && z.texts[0] === '7 h' && z.reference.label === 'last week 6 h' })(), sec('health').charts)
+check('§2 food against the targets: calories within 10 % is on target only then (here -12 %: warn), protein at or above it is success, water under it warn; the chart has the target line', tile('food', 'kcal').change.text === '-267 kcal · -12 %' && tile('food', 'kcal').change.tone === 'warn' && tile('food', 'kcal').change.against === 'vs target' && tile('food', 'protein').change.tone === 'success' && tile('food', 'protein').change.text === '+5 g · +4 %' && tile('food', 'water').change.tone === 'warn' && tile('food', 'days').value === '5' && tile('food', 'days').unit === 'of 7' && sec('food').charts[0].reference.value === 2200 && sec('food').charts[0].values[2] === null)
+check('§2 a calorie average within 10 % of the target is on target (success)', F.reportView({ ...FULL, food: { ...FULL.food, avg_kcal_on_logged_days: 2050 } }, null, WEEK).find(s => s.key === 'food').tiles[0].change.tone === 'success')
+check('§2 tasks: done (by area), slipped (their titles), older open, created; the scheduled time as bars per area, a zero hour left out, written as a duration', J(sec('tasks').tiles.map(t => [t.label, t.value])) === J([['Done', '11'], ['Slipped', '2'], ['Older open', '4'], ['Created', '9']]) && tile('tasks', 'done').hint === 'work 6 · personal 3' && tile('tasks', 'slipped').hint === 'Renew passport · Book dentist' && J(sec('tasks').charts[0].rows) === J([{ label: 'work', value: 14, text: '14 h' }, { label: 'training', value: 4.5, text: '4 h 30 min' }]))
+check('§2 the figures are input: a number saved as text, a series of the wrong length or with a negative, and a missing section are left out, never guessed', (() => {
+  const v = F.reportView({ ...FULL, health: { has_data: true, steps: { avg_per_day: '9286', per_day: [1, 2, 3] }, sleep: { avg_hours: 7, per_night: [1, 2, 3, 4, 5, 6, -1] } }, food: null }, null, WEEK)
+  const h = v.find(s => s.key === 'health')
+  return !h.tiles.some(t => t.key === 'steps') && h.charts.length === 0 && h.tiles[0].value === '7 h' && !v.some(s => s.key === 'food')
+})())
+check('§2 free text in the figures stays text: a title with markup is a plain string, control characters are spaces, long names are cut', (() => {
+  const v = F.reportView({ ...FULL, training: { ...FULL.training, key_lifts: [{ exercise: '<img src=x onerror=alert(1)>\u0007' + 'x'.repeat(80), top_set: '1 kg × 1', change: 'same' }] } }, null, WEEK)
+  const r = v.find(s => s.key === 'training').rows[0]
+  return r.label.startsWith('<img src=x onerror=alert(1)> ') && r.label.length === 60 && r.label.endsWith('…')
+})())
+check('§2 a report saved without figures (before 25.11.2026, or none) still draws its words, a section to a card; a heading the app does not know keeps its own card; text before a heading comes first', (() => {
+  const v = F.reportView({}, 'Hello.\n**Training**\nTwo sessions.\n**Mood**\nGood.\n**Next week**\n1. More.', WEEK)
+  return J(v.map(s => [s.key, s.title, s.tiles.length, s.charts.length])) === J([['intro', '', 0, 0], ['training', 'Training', 0, 0], ['other', 'Mood', 0, 0], ['next', 'Next week', 0, 0]])
+})())
+check('§2 a section that could not be read says so; one with no figures and no words is left out', (() => {
+  const v = F.reportView({ unreadable: ['food'], training: { has_data: false } }, '**Health**\nFine.', WEEK)
+  return J(v.map(s => s.key)) === J(['health', 'food']) && /could not be read/i.test(v[1].note) && v[0].note === null
+})())
+check('§2 partial health readings say so on the card', /partial/.test(F.reportView({ health: { ...FULL.health, truncated: true } }, null, WEEK)[0].note))
+check('§2 Home\'s card (reportTiles.ts only, so Home\'s first download stays small): sessions, steps a day, calories, tasks done, each from the saved figures with its change; sleep stands in for a missing one; none for no figures', (() => {
+  const h = F.reportHeadline(FULL)
+  const noSteps = F.reportHeadline({ ...FULL, health: { ...FULL.health, steps: null } })
+  return J(h.map(f => [f.label, f.value, f.unit, f.change?.short ?? null])) === J([['Training', '3', 'sessions', '+30 %'], ['Steps', '9 286', 'a day', '+55 %'], ['Calories', '1 933', 'kcal', '-12 %'], ['Tasks', '11', 'done', null]])
+    && J(noSteps.map(f => f.label)) === J(['Training', 'Calories', 'Tasks', 'Sleep']) && F.reportHeadline({}).length === 0
+    && F.reportHeadline({ training: { has_data: true, session_count: 1 } })[0].unit === 'session'
+})())
+check('§2 the writers: thousands grouped, one decimal at most, durations in hours and minutes, a change with no percent against zero', F.figure(13180) === '13 180' && F.figure(2.25) === '2.3' && F.figure(-0.5) === '-0.5' && F.figure(1234567.04) === '1 234 567' && F.duration(6.79) === '6 h 47 min' && F.duration(7) === '7 h' && F.duration(0.5) === '30 min' && F.changeOf(3, 0, { better: 'up', against: 'x' }).text === '+3' && F.changeOf(5, 10, { better: 'up', against: 'x' }).tone === 'warn' && F.changeOf(5, 10, { better: 'none', against: 'x' }).tone === 'neutral')
+check('§2 the chart days are DD.MM.YYYY with their weekday, across a month and a year end', J(F.weekDays('2026-12-28')) === J(['Mon 28.12.2026', 'Tue 29.12.2026', 'Wed 30.12.2026', 'Thu 31.12.2026', 'Fri 01.01.2027', 'Sat 02.01.2027', 'Sun 03.01.2027']))
+const viewSrc = read('src/features/ai/components/WeeklyReportView.tsx'), chartSrc = read('src/features/ai/components/ReportCharts.tsx'), changeSrc = read('src/features/ai/components/ReportChange.tsx'), sheetSrc = read('src/features/ai/components/WeeklyReportSheet.tsx')
+check('§2 one report view for every way in: Home\'s popup (and the push that opens it) and the Batches view render WeeklyReportView; the old text-only component is gone', /<WeeklyReportView facts=\{report\.facts\} content=\{report\.content\} weekStart=\{report\.week_start\} \/>/.test(sheetSrc) && /<WeeklyReportView facts=\{report\.facts\} content=\{report\.content\} weekStart=\{report\.week_start\} \/>/.test(batchSrc) && !fs.existsSync(path.join(__dirname, '..', 'src/features/ai/components/WeeklyReportText.tsx')))
+check('§2 the popup is a grouped ModalShell (the cards on its canvas), one size whatever the answer', /<ModalShell[\s\S]*size="xl"[\s\S]*grouped/.test(sheetSrc))
+check('§2 the cards: tiles are StatTile inset, the model\'s words cut with Truncate (3 lines, More), the columns dealt by index by the view\'s own width', /<StatTile key=\{t\.key\} inset/.test(viewSrc) && /<Truncate as="p" lines=\{3\} reveal="more"/.test(viewSrc) && /dealByIndex\(cards/.test(viewSrc) && /useElementWidthRem/.test(viewSrc) && !/line-clamp|\btruncate\b/.test(viewSrc))
+check('§2 the charts take their colours from useChartColors\' series (never the accent, no literal colour), grow only with motion allowed, and each bar\'s value is reachable by tap and keyboard (not hover only)', /useChartColors\(\)/.test(chartSrc) && !/\.accent\b|#[0-9a-f]{3,6}\b|rgb\(/i.test(chartSrc) && (chartSrc.match(/motion-safe:animate-barGrow/g) || []).length >= 2 && (chartSrc.match(/animate-barGrow/g) || []).length === (chartSrc.match(/motion-safe:animate-barGrow/g) || []).length && /onClick=\{\(\) => setPicked\(i\)\}/.test(chartSrc) && /onFocus=\{\(\) => setPicked\(i\)\}/.test(chartSrc) && /aria-label=\{`\$\{chart\.days\[i\]\}/.test(chartSrc))
+check('§2 a change is a tone (data-tone, never the accent) and keeps its comparison for screen readers when the header names it', /data-tone=\{change\.tone\}/.test(changeSrc) && !/accent/.test(changeSrc.replace(/\/\*[\s\S]*?\*\//g, '')) && /sr-only/.test(changeSrc))
 
 console.log(`\n${ok} passed, ${bad} failed`)
 process.exit(bad ? 1 : 0)

@@ -6884,8 +6884,9 @@ function collapseSumRows(rows: Row[]): Row[] {
 interface HealthFacts {
   has_data: boolean
   truncated: boolean
-  sleep: { nights: number; avg_hours: number | null; best_hours: number | null; worst_hours: number | null; previous_avg_hours: number | null; under_6h_nights: number } | null
-  steps: { days: number; avg_per_day: number | null; best_day: number | null; previous_avg_per_day: number | null } | null
+  /** `per_night` / `per_day`: the week's seven days, Monday first (null = nothing recorded), for the app's small charts only (never in the text the model reads). */
+  sleep: { nights: number; avg_hours: number | null; best_hours: number | null; worst_hours: number | null; previous_avg_hours: number | null; under_6h_nights: number; per_night: (number | null)[] } | null
+  steps: { days: number; avg_per_day: number | null; best_day: number | null; previous_avg_per_day: number | null; per_day: (number | null)[] } | null
   active_energy: { avg_kcal_per_day: number | null; previous_avg_kcal_per_day: number | null } | null
   resting_heart_rate: { avg_bpm: number | null; previous_avg_bpm: number | null } | null
   weight: { latest_kg: number; change_in_week_kg: number | null; change_since_before_week_kg: number | null } | null
@@ -6915,6 +6916,7 @@ function healthFacts(rows: HealthRows, week: WeekRange): HealthFacts {
     worst_hours: Math.min(...thisNights.map(n => n.hours)),
     previous_avg_hours: prevNights.length ? r2(avg(prevNights.map(n => n.hours)) as number) : null,
     under_6h_nights: thisNights.filter(n => n.hours < 6).length,
+    per_night: week.days.map(d => thisNights.find(n => n.date === d)?.hours ?? null),
   }
 
   const split = (map: Map<string, number>) => {
@@ -6922,12 +6924,14 @@ function healthFacts(rows: HealthRows, week: WeekRange): HealthFacts {
     const prev = [...map.entries()].filter(([d, v]) => d >= week.prevStart && d <= prevWeekEnd && v > 0).map(([, v]) => v)
     return { cur, prev }
   }
-  const stepDays = split(dailySums(rows.metrics, 'step_count'))
+  const stepSums = dailySums(rows.metrics, 'step_count')
+  const stepDays = split(stepSums)
   const steps = stepDays.cur.length === 0 ? null : {
     days: stepDays.cur.length,
     avg_per_day: Math.round(avg(stepDays.cur) as number),
     best_day: Math.round(Math.max(...stepDays.cur)),
     previous_avg_per_day: stepDays.prev.length ? Math.round(avg(stepDays.prev) as number) : null,
+    per_day: week.days.map(d => ((stepSums.get(d) ?? 0) > 0 ? Math.round(stepSums.get(d) as number) : null)),
   }
   const energyDays = split(dailySums(rows.metrics, 'active_energy'))
   const active = energyDays.cur.length === 0 ? null : {
@@ -6983,6 +6987,8 @@ interface FoodFacts {
   days_protein_target_met: number | null
   avg_water_ml_on_logged_days: number | null
   target_water_ml: number | null
+  /** Calories of each day, Monday first (null = nothing logged): for the app's small chart only (never in the model's text). */
+  kcal_per_day: (number | null)[]
 }
 
 function foodFacts(rows: FoodRows, week: WeekRange): FoodFacts {
@@ -7011,6 +7017,7 @@ function foodFacts(rows: FoodRows, week: WeekRange): FoodFacts {
     days_protein_target_met: tp === null ? null : days.filter(d => (protein.get(d) as number) >= tp).length,
     avg_water_ml_on_logged_days: waterDays.length ? Math.round(avg(waterDays.map(([, v]) => v)) as number) : null,
     target_water_ml: tw,
+    kcal_per_day: week.days.map(d => ((kcal.get(d) ?? 0) > 0 ? Math.round(kcal.get(d) as number) : null)),
   }
 }
 
