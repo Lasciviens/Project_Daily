@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { format } from 'date-fns'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import {
-  AlertTriangle, CalendarArrowUp, CalendarDays, Check, Clock3, CornerDownRight, MoreHorizontal, Pencil, Repeat,
+  AlertTriangle, CalendarArrowUp, Check, Clock3, CornerDownRight, MoreHorizontal, Pencil, Repeat,
   SkipForward, Timer, Trash2, Undo2,
 } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
@@ -39,7 +39,7 @@ import { zoneTag } from '../../../shared/utils/timeZone'
 // ─────────────────────────────────────────────────────────────────────────────
 
 // time_blocks / schedule_blocks.color is a user-picked tag; each maps onto a
-// tone so both themes work. Google events use the success edge.
+// tone so both themes work.
 const EDGE: Record<string, string> = {
   blue:   'border-r-info',
   green:  'border-r-success',
@@ -50,7 +50,6 @@ const EDGE: Record<string, string> = {
 }
 
 function edgeOf(row: DayRow): string {
-  if (row.kind === 'event') return EDGE.green
   const tag = (row.item?.block ?? row.item?.template)?.color
   if (!tag) return 'border-r-transparent'
   return EDGE[tag] ?? EDGE.accent
@@ -59,7 +58,7 @@ function edgeOf(row: DayRow): string {
 /** The time column beside a timed row: start, where a span ends, whose clock it is when not the phone's (183: "Oslo";
  *  `hideZone` when the Schedule heading says it once for every row), its colour, an overlap. */
 export function TimeGutter({ row, hideZone = false }: { row: DayRow; hideZone?: boolean }) {
-  const zone = hideZone || row.kind === 'event' ? null : zoneTag(rowTimeZone(row))
+  const zone = hideZone ? null : zoneTag(rowTimeZone(row))
   return (
     <div className={cx('flex w-12 shrink-0 flex-col items-end border-r-2 pr-1.5 pt-2.5 tabular-nums', edgeOf(row))}>
       <span className="text-meta font-semibold leading-none text-fg">{hourLabel(row.startHour ?? 0)}</span>
@@ -324,19 +323,6 @@ export function SlotRow({ row, past, active }: { row: DayRow; past: boolean; act
       icons={active ? <NowWord /> : undefined}
       menu={<RowMenu entries={entries} />}
       onOpen={open}
-      dim={past}
-    />
-  )
-}
-
-export function EventRow({ row, past, active, onOpen }: { row: DayRow; past: boolean; active: boolean; onOpen: () => void }) {
-  return (
-    <RowShell
-      lead={<Mark label="Google Calendar"><CalendarDays data-tone="success" className="tone-text" /></Mark>}
-      title={row.title}
-      icons={active ? <NowWord /> : undefined}
-      pills={row.allDay ? <TonePill tone="neutral">All day</TonePill> : undefined}
-      onOpen={onOpen}
       dim={past}
     />
   )

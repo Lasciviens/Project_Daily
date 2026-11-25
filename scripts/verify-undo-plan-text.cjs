@@ -208,14 +208,12 @@ console.log('\n7 · Outside the app (151): a danger line per service')
       { s: 'trakt', op: 'history_remove', n: 2, items: ['Game of Thrones S01E01', 'Dune'] },
       { s: 'trakt', op: 'rating_add', n: 1 },
       { s: 'google_tasks', op: 'update', n: 2 },
-      { s: 'google_calendar', op: 'delete', n: 1 },
     ],
   }))
   check('a whole-item Trakt remove says every play goes and can\'t be undone there', JSON.stringify(v.outside.map(l => l.text)) === JSON.stringify([
     "Trakt: every play of 2 items («Game of Thrones S01E01», «Dune») is removed there — this can't be undone on Trakt",
     'Trakt: 1 rating changed',
     'Google Tasks: 2 tasks changed',
-    'Google Calendar: 1 event removed',
   ]), v.outside.map(l => l.text))
   check('every outside line is danger', v.outside.every(l => l.tone === 'danger'))
 }
@@ -253,15 +251,20 @@ console.log('\n7 · Outside the app (151): a danger line per service')
 {
   const v = describeUndoPlan(plan({
     needs_confirm: true,
-    outbox: [{ s: 'google_calendar', op: 'update', n: 2 }, { s: 'google_calendar', op: 'create', n: 1 }, { s: 'google_calendar', op: 'delete', n: 1 }],
-    links_kept: [{ t: 'time_blocks', c: 'google_calendar_event_id', n: 1 }, { t: 'tasks', c: 'google_tasklist_id', n: 2 }],
+    outbox: [{ s: 'google_tasks', op: 'update', n: 2 }, { s: 'google_tasks', op: 'create', n: 1 }, { s: 'google_tasks', op: 'delete', n: 1 }],
+    links_kept: [{ t: 'time_blocks', c: 'icloud_area', n: 1 }, { t: 'tasks', c: 'google_tasklist_id', n: 2 }],
   }))
-  check('Calendar: what the queue removes and the browser adds and moves, in one line', v.outside[0].text === 'Google Calendar: 1 event removed · 1 event added · 2 events changed', v.outside[0])
+  check('Google Tasks: what the outbox removes, adds and changes, in one line', v.outside[0].text === 'Google Tasks: 1 task removed · 1 task added · 2 tasks changed', v.outside[0])
   check('links Undo leaves are said', JSON.stringify(v.outside.slice(1).map(l => [l.tone, l.text])) === JSON.stringify([
-    ['warn', "Google Calendar: 1 schedule block keeps its current event link — Undo doesn't put the old one back"],
+    ['warn', "Apple Calendar: 1 schedule block keeps its current event link — Undo doesn't put the old one back"],
     ['warn', "Google Tasks: 2 tasks keep their current Google list — Undo doesn't put the old one back"],
   ]), v.outside.map(l => l.text))
-  const only = describeUndoPlan(plan({ steps: 0, needs_confirm: true, links_kept: [{ t: 'time_blocks', c: 'google_calendar_event_id', n: 1 }] }))
+  // Google Calendar went (208): a slot's sync save is Apple Calendar's (its read-back), never Google's.
+  const synced = describeUndoPlan(plan({ needs_confirm: true, actors: ['service'], sync_save: ['time_blocks'] }))
+  check('a slot changed by a sync: Apple Calendar may bring it back', JSON.stringify(synced.outside.map(l => l.text)) === JSON.stringify([
+    'This save came from AI / sync. Apple Calendar still has it — the next sync may bring it back',
+  ]), synced.outside.map(l => l.text))
+  const only = describeUndoPlan(plan({ steps: 0, needs_confirm: true, links_kept: [{ t: 'time_blocks', c: 'icloud_area', n: 1 }] }))
   check('a save that only changed a link is not "nothing to undo"', !only.nothingToDo && !only.canUndo && only.outside.length === 1)
 }
 {
@@ -332,9 +335,9 @@ console.log('\n10 · After an undo of media rows, Trakt syncs')
   check('a preview: no sync', !touchesTrakt(plan()))
 }
 
-console.log('\n11 · The table → service map matches the database\'s (151)')
+console.log('\n11 · The table → service map matches the database\'s (151, as 208 left it)')
 {
-  const sql = readFileSync(join(__dirname, '../supabase/migrations/151_undo_save_fixes.sql'), 'utf8')
+  const sql = readFileSync(join(__dirname, '../supabase/migrations/208_google_calendar_off.sql'), 'utf8')
   const body = sql.slice(sql.indexOf('function public.app_undo_synced'), sql.indexOf('$$;', sql.indexOf('function public.app_undo_synced')))
   const fromSql = {}
   for (const m of body.matchAll(/when p_table (?:in \(([^)]*)\)|= ('[a-z_]+')) then '([a-z_]+)'/g)) {

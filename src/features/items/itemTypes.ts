@@ -109,16 +109,6 @@ export interface ConvertResult {
   conversionId: string | null
 }
 
-export interface CalendarReadbackState {
-  lastRunAt: string | null
-  lastCleanAt: string | null
-  lastError: string | null
-  /** Changes the last run applied. */
-  lastApplied?: number
-  /** False before migration 155 (nothing to show). */
-  available?: boolean
-}
-
 export type RepeatDayAction = 'done' | 'skip' | 'undo'
 
 export interface RepeatDayInput {

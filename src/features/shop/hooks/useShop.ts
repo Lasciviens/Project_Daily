@@ -45,8 +45,9 @@ const itemsQuery = {
   staleTime: STALE.short,
 }
 
-export function useShopItems() {
-  return useQuery(itemsQuery)
+/** Every shop row. `enabled: false` reads nothing (the month calendar's money line while hidden). */
+export function useShopItems({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({ ...itemsQuery, enabled })
 }
 
 /** One row from the shared items query (the `shop-item` popup loads by id). */

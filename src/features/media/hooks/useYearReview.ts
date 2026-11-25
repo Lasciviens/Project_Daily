@@ -35,6 +35,16 @@ export function useYearReview(period: number | 'all' | null) {
   }, [movieEntries, tvEntries, rows.data, rows.isLoading, rows.error, ml, tl, period])
 }
 
+/** Every watch from `from` to `to` (yyyy-MM-dd, both in), each on its own day, from the same
+ *  reads as the year review (the month calendar's media line: one read, never one per day). */
+export function useWatchesBetween(from: string, to: string) {
+  const { movieEntries, tvEntries, rows, ml, tl, failed } = useReviewInputs()
+  return useMemo(() => {
+    const { movies, episodes, shows } = reviewData(movieEntries, tvEntries, rows.data ?? [])
+    return { loading: ml || tl || rows.isLoading, failed, watches: watchesBetween(from, to, movies, episodes, shows) }
+  }, [movieEntries, tvEntries, rows.data, rows.isLoading, ml, tl, failed, from, to])
+}
+
 /** The year review's inputs from the library rows (one mapping for every reader). */
 function reviewData(movieEntries: UserMovieEntry[], tvEntries: UserTVEntry[], rowsData: WatchedEpisodeRow[]) {
   // A completed film with no watch date still counts all time ("unknown date").

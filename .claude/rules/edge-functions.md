@@ -22,6 +22,6 @@ Each function's purpose, auth and secrets: `docs/backend/edge-functions.md` · s
 - Duplicated code is deliberate and must change together:
   - The Hevy upsert logic is inlined in `hevy-sync`, `hevy-initial-sync`, `hevy-incremental-sync` and `hevy-api` — change all four (import → end marker; `verify-hevy-api` compares them).
   - Sections marked GENERATED (`// <ss-shared>`, Trakt plans, `readingSync`/`opdsFeed`, `// <icloud-shared>` — the calendar event rules in `icloud-calendar`, `// <item-fill-shared>` — ✨'s field check in `claude`) are edited at their `src/` source and regenerated with `scripts/sync-*-shared.mjs`.
-  - Hand-mirrored copies (`calendarOutboxRules`, `<calendar-areas>` in `icloud-calendar` from `calendarAreas.ts`, `articleExtract`, `priceRead`/`fxNorgesBank`, the media reminder rules, the sleep merge in `claude`'s `week-facts`/`phone-gateway`) change in the same PR as their source; their verify scripts compare them.
+  - Hand-mirrored copies (`<calendar-areas>` in `icloud-calendar` from `calendarAreas.ts`, `articleExtract`, `priceRead`/`fxNorgesBank`, the media reminder rules, the sleep merge in `claude`'s `week-facts`/`phone-gateway`) change in the same PR as their source; their verify scripts compare them.
 - `supabase/functions/claude/index.ts` is generated from the parts in `supabase/claude-src/` by `scripts/build-claude-function.mjs` (`--check` in CI): edit a part, rebuild, never the generated file; only `provider-anthropic.ts` touches the SDK.
 - Deploy is automatic on merge after the migrations; never deploy by hand.

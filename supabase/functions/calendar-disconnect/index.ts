@@ -77,6 +77,46 @@ Deno.serve(async (req) => {
       })
     }
 
+    // Revoke the grant at Google first (owner-critic, 25.11.2026): a token given before Google Calendar went still
+    // carries Calendar write access, and only Google can take that back. The token comes from server-only storage
+    // (user_calendar_tokens is service-role only) and travels in the POST body, never the URL. Revoking the refresh
+    // token ends every scope of that grant. Google answers 400 invalid_token for one already revoked or expired —
+    // nothing is left to revoke, so the row goes. Any other failure keeps the row, so Disconnect can be tried again.
+    const { data: stored, error: readError } = await supabase
+      .from('user_calendar_tokens')
+      .select('refresh_token')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (readError) {
+      return new Response(JSON.stringify({ error: 'Failed to disconnect' }), {
+        status: 500,
+        headers: { ...headers, 'Content-Type': 'application/json' },
+      })
+    }
+    const refreshToken = typeof stored?.refresh_token === 'string' ? stored.refresh_token : ''
+    if (refreshToken) {
+      let revoked = false
+      try {
+        const res = await fetch('https://oauth2.googleapis.com/revoke', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ token: refreshToken }).toString(),
+          redirect: 'error',
+        })
+        if (res.ok) revoked = true
+        else if (res.status === 400) {
+          const body = await res.json().catch(() => null) as { error?: unknown } | null
+          revoked = body?.error === 'invalid_token'
+        }
+      } catch { /* network: not revoked */ }
+      if (!revoked) {
+        return new Response(JSON.stringify({ error: "Google didn't confirm the disconnect — try again" }), {
+          status: 502,
+          headers: { ...headers, 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
     const { error: deleteError } = await supabase
       .from('user_calendar_tokens')
       .delete()

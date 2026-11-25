@@ -8,7 +8,7 @@
 //    LOCATION   ⌖ Location · Travel Time                 (a slot: a time, a repeat or all day)
 //    TIME       Date · All-day · Starts [Tue 10.11.2026] [17:30]
 //               Ends [Tue 10.11.2026] [18:30] · the day's timeline · Time Zone · Repeat · End Repeat
-//    OPTIONS    Calendar  Google Calendar · busy  ·  List (a Google Task's)
+//    OPTIONS    Calendar  Apple Calendar · busy  ·  List (a Google Task's)
 //               Alert · Second Alert · Show As           (a slot)
 //    DETAILS    URL (a slot) · Notes
 //    PLANNING   Priority · Area · Category · Labels · Deadline · Deadline time · Do it between
@@ -27,12 +27,14 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } f
 import { ReadAsLine } from '../../../features/items/components/ReadAsLine'
 import { effectiveGoogleTarget, hasGoogleTasks } from '../../../features/items/sheetRules'
 import type { GoogleTarget } from '../../../features/items/itemTypes'
+import type { CalendarApp } from '../../../features/items/itemRules'
 import { AlertRows, ShowAsRow, TravelRow, UrlRow } from './CalendarFieldRows'
 import { FieldMark, MarkHost } from './FieldMark'
 import { FilledMark, FilledRows } from './FillMark'
 import { cx } from '../../ui'
 import { LINE, Section } from './ItemRows'
 import { CalendarRow, GoogleListRow } from './OptionsSection'
+import { useCardMarks } from './cardMarks'
 import { PlaceRow } from './PlaceRow'
 import { PlanningSection } from './PlanningSection'
 import { TimeSection, type PanelKey } from './TimeSection'
@@ -56,10 +58,10 @@ interface Props {
   creating: boolean
   today: string
   nextTime: string
-  /** The Calendar row's choice can be shown: Google is connected here, or the item's area is on Apple Calendar. */
+  /** The Calendar row's choice can be shown: Google (Tasks) is connected here, or the item's area is in Apple Calendar. */
   googleConnected: boolean
   /** Where the item's calendar event lives (the server's rule, worked out by the sheet). */
-  calendarApp: 'google' | 'apple'
+  calendarApp: CalendarApp
   /** Where an edit stays when this device can't show the choice (its saved target). */
   keptTarget?: GoogleTarget
   /** A repeating item opened on one of its days (its This day | All days is in the header). */
@@ -94,11 +96,10 @@ interface Props {
   taskId?: string | null
 }
 
-/** What "Default" means on the Alert row where the item goes (193: null = the area's alert in Apple Calendar,
- *  Google Calendar's own default there; nothing when it stays in the app). */
+/** What "Default" means on the Alert row where the item goes (193: null = the area's alert in Apple Calendar; nothing
+ *  when it stays in the app). */
 const DEFAULT_ALERT_HINT: Partial<Record<ReturnType<typeof fieldGoes>, string>> = {
   apple: "Its area's alert (Settings → Calendar)",
-  'google-calendar': "Google Calendar's own default",
 }
 
 export function ItemForm({
@@ -129,32 +130,34 @@ export function ItemForm({
   const goes = (f: ScreenField) => fieldGoes(f, { target: marksTarget, calendarApp, dated: !!form.date || repeating, appleNotes })
   const showNotes = !hideTask('notes')
   const hasPin = form.place?.lat !== undefined && form.place?.lon !== undefined
+  // The title card has no heading to sit a banner beside: its mark joins the next card's (Location, else Time).
+  const titleMarks = useCardMarks()
 
   return (
     <FilledRows rows={fill?.rows}><MarkHost on={showMarks}>
       <div className="flex flex-col gap-4 pb-1">
-        <Section>
+        <Section marksTo={titleMarks.register}>
           <div className="flex items-start gap-2 px-3.5 py-2">
             <label htmlFor={titleId} className="sr-only">Title</label>
             <TitleField id={titleId} value={typed} onChange={onTitle} autoFocus={creating}
               placeholder={creating ? 'e.g. Gym 17:30 1h every Mon Wed Fri' : 'Title'} />
             {fill?.button}
-            <FieldMark goes={goes('title')} className="mt-1.5" />
+            <FieldMark goes={goes('title')} row="Title" className="mt-1.5" />
           </div>
           {fill?.panel}
           {parse && <div className="px-3.5 pb-2"><ReadAsLine parse={parse} start={form.date ?? today} onKeepText={onKeepText} /></div>}
         </Section>
 
         {slotFields && (
-          <Section title="Location">
+          <Section title="Location" carried={titleMarks.marks}>
             <PlaceRow value={form.place} onChange={place => patch({ place, placeTouched: true })}
-              mark={<><FilledMark row="Location" /><FieldMark goes={goes('place')} /></>} />
+              mark={<><FilledMark row="Location" /><FieldMark goes={goes('place')} row="Location" /></>} />
             <TravelRow minutes={form.travelMinutes} hasPin={hasPin} open={open} toggle={toggle} mark={<FieldMark goes={goes('travel')} />}
               onChange={travelMinutes => patch(withCalendarField(form, 'travelMinutes', travelMinutes))} />
           </Section>
         )}
 
-        <Section title="Time">
+        <Section title="Time" carried={slotFields ? undefined : titleMarks.marks}>
           <TimeSection
             form={form} patch={patch} open={open} toggle={toggle} today={today} nextTime={nextTime} config={config}
             occurrenceDate={occurrenceDate} savedKind={savedKind} savedRepeat={savedRepeat} savedZone={savedZone}
@@ -193,11 +196,11 @@ export function ItemForm({
           <Section title="Details">
             {slotFields && (
               <UrlRow url={form.url} problem={urlIssue} open={open} toggle={toggle}
-                mark={<><FilledMark row="URL" /><FieldMark goes={goes('url')} /></>}
+                mark={<><FilledMark row="URL" /><FieldMark goes={goes('url')} row="URL" /></>}
                 onChange={url => patch(withCalendarField(form, 'url', url))} />
             )}
             {showNotes && <NotesField value={form.notes} onChange={notes => patch({ notes })}
-              mark={<><FilledMark row="Notes" className="mt-3" /><FieldMark goes={goes('notes')} className="mt-3" /></>} />}
+              mark={<><FilledMark row="Notes" className="mt-3" /><FieldMark goes={goes('notes')} row="Notes" className="mt-3" /></>} />}
           </Section>
         )}
 

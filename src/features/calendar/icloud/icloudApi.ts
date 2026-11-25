@@ -36,11 +36,7 @@ export interface ICloudSetup {
 export type ICloudDrain = { busy: true } | {
   /** Written to Apple Calendar. */
   put: number
-  /** Written there, and its Google Calendar copy handed to Google's delete queue (2b-2). */
-  moved: number
-  /** Written there, but its Google Calendar copy has an id the app didn't make: it stays there (remove it by hand). */
-  foreign: number
-  /** Its Apple copy waits for the copy that replaces it (a Google Calendar event, or a Google Task). */
+  /** Its Apple copy stays: it waits for the Google Task that replaces it, or its area is off. */
   kept: number
   removed: number
   none: number

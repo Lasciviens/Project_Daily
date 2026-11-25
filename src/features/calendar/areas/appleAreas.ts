@@ -1,7 +1,7 @@
-// Which calendar app an item's event lives in (Phase 2b-2, docs/features/calendar-plan.md): its area's choice in
-// Settings → Calendar. An area on Apple gets no Google Calendar event from the browser — the server writes its
-// Apple one (icloud-calendar's drain, from the queue 173–175's triggers fill) — so every Google Calendar create
-// asks here first, and a save sends the queue to Apple at once.
+// Whether an item's event lives in Apple Calendar (Phase 2b-2, docs/features/calendar-plan.md): its area's choice in
+// Settings → Calendar. The server writes the Apple event (icloud-calendar's drain, from the queue 173–175's triggers
+// fill), and a save sends the queue to Apple at once. Apple Calendar is the only calendar since Google Calendar went
+// (25.11.2026).
 import { supabase } from '../../../integrations/supabase/client'
 import { logError } from '../../../shared/utils/logError'
 import { AREA_KEYS, onApple, type AreaKey, type CalendarPrefs } from './calendarAreas'
@@ -29,10 +29,10 @@ export async function anyAreaOnAppleNow(): Promise<boolean> {
 }
 
 /**
- * The area whose Apple calendar the item belongs in, or null when it goes to Google Calendar. Settings that can't
- * be read answer null (Google, as before): a Google copy made then is handed over by the drain once its Apple copy
- * is in. `input` is a function when reading it costs a request (a slot's task), so nothing is read while every
- * area is on Google.
+ * The area whose Apple calendar the item belongs in, or null when its area is off (the item is only in the app).
+ * Settings that can't be read answer null: nothing is sent to Apple from the browser then, and the database's queue
+ * still has the item. `input` is a function when reading it costs a request (a slot's task), so nothing is read
+ * while every area is off.
  */
 export async function appleAreaOf(input: AreaInput | (() => Promise<AreaInput>)): Promise<AreaKey | null> {
   try {

@@ -2,7 +2,7 @@
 /*
  * Verification — Daily's day as ONE list (src/features/daily/dayItems.ts,
  * owner 15.10.2026): a task with its slot is one row, a repeat's day is a row
- * (open, missed, done, skipped), Google events keep their own rows, rows split
+ * (open, missed, done, skipped), rows split
  * by TIME (timed / anytime / done / cancelled), nothing on the day list is
  * lost, and the week / month counts include repeat days still to do. Also the
  * projection of a repeat with no time and a slot with no length (155). Runs
@@ -31,7 +31,7 @@ const block = (id, extra = {}) => ({ id, title: id, date: TODAY, start_time: '09
 const plan = (id, extra = {}) => ({ id, title: id, days_of_week: [0, 1, 2, 3, 4, 5, 6], start_time: '18:00:00', end_time: '19:00:00', category: 'daily', color: 'blue', effective_from: '2026-10-01', ...extra })
 
 function day(input) {
-  const items = S.buildDaySchedule({ date: input.day ?? TODAY, blocks: input.blocks ?? [], prevBlocks: input.prevBlocks ?? [], templates: input.templates ?? [], events: input.events ?? [] })
+  const items = S.buildDaySchedule({ date: input.day ?? TODAY, blocks: input.blocks ?? [], prevBlocks: input.prevBlocks ?? [], templates: input.templates ?? [] })
   return D.buildDayRows({ day: input.day ?? TODAY, today: TODAY, tasks: { open: [], done: [], cancelled: [], ...input.tasks }, items, linkedTasks: input.linked ?? [] })
 }
 const keys = rows => rows.map(r => r.key)
@@ -94,20 +94,17 @@ console.log('\n== 4. Days of a repeat: open, missed, done, skipped — all on th
   eq(D.repeatDayRequest('walk', TODAY), { kind: 'schedule-block', id: 'walk', occurrenceDate: TODAY, defaults: { date: TODAY } }, 'a repeat\'s day opens the sheet on that day (This day | All days)')
 }
 
-console.log('\n== 5. Google events, slots with no task, training ==')
+console.log('\n== 5. Slots with no task, training (Google Calendar\'s own events went, 25.11.2026) ==')
 {
   const r = day({
     blocks: [block('slot'), block('lift', { category: 'training', start_time: '16:00:00' })],
-    events: [
-      { id: 'g1', summary: 'Dentist', start: { dateTime: `${TODAY}T11:00:00` }, end: { dateTime: `${TODAY}T11:30:00` } },
-      { id: 'g2', summary: 'Holiday', start: { date: TODAY }, end: { date: '2026-10-16' } },
-    ],
     tasks: { open: [task('read')] },
   })
-  eq(r.timed.map(x => [x.key, x.kind, x.state]), [['slot', 'slot', null], ['g1', 'event', null], ['lift', 'training', null]], 'a slot with no task and a Google event have nothing to tick; training is its own kind')
-  eq(keys(r.anytime), ['g2', 'task:read'], 'an all-day Google event leads Anytime')
-  const own = day({ blocks: [block('linked', { google_calendar_event_id: 'g1' })], events: [{ id: 'g1', summary: 'x', start: { dateTime: `${TODAY}T09:00:00` }, end: { dateTime: `${TODAY}T10:00:00` } }] })
-  eq(keys(own.timed), ['linked'], 'an event the app made is its row, never a second one')
+  eq(r.timed.map(x => [x.key, x.kind, x.state]), [['slot', 'slot', null], ['lift', 'training', null]], 'a slot with no task has nothing to tick; training is its own kind')
+  eq(keys(r.anytime), ['task:read'], 'Anytime is the day\'s own rows (no calendar event row any more)')
+  eq(r.timed.concat(r.anytime).every(x => x.kind !== 'event'), true, 'no row is a Google Calendar event')
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../src/features/daily/daySchedule.ts'), 'utf8')
+  eq(/events/.test(src.slice(src.indexOf('export function buildDaySchedule'), src.indexOf('export function timedItems'))), false, 'the day schedule reads no outside events (NEVER_HIDES: the task reads are the same)')
 }
 
 console.log('\n== 6. A slot on another day than its task\'s date ==')
@@ -128,11 +125,11 @@ console.log('\n== 7. Time with no length (155): a moment, never planned, never o
   eq(r.timed.map(x => [x.key, x.endHour, x.busy, x.overlaps]), [['meet', 11.5, true, true], ['pill', null, false, false], ['call', 12, true, true]], 'two spans overlap; the moment between them does not')
   const skip = day({ blocks: [block('meet', { start_time: '10:00:00', duration_minutes: 90 }), block('gone', { start_time: '10:30:00', task_id: 'gone', task_status: 'cancelled' })], tasks: { cancelled: [task('gone', { status: 'cancelled' })] } })
   eq(skip.timed.map(x => x.overlaps), [false, false], 'a cancelled or skipped span no longer takes its time: no overlap')
-  const items = S.buildDaySchedule({ date: TODAY, blocks: [block('meet', { duration_minutes: 90 }), block('pill', { start_time: '10:30:00', busy: false })], prevBlocks: [], templates: [plan('remind', { start_time: '20:00:00', end_time: null })], events: [] })
+  const items = S.buildDaySchedule({ date: TODAY, blocks: [block('meet', { duration_minutes: 90 }), block('pill', { start_time: '10:30:00', busy: false })], prevBlocks: [], templates: [plan('remind', { start_time: '20:00:00', end_time: null })] })
   eq(S.plannedMinutes(items), 90, 'planned time counts only what holds time')
   // As the save stores it (155): a repeat at 20:00 with no length keeps a nominal end (20:15) and busy false.
   const nominal = plan('pills', { start_time: '20:00:00', end_time: '20:15:00', busy: false })
-  const withNominal = S.buildDaySchedule({ date: TODAY, blocks: [block('film', { start_time: '20:00:00', duration_minutes: 60 })], prevBlocks: [], templates: [nominal], events: [] })
+  const withNominal = S.buildDaySchedule({ date: TODAY, blocks: [block('film', { start_time: '20:00:00', duration_minutes: 60 })], prevBlocks: [], templates: [nominal] })
   eq([withNominal.find(i => i.kind === 'recurring')?.busy, S.plannedMinutes(withNominal)], [false, 60], 'a repeat stored with a nominal end and busy false holds no time (not planned)')
   eq(day({ blocks: [block('film', { start_time: '20:00:00', duration_minutes: 60 })], templates: [nominal] }).timed.map(x => [x.key, x.overlaps]).sort(), [['film', false], ['pills', false]],
     '…and never overlaps what it sits on')
@@ -189,10 +186,10 @@ console.log('\n== 10. A repeat\'s day is a task on its day (156): ONE row, never
     'a training day: one training row holding its day\'s task')
 
   // The day schedule: a ticked day is never "next"
-  const items = S.buildDaySchedule({ date: TODAY, blocks: [], prevBlocks: [], templates: [gym], events: [], dayTasks: [dayTask('t-gym', 'gym', { status: 'done' })] })
+  const items = S.buildDaySchedule({ date: TODAY, blocks: [], prevBlocks: [], templates: [gym], dayTasks: [dayTask('t-gym', 'gym', { status: 'done' })] })
   eq([items[0].taskId, items[0].closed], ['t-gym', true], 'the day schedule takes the day\'s task and its state')
   eq(S.aheadOnDay(items, true, 9).length, 0, '…so Home\'s "Next up" never shows a ticked repeat day')
-  const open = S.buildDaySchedule({ date: TODAY, blocks: [], prevBlocks: [], templates: [gym], events: [], dayTasks: [tGym] })
+  const open = S.buildDaySchedule({ date: TODAY, blocks: [], prevBlocks: [], templates: [gym], dayTasks: [tGym] })
   eq(S.aheadOnDay(open, true, 9).length, 1, '…an open one still is')
 
   // Counts: a day that is a task counts once (as a task)
@@ -209,11 +206,11 @@ console.log('\n== A repeat day ticked late or ahead keeps its own day (28.10.202
   const MON = '2026-10-12'
   const late = { ...task('late'), due_date: MON, status: 'done', schedule_block_id: 'water', occurrence_date: MON, completed_at: '2026-10-15T09:15:00+02:00' }
   const water = plan('water', { start_time: null, end_time: null })
-  const items = S.buildDaySchedule({ date: MON, blocks: [], prevBlocks: [], templates: [water], events: [], dayTasks: [late] })
+  const items = S.buildDaySchedule({ date: MON, blocks: [], prevBlocks: [], templates: [water], dayTasks: [late] })
   const rows = D.buildDayRows({ day: MON, today: TODAY, tasks: { open: [], done: [], cancelled: [] }, items, repeatDays: [late] })
   eq([...rows.anytime, ...rows.done].map(r => r.state), ['done'], 'its own day reads done, not missed')
   eq([...rows.anytime, ...rows.done].length, 1, '…as ONE row (the repeat\'s), never a second task row')
-  const without = D.buildDayRows({ day: MON, today: TODAY, tasks: { open: [], done: [], cancelled: [] }, items: S.buildDaySchedule({ date: MON, blocks: [], prevBlocks: [], templates: [water], events: [] }) })
+  const without = D.buildDayRows({ day: MON, today: TODAY, tasks: { open: [], done: [], cancelled: [] }, items: S.buildDaySchedule({ date: MON, blocks: [], prevBlocks: [], templates: [water] }) })
   eq([...without.anytime].map(r => r.state), ['missed'], '(without the read\'s repeat days it read missed — the bug)')
   // Ticked ahead: Friday's day done on Thursday — Friday's header no longer counts it as to do.
   const FRI = '2026-10-16'
@@ -228,21 +225,9 @@ console.log('\n== Wall-clock hours on the days the clocks change (28.10.2026) ==
 {
   const out = require('child_process').execFileSync(process.execPath, ['-e', `
     require('sucrase/register')
-    const P = require(${JSON.stringify(require('path').join(__dirname, '../src/features/daily/components/dayAgendaProjection'))})
     const D = require(${JSON.stringify(require('path').join(__dirname, '../src/features/daily/dayItems'))})
-    const ev = (s, e) => ({ start: { dateTime: s }, end: { dateTime: e } })
-    console.log(JSON.stringify([
-      P.projectCalendarEventForDay('2027-03-28', ev('2027-03-28T10:00:00+02:00', '2027-03-28T11:00:00+02:00')),
-      P.projectCalendarEventForDay('2026-10-25', ev('2026-10-25T10:00:00+01:00', '2026-10-25T11:00:00+01:00')),
-      P.projectCalendarEventForDay('2026-10-25', ev('2026-10-25T23:30:00+01:00', '2026-10-26T00:30:00+01:00')),
-      P.projectCalendarEventForDay('2026-10-26', ev('2026-10-25T23:30:00+01:00', '2026-10-26T00:30:00+01:00')),
-      D.hourLabel(9 + 59.75 / 60),
-    ]))`], { cwd: require('path').join(__dirname, '..'), env: { ...process.env, TZ: 'Europe/Oslo' } }).toString()
-  const [spring, autumn, late, tail, label] = JSON.parse(out)
-  eq([spring.startHour, spring.endHour], [10, 11], 'spring forward (28.03.2027): a 10:00 event is at 10, not 9')
-  eq([autumn.startHour, autumn.endHour], [10, 11], 'fall back (25.10.2026): a 10:00 event is at 10, not 11')
-  eq([late.startHour, late.endHour], [23.5, 24], 'fall back: 23:30 → past midnight ends at 24, never 25')
-  eq([tail.startHour, tail.endHour, tail.spillover], [0, 0.5, true], '…and its tail is 00:00–00:30 the next day')
+    console.log(JSON.stringify([D.hourLabel(9 + 59.75 / 60)]))`], { cwd: require('path').join(__dirname, '..'), env: { ...process.env, TZ: 'Europe/Oslo' } }).toString()
+  const [label] = JSON.parse(out)
   eq(label, '10:00', 'hourLabel rounds as a whole: 09:59:45 reads 10:00, never 09:60')
 }
 

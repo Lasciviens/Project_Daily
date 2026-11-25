@@ -6,7 +6,6 @@
 
 import type { RepeatRow, TimeBlockCategory } from '../../../features/daily/types'
 import type { LiveTaskSection, TaskSourceType } from '../../../features/todo/types'
-import type { TimeBlockCalendarStatus } from '../../../features/daily/api/scheduleSyncRules'
 import { sectionForDay } from '../../../features/todo/taskRules'
 import {
   MAX_REPEAT_DATES, MAX_REPEAT_INTERVAL, nextOccurrences, repeatLastDay, repeatSummary, type RepeatUnit,
@@ -406,42 +405,6 @@ export function taskSourceTypeForBlock(blockSourceType?: string | null): TaskSou
   return (BLOCK_SOURCE_TYPES as readonly string[]).includes(blockSourceType)
     ? (blockSourceType as TaskSourceType)
     : undefined
-}
-
-/** "One task = ONE Google entry" — whether an EDIT that makes a task
- *  calendar-linked must also opt it OUT of Google Tasks.
- *  create-time dedupe (skipGoogleTasks) only runs once at INSERT; without
- *  this check, a task that was already google_sync_enabled and later gains
- *  a GCal schedule ends up on Google TWICE (a Task AND an Event) — the real
- *  bug this closes on the edit path. Deliberately does NOT require an
- *  existing `google_task_id`: a task can be google_sync_enabled=true with
- *  google_task_id still NULL (a 'create' outbox row enqueued but not yet
- *  drained) — that pending create must be cancelled too, or it silently
- *  fires later and creates the now-unwanted Google Task anyway. Call this
- *  ONLY after the calendar event is confirmed actually linked (never
- *  speculatively) — flipping the flag off before that would leave the task
- *  with NEITHER Google representation if the calendar link then fails. */
-export function needsGoogleTaskDedupe(calendarStatus: TimeBlockCalendarStatus, googleSyncEnabled: boolean): boolean {
-  return calendarStatus === 'linked' && googleSyncEnabled
-}
-
-/** The CREATE-side mirror of the same ordering hazard needsGoogleTaskDedupe
- *  closes on EDIT. Every create path that creates a new task ALONGSIDE a
- *  schedule (saveTask's plain create, saveSchedule's "Also add to Tasks"
- *  branches) speculatively passes `skipGoogleTasks: willBeCalendarEvent` to
- *  `useCreateTask` — deciding to suppress the Google Task BEFORE the
- *  calendar link is even attempted. If that link then fails, the task
- *  would end up with NEITHER Google representation. This is whether that
- *  speculative skip must now be reversed (re-enable google_sync_enabled,
- *  which re-fires migration 071's opt-in branch and pushes the task to
- *  Google Tasks as a fallback) once the REAL outcome is known.
- *  Deliberately requires a CONFIRMED 'not_linked', not just "not linked
- *  yet" — an 'unknown' outcome (network failure, no token, …) must never
- *  trigger a fallback either, or a task could end up with a real Calendar
- *  event AND a Google Task (a SECOND representation) the moment the
- *  calendar link turns out to have actually succeeded after all. */
-export function needsGoogleTasksFallback(skippedGoogleTasks: boolean, calendarStatus: TimeBlockCalendarStatus): boolean {
-  return skippedGoogleTasks && calendarStatus === 'not_linked'
 }
 
 /** saveSchedule's "Also add to Tasks" branch (mode='schedule', editing a

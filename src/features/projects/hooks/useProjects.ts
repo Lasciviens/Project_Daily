@@ -2,7 +2,8 @@ import { useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tans
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { putRowsInCache } from '../../../shared/query/cachePatch'
-import { BLOCK_EVENT_RESET, relinkRestoredBlockEvents, removeDeletedBlockEvents } from '../../calendar/api/deletedBlockEvents'
+import { BLOCK_EVENT_RESET } from '../../calendar/areas/restoreResets'
+import { drainICloudSoon } from '../../calendar/areas/appleAreas'
 import { rowsOf } from '../../../shared/utils/deletedRows'
 import { TASK_GOOGLE_RESET, syncGoogleTasksSoon } from '../../todo/hooks/useTodos'
 import type { Task } from '../../todo/types'
@@ -97,19 +98,19 @@ export function useUpdateProject({ report = true }: { report?: boolean } = {}) {
 }
 
 /** Deletes a project with its phases, tasks, blocks and entries — Undo puts all of it back (162's keys).
- *  Its tasks go the way a deleted task goes (useDeleteTask): their slots' Calendar events and Google
+ *  Its tasks go the way a deleted task goes (useDeleteTask): their slots' Apple Calendar events and Google
  *  Tasks copies are removed, and Undo makes them again. */
 export function useDeleteProject() {
   return useRowsDelete({
     table: 'projects', action: 'delete_project', invalidates: [qk.projects.all, 'taskGraph'], cache: qk.projects.all,
-    afterDelete: async snapshot => {
-      await removeDeletedBlockEvents(snapshot)
+    afterDelete: snapshot => {
       for (const t of rowsOf<Task>(snapshot, 'tasks')) syncGoogleTasksSoon({ taskId: t.id })
+      drainICloudSoon()
     },
     overrides: () => ({ ...TASK_GOOGLE_RESET, ...BLOCK_EVENT_RESET }),
     afterRestore: async snapshot => {
       for (const t of rowsOf<Task>(snapshot, 'tasks')) if (t.google_sync_enabled) syncGoogleTasksSoon({ taskId: t.id })
-      return relinkRestoredBlockEvents(snapshot)
+      drainICloudSoon()
     },
   })
 }

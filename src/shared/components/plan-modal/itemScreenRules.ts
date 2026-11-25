@@ -17,6 +17,7 @@ import { eventUrl } from '../../../features/calendar/calendarEventRules'
 import { cleanItemUrl } from '../../../features/items/itemCalendarFields'
 import { notInAppleText, type AppleSend } from '../../../features/calendar/areas/appleSendRules'
 import type { GoogleTarget } from '../../../features/items/itemTypes'
+import type { CalendarApp } from '../../../features/items/itemRules'
 
 export const DAY_MINUTES = 1440
 /** The wheels and the timeline move in five-minute steps, as the iPhone's Calendar does. */
@@ -128,7 +129,7 @@ export function timelineCentre(start: number | null, length: number | null): num
 
 // ── Where each field goes (the marks, Settings → Calendar) ────────────────────
 
-export type FieldGoes = 'apple' | 'google-calendar' | 'google-tasks' | 'app'
+export type FieldGoes = 'apple' | 'google-tasks' | 'app'
 /** A row's field. Step 2's (193): `alerts` (Alert, Second Alert), `showAs`, `url`, `travel`, `repeatEnd`. `time` is the
  *  day (the Date row, a day without a time); `clock` the time of day, its length and zone (All-day, Starts and Ends with
  *  a time, Time Zone). */
@@ -137,16 +138,35 @@ export type ScreenField = 'title' | 'notes' | 'time' | 'clock' | 'place' | 'repe
 
 export const FIELD_GOES_TEXT: Record<FieldGoes, string> = {
   apple: 'Goes to Apple Calendar',
-  'google-calendar': 'Goes to Google Calendar',
   'google-tasks': 'Goes to Google Tasks',
   app: 'Stays in the app',
+}
+
+/** A card's banner (24.11.2026): the places in the order it draws them — the calendars first, the app last. */
+const PLACE_ORDER: readonly FieldGoes[] = ['apple', 'google-tasks', 'app']
+
+/** Each place a card's rows go, once, in PLACE_ORDER (its banner draws these). */
+export function cardMarkPlaces(marks: readonly { goes: FieldGoes }[]): FieldGoes[] {
+  return PLACE_ORDER.filter(g => marks.some(m => m.goes === g))
+}
+
+/**
+ * A card's banner in words (its title's tap): each place with the rows that go there, in row order, each row once —
+ * "Goes to Apple Calendar: Date, Starts · Stays in the app: Priority". A row with no name counts without one; '' for
+ * a card with no marks.
+ */
+export function cardMarksText(marks: readonly { goes: FieldGoes; row: string | null }[]): string {
+  return cardMarkPlaces(marks).map(g => {
+    const rows = [...new Set(marks.filter(m => m.goes === g && m.row).map(m => m.row as string))]
+    return rows.length ? `${FIELD_GOES_TEXT[g]}: ${rows.join(', ')}` : FIELD_GOES_TEXT[g]
+  }).join(' · ')
 }
 
 export interface GoesContext {
   /** Where the item saves to (the Calendar row's choice; 'none' when the device has no choice to show). */
   target: GoogleTarget
-  /** The calendar app of the item's area (Settings → Calendar). */
-  calendarApp: 'google' | 'apple'
+  /** Whether the item's area has a calendar (Settings → Calendar): Apple Calendar, or none (the area is off). */
+  calendarApp: CalendarApp
   /** It has a day: a calendar needs one. */
   dated: boolean
   /** What Apple Calendar's notes carry (Settings → Calendar → Every Apple Calendar event). */
@@ -154,16 +174,15 @@ export interface GoesContext {
 }
 
 /**
- * Where one field of the item goes: the item's calendar (Apple or Google) when it is on one, Google Tasks for what a
- * Google Task carries (its title, notes, day, deadline, list, one task per day of a repeat), else only the app. The
- * app's own fields (priority, labels, area, category, the window) always stay in the app. Step 2's fields (193): the
- * alerts and Show As go to either calendar (a Google Task has neither); the link and the travel time only to Apple's
- * (Google Calendar has no field for them); End Repeat goes where the repeat goes. A Google Task has a day but no time:
- * the time of day, its length and zone go only to a calendar (`clock`).
+ * Where one field of the item goes: Apple Calendar when the item is on it, Google Tasks for what a Google Task carries
+ * (its title, notes, day, deadline, list, one task per day of a repeat), else only the app. The app's own fields
+ * (priority, labels, area, category, the window) always stay in the app. Step 2's fields (193): the alerts, Show As,
+ * the link and the travel time go to Apple Calendar (a Google Task has none of them); End Repeat goes where the repeat
+ * goes. A Google Task has a day but no time: the time of day, its length and zone go only to a calendar (`clock`).
  */
 export function fieldGoes(field: ScreenField, ctx: GoesContext): FieldGoes {
-  const calendar: FieldGoes | null = ctx.dated && (ctx.target === 'calendar' || ctx.target === 'both')
-    ? (ctx.calendarApp === 'apple' ? 'apple' : 'google-calendar') : null
+  const calendar: FieldGoes | null = ctx.dated && ctx.calendarApp === 'apple' && (ctx.target === 'calendar' || ctx.target === 'both')
+    ? 'apple' : null
   const tasks = ctx.target === 'tasks' || ctx.target === 'both'
   const viaTasks: FieldGoes = tasks ? 'google-tasks' : 'app'
   switch (field) {

@@ -18,10 +18,8 @@ export interface CalendarArea {
   color:        string
   /** The alert every event of the area gets, in minutes before it; null for none. */
   alertMinutes: number | null
-  /** Off: the area gets no calendar of its own (one made earlier stays in iCloud). */
+  /** Off: the area gets no calendar of its own and its items are only in the app (events made earlier stay in iCloud). */
   enabled:      boolean
-  /** Where the area's events go: Google Calendar (as before) or its Apple Calendar (Phase 2b). */
-  app:          'google' | 'apple'
 }
 
 /** What an event's notes carry in Apple Calendar: the item's own notes and/or a link back to the app. */
@@ -50,12 +48,12 @@ export const isAlertMinutes = (v: unknown): v is number | null =>
 
 // No alert unless the owner turns one on (owner, 31.10.2026: "It should be off by default").
 export const DEFAULT_AREAS: Record<AreaKey, CalendarArea> = {
-  training: { name: 'Lasci · Training', emoji: '🏋️', color: '#FF9500', alertMinutes: null, enabled: true, app: 'google' },
-  work:     { name: 'Lasci · Work', emoji: '💼', color: '#007AFF', alertMinutes: null, enabled: true, app: 'google' },
-  personal: { name: 'Lasci · Personal', emoji: '🏠', color: '#34C759', alertMinutes: null, enabled: true, app: 'google' },
-  media:    { name: 'Lasci · Media', emoji: '📺', color: '#AF52DE', alertMinutes: null, enabled: true, app: 'google' },
-  football: { name: 'Lasci · Football', emoji: '⚽', color: '#FF3B30', alertMinutes: null, enabled: true, app: 'google' },
-  games:    { name: 'Lasci · Games', emoji: '🎮', color: '#5856D6', alertMinutes: null, enabled: true, app: 'google' },
+  training: { name: 'Lasci · Training', emoji: '🏋️', color: '#FF9500', alertMinutes: null, enabled: true },
+  work:     { name: 'Lasci · Work', emoji: '💼', color: '#007AFF', alertMinutes: null, enabled: true },
+  personal: { name: 'Lasci · Personal', emoji: '🏠', color: '#34C759', alertMinutes: null, enabled: true },
+  media:    { name: 'Lasci · Media', emoji: '📺', color: '#AF52DE', alertMinutes: null, enabled: true },
+  football: { name: 'Lasci · Football', emoji: '⚽', color: '#FF3B30', alertMinutes: null, enabled: true },
+  games:    { name: 'Lasci · Games', emoji: '🎮', color: '#5856D6', alertMinutes: null, enabled: true },
 }
 
 const NAME_MAX = 60
@@ -81,7 +79,6 @@ export function readCalendarPrefs(raw: unknown): CalendarPrefs {
       color,
       alertMinutes: alert !== undefined && isAlertMinutes(alert) ? alert : d.alertMinutes,
       enabled: typeof a.enabled === 'boolean' ? a.enabled : d.enabled,
-      app: a.app === 'apple' || a.app === 'google' ? a.app : d.app,
     }
   }
   const top = isRecord(raw) ? raw : {}
@@ -92,8 +89,9 @@ export function readCalendarPrefs(raw: unknown): CalendarPrefs {
   return { areas, notes, allDayAlert }
 }
 
-/** An area whose events go to Apple Calendar: switched to Apple and in use (an area not in use stays on Google). */
-export const onApple = (area: Pick<CalendarArea, 'enabled' | 'app'>) => area.enabled && area.app === 'apple'
+/** An area whose events go to Apple Calendar: one in use (Apple is the only calendar since 208; the saved `app` key
+ *  it had before is not read). */
+export const onApple = (area: Pick<CalendarArea, 'enabled'>) => area.enabled
 
 /** Where an area's calendar lives under the calendar home: fixed per area, so a rename never makes a second calendar. */
 export const areaSlug = (key: AreaKey) => `lasci-${key}/`
@@ -141,14 +139,12 @@ export function alertLabel(minutes: number | null): string {
   return `${parts.join(' ')} before`
 }
 
-/** An area whose calendar app the form changes (2b-2): its events move to Apple Calendar, or back to Google. */
-export interface AreaSwitch { area: AreaKey; to: 'apple' | 'google' }
+/** An area the form turns on (2b-2): its items that want a calendar move into its Apple calendar. */
+export interface AreaSwitch { area: AreaKey }
 
-/** The areas whose events change app between the saved settings and the form — an area switched on or off counts
- *  too (an area not in use stays on Google). */
+/** The areas the form turns on. One turned off moves nothing: its events already in Apple Calendar stay there. */
 export function areaSwitches(saved: CalendarPrefs, next: CalendarPrefs): AreaSwitch[] {
-  return AREA_KEYS.filter(k => onApple(saved.areas[k]) !== onApple(next.areas[k]))
-    .map(k => ({ area: k, to: onApple(next.areas[k]) ? 'apple' as const : 'google' as const }))
+  return AREA_KEYS.filter(k => !onApple(saved.areas[k]) && onApple(next.areas[k])).map(k => ({ area: k }))
 }
 
 /** A save that rewrites events already in Apple Calendar (177's trigger): every event's notes or all-day alert, or an
@@ -162,14 +158,10 @@ const n = (count: number, one: string, many = `${one}s`) => `${count} ${count ==
 
 /** What a switch did, in one line: where the items are now, and anything the owner must know. */
 export function switchResultText(r: {
-  toApple: number; toGoogle: number; notOnGoogle: number; foreign: number; failed: number; waiting: number; partial: boolean; problem?: string | null
+  toApple: number; failed: number; waiting: number; partial: boolean; problem?: string | null
 }): string {
-  const them = (count: number) => (count === 1 ? 'it' : 'them')
   const parts = [
     r.toApple ? `${n(r.toApple, 'item')} in Apple Calendar` : '',
-    r.toGoogle ? `${n(r.toGoogle, 'item')} back in Google Calendar` : '',
-    r.notOnGoogle ? `${n(r.notOnGoogle, 'item')} stayed in Apple Calendar (Google didn't take ${them(r.notOnGoogle)}; saving one puts it in Google Calendar)` : '',
-    r.foreign ? `${n(r.foreign, 'item')} also still in Google Calendar (the app didn't make that copy, so it never deletes it: delete ${them(r.foreign)} there)` : '',
     r.failed ? `${n(r.failed, 'item')} not written yet (tried again within minutes)` : '',
     r.waiting && !r.failed ? `${r.waiting} still to go (within minutes)` : '',
     r.partial ? 'the area has more items than one move takes: the rest stay where they are' : '',
@@ -179,8 +171,8 @@ export function switchResultText(r: {
 }
 
 /** A switch result the owner must act on or wait for. */
-export const switchNeedsAttention = (r: { notOnGoogle: number; foreign: number; failed: number; partial: boolean; problem?: string | null }) =>
-  !!(r.notOnGoogle || r.foreign || r.failed || r.partial || r.problem)
+export const switchNeedsAttention = (r: { failed: number; partial: boolean; problem?: string | null }) =>
+  !!(r.failed || r.partial || r.problem)
 
 export const AREA_LABEL: Record<AreaKey, string> = {
   training: 'Training', work: 'Work (with Projects)', personal: 'Personal (tasks, repeats)', media: 'Media (episodes, films)', football: 'Football',

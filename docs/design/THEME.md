@@ -171,6 +171,10 @@ const c = useChartColors()
   26 % at the top left to 10 %: a default picture's ground) and `.tint-ink` (the series mixed 70 % towards the
   strongest ink, so initials and icons read on the fill in both themes). One tint per top category, stable by
   its id (`wishTile.tintOf`); no category is the slate. Never a status, never the accent.
+  `.tint-dot` is the tint solid (a small identity mark) and `.tint-check` a checkbox in the tint when the box is
+  the key to that colour — Personal → Month's kinds (tasks 1, training 2, plans 6, media 4, money 5; Plans is the slate, as the
+  plum beside Training's violet read as one purple): the dots and tiny counts under a date and the checkboxes
+  that show or hide them.
 - **Identity colours stay literal**: third-party brand colours (a transit operator's line colour, a
   fitness service's brand orange) and physiological categories that users know by colour (sleep
   stages) are data, not chrome. Keep them in one constant per feature.
@@ -286,6 +290,7 @@ Use the React primitive when one exists; the CSS class is for places a component
 | Loading | `<Skeleton>` / `<SkeletonText>` / `<SkeletonCard>` copying the real geometry; `<KeepRoom ids loading skeleton first remember>` around a part whose data comes in on its own (it keeps the room the part took last time, §5; `as="span"` inside a button); `<SkeletonTab>` as a lazy tab's Suspense fallback |
 | List row | `<ListRow leading title subtitle meta trailing onClick />` (`.row`, `.row-interactive`) |
 | On / off | `<Switch on onChange label size>` (`shared/ui`): the accent track when on; `md` keeps a 44px row of its own, `sm` sits in a row that is already the target (the item screen's All-day) |
+| Tick a choice | `<Checkbox checked onChange label tip tint>` (`shared/ui`): the browser's checkbox with its word, the whole label the target — 36px, no 44px step on touch; the accent, or a category tint (`tint`, §2.5) when the box is the key to that colour (Personal → Month's kinds) |
 | Text tabs (2–5 views) | `<SegmentedControl>` (`.seg` / `.seg-btn`); `size="xs"` is a 28px pill row for a compact popup header (This day \| All days); `fit` sizes each segment to its own label, with tighter sides at every size (`.seg-fit`), instead of equal shares (five views with one long name on a phone: Developer → AI; six with three counts: AI → Learned), `label` names the group for screen readers |
 | Sub-views of a tab | `SegmentedControl size="sm"` at the right end of the page's tab row (own row with the page actions below `lg`), value in `?view=` — Training Log / Library |
 | Filter tabs with counts | `.pill-tab` + `.count-badge`, horizontally scrollable row (`.scroll-x`) |
@@ -739,9 +744,17 @@ in a calendar. It is drawn as iOS Calendar draws its event screen and renders `M
   scrollbar, and one caption line. Respect Reduce Motion: scrolls jump instead of gliding. An all-day item
   gets **the day band** (`AllDayBand`) instead: one `accent-50` track with the day's things as ticks and the
   caption line — no hours to drag, so no room taken for them.
-- **Marks** (`FieldMark.tsx`): a 14px mark after a row's label says where that field goes — Apple's logo
+- **Marks** (`FieldMark.tsx`): where each field goes — Apple's logo
   (a CSS mask in `bg-fg`, so it follows the theme), Google's (its own colours: an identity colour), the
-  app's logo — with the words on tap or hover; a red dot (`bg-danger`, a `surface` ring) when the outside
+  app's logo. A titled card's marks are **one banner** (owner, 24.11.2026: "Use them as banner instead. And like a
+  bit shadow"; the owner chose the "Peeking logo"): each place once, 44px, tucked behind the card's top-right in the
+  free space beside its title (the card hides its lower part), faded (`--mark-banner-opacity`, 0.5 light / 0.6
+  dark, more on hover) with a soft `drop-shadow` (`--mark-banner-shadow`: a dark shadow in light, a light halo
+  `rgba(203, 213, 225, 0.4)` in dark — a black one was lost on the dark sheet) — `.mark-banner`, never under a
+  row, no height of its own; its fade-in and its hover fade (`.mark-banner-motion`) only under `useMotion()`; in
+  the DOM (reading and Tab order) right after the card's heading; a tap or hover names the rows per place. The
+  untitled title card has no banner (only a grey sliver fitted above it): its mark joins the next card's
+  (Location, else Time). A mark that is a row's value (the Calendar row's) stays 14px in the row, with a red dot (`bg-danger`, a `surface` ring) when the outside
   calendar refused it. They show while a setting says so (Settings → Calendar); a row whose whole job is
   where the item goes (Calendar) always shows its own.
 - **✨** (step 4, `ItemFill.tsx`): a 28px icon button beside the title (`text-fg-muted`, accent while its field is open or a fill waits — a bigger one pushes the title's hint onto a second line at 402px). Under the title it opens **Describe it…** (a field with no box, growing, with **Fill** `btn-sm` and ×) and, after a fill, one review line: an accent ✨, "Filled N fields" (`Truncate`), **Cancel** (ghost) and **Use these** (`btn-sm`). Each filled row carries a 14px ✨ after its label (`FillMark.tsx`, `data-tone="accent"`: work in flight, not a status) until it is kept or put back; an edit's heading line says "Not saved until you tap Use these". Both lines fade in with `motion-pop-in` only under `useMotion()`.

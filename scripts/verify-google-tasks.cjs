@@ -272,8 +272,9 @@ function pushSection() {
   check('Push takes old rows and Tasks / Both items only', JSON.stringify(picked) === JSON.stringify(['old', 'tasks', 'both']), JSON.stringify(picked))
   const hooks = fs.readFileSync(path.join(__dirname, '../src/features/todo/hooks/useGoogleTasksSync.ts'), 'utf8')
   check('Push reads googleTasksPushCandidates', /googleTasksPushCandidates\(tasks, isOpenTask\)/.test(hooks))
-  check('Sync now refreshes the task graph (tasks, schedule, calendar)', /invalidates: \['taskGraph', qk\.googleTaskLists\.all, qk\.googleTasks\.all\]/.test(hooks))
-  check('a background run that applied Calendar changes refreshes the task graph', /readback\?\.applied \?\? 0\) > 0\) void invalidate\(qc, 'taskGraph'\)/.test(hooks))
+  check('Sync now refreshes the task graph (tasks, schedule)', /invalidates: \['taskGraph', qk\.googleTaskLists\.all, qk\.googleTasks\.all\]/.test(hooks))
+  check('a background run that brought tasks in refreshes the tasks (no Google Calendar read-back since 25.11.2026)',
+    /if \(\(result\.imported \?\? 0\) > 0 \|\| \(result\.drained \?\? 0\) > 0\) void qc\.invalidateQueries\(\{ queryKey: qk\.tasks\.all \}\)/.test(hooks) && !/readback/.test(hooks))
 }
 
 (async () => {

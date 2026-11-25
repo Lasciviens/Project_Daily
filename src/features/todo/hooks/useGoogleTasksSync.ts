@@ -2,9 +2,8 @@ import { useEffect } from 'react'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast, useCalendarStore } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
-import { invalidate, qk, STALE } from '../../../shared/query'
+import { qk, STALE } from '../../../shared/query'
 import { ensureValidCalendarToken } from '../../calendar/api/calendarTokenSync'
-import { fetchCalendarLinkedTaskIds } from '../../daily/api/scheduleApi'
 import { drainGoogleTasksOutbox } from '../api/googleTasksOutbox'
 import { fetchGoogleTasksSyncState, runGoogleTasksSync } from '../api/googleTasksSync'
 import { googleTasksPushCandidates, googleTasksSyncHealth, googleTasksSyncMessage, shouldBackgroundSync, type GoogleTasksSyncSummary } from '../api/googleTasksRules'
@@ -48,12 +47,8 @@ export function useSyncFromGoogleTasks() {
 // NOT google_sync_enabled — that flag reflects INTENT (set at create time,
 // before any Google call happens), not outcome.
 //
-// Calendar-linked tasks (google_sync_enabled=false BY DESIGN — see
-// UnifiedPlanModal's skipGoogleTasks) also have no google_task_id, so
-// they're excluded by checking for a linked time_blocks row with its own
-// google_calendar_event_id — pushing those would recreate the exact
-// "task duplicated as both a Calendar event and a Task" bug that flag exists
-// to prevent.
+// (Until Google Calendar went, 25.11.2026, a task whose slot had a Google
+// Calendar event was left out here: it showed in Google Calendar already.)
 export function usePushToGoogleTasks() {
   return useMutationWithFeedback({
     action: 'push_to_google_tasks',
@@ -61,9 +56,7 @@ export function usePushToGoogleTasks() {
       const token = await ensureValidCalendarToken()
       if (!token) throw new Error('Google is not connected: connect it in Settings → Subscriptions')
 
-      const notYetSynced = googleTasksPushCandidates(tasks, isOpenTask)
-      const calendarLinkedIds = await fetchCalendarLinkedTaskIds(notYetSynced.map(t => t.id))
-      const candidates = notYetSynced.filter(t => !calendarLinkedIds.has(t.id))
+      const candidates = googleTasksPushCandidates(tasks, isOpenTask)
 
       for (const t of candidates) {
         // A task already marked google_sync_enabled=true (the stuck-create
@@ -115,8 +108,7 @@ async function syncInBackground(qc: QueryClient): Promise<void> {
     const state = await qc.fetchQuery({ queryKey: qk.googleTasks.syncState(), queryFn: fetchGoogleTasksSyncState, staleTime: 0 })
     if (!shouldBackgroundSync(state?.updated_at, Date.now(), connected)) return
     const result = await runGoogleTasksSync()
-    if ((result.readback?.applied ?? 0) > 0) void invalidate(qc, 'taskGraph')
-    else if ((result.imported ?? 0) > 0 || (result.drained ?? 0) > 0) void qc.invalidateQueries({ queryKey: qk.tasks.all })
+    if ((result.imported ?? 0) > 0 || (result.drained ?? 0) > 0) void qc.invalidateQueries({ queryKey: qk.tasks.all })
     void qc.invalidateQueries({ queryKey: qk.googleTaskLists.all })
   })()
     // Not logged here: the function records every failed run in the sync

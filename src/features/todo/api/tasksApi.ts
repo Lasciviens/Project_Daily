@@ -184,13 +184,15 @@ export async function fetchWorkTasks(): Promise<Task[]> {
   return (await fetchTaskPages(q => q.eq('domain', 'work'))).sort(bySortOrderNewestFirst)
 }
 
+// Cancelled ones too (25.11.2026): the month says a past day's missed and cancelled tasks, and a repeat's day
+// closed as missed or skipped (156) is a task — without it, it counted again as a repeat day. Every reader
+// counts open tasks through isOpenTask.
 export async function fetchTasksByMonth(monthStart: string, monthEnd: string): Promise<Task[]> {
   const { data, error } = await supabase
     .from('tasks')
     .select('*')
     .gte('due_date', monthStart)
     .lte('due_date', monthEnd)
-    .neq('status', 'cancelled')
   if (error) throw error
   return data ?? []
 }

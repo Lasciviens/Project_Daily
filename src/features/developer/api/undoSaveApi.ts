@@ -81,7 +81,8 @@ export interface UndoSideEffect {
   label: string | null
 }
 
-export type UndoService = 'trakt' | 'google_tasks' | 'google_calendar' | 'apple_calendar'
+/** Google Calendar (`google_calendar`) went on 25.11.2026 (migration 208): nothing queues for it any more. */
+export type UndoService = 'trakt' | 'google_tasks' | 'apple_calendar'
 
 /** Outbox rows the trial run queued for an outside service, per kind (151). */
 export interface UndoOutbox {
@@ -89,8 +90,7 @@ export interface UndoOutbox {
   /**
    * Trakt: history_add, history_remove_play, history_remove (every play of an
    * item), watchlist_*, rating_*, note_*, dropped_*; Google Tasks: create,
-   * update, delete; Google Calendar: delete (queued), create / update (the
-   * browser right after the undo).
+   * update, delete; Apple Calendar: upsert (173).
    */
   op: string
   n: number

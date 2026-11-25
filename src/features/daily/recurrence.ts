@@ -35,7 +35,7 @@
 //  unique. It may fall in the neighbouring month (the Saturday nearest the
 //  1st can be the 30th before it); it is still that month's occurrence.
 //
-//  Google Calendar (147): a linked plan is ONE repeating event —
+//  A calendar (147; Apple Calendar since 208): a plan is ONE repeating event —
 //  calendar/calendarSeries.ts maps weekly / interval-day / interval-week to
 //  an RRULE, monthly / interval-month / dates to an RDATE list
 //  (occurrencesBetween) and except_dates to EXDATEs, starting on the first

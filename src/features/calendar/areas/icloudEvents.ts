@@ -1,7 +1,7 @@
 // The app's events in Apple Calendar (Phase 2b, docs/features/calendar-plan.md):
 // which area an item belongs to, and the iCalendar object iCloud keeps for it —
-// built from the same rules as Google's events (calendarEventRules.blockEventBody
-// for a slot, calendarSeries.seriesEventFor for a repeating plan), plus the
+// built from the event rules (calendarEventRules.blockEventBody for a slot,
+// calendarSeries.seriesEventFor for a repeating plan), plus the
 // area's emoji, alert and a link back to the app. Pure; copied into
 // supabase/functions/icloud-calendar by scripts/sync-icloud-shared.mjs, which
 // is where it runs (verify-icloud-events checks the copy is current).
@@ -36,7 +36,7 @@ export function itemArea(x: AreaInput): AreaKey {
   return 'personal'
 }
 
-/** An item wants a calendar when its Google choice is Calendar or Both; an old row (no choice saved) where it is now. */
+/** An item wants a calendar when its choice is Calendar or Both; an old row (no choice saved) where it is now. */
 export function wantsCalendar(target: string | null | undefined, onACalendar: boolean): boolean {
   if (target === 'calendar' || target === 'both') return true
   if (target == null) return onACalendar
@@ -177,7 +177,7 @@ function zoneDefinition(zone: string, y: number): string[] {
   return ['BEGIN:VTIMEZONE', `TZID:${zone}`, ...parts, 'END:VTIMEZONE']
 }
 
-/** DTSTART / DTEND from Google's form: a date (all day) or a wall-clock time in a zone. The last guard: a TZID is a
+/** DTSTART / DTEND from the event rules' form: a date (all day) or a wall-clock time in a zone. The last guard: a TZID is a
  *  zone name's shape or the line is not written (183 — the zone is the item's, i.e. input). */
 function timeLine(name: 'DTSTART' | 'DTEND', t: EventTime): string {
   if ('date' in t) return `${name};VALUE=DATE:${ics8(t.date)}`
@@ -185,7 +185,7 @@ function timeLine(name: 'DTSTART' | 'DTEND', t: EventTime): string {
   return `${name};TZID=${t.timeZone}:${t.dateTime.replace(/[-:]/g, '').slice(0, 15)}`
 }
 
-/** "✓ 🏋️ Lower B": the done mark first (Google's), then the area's emoji. */
+/** "✓ 🏋️ Lower B": the done mark first, then the area's emoji. */
 export function areaTitle(summary: string, area: CalendarArea): string {
   const done = summary.startsWith('✓ ')
   const rest = done ? summary.slice(2) : summary
@@ -384,8 +384,8 @@ export function planEvent(
   plan: SeriesTemplate & { id: string; notes?: string | null; icloud_from?: string | null; url?: unknown; travel_minutes?: unknown },
   o: { area: CalendarArea; look: EventLook; today: string; timeZone: string; appUrl: string; now: Date },
 ): { uid: string; ics: string; plan: SeriesPlan } | null {
-  // Google's own start day is not iCloud's: a series starts where it reached this calendar.
-  const series = seriesEventFor({ ...plan, google_calendar_from: plan.icloud_from ?? o.today }, { today: o.today, timeZone: o.timeZone })
+  // A series starts where it reached this calendar.
+  const series = seriesEventFor({ ...plan, series_from: plan.icloud_from ?? o.today }, { today: o.today, timeZone: o.timeZone })
   if (!series) return null
   const uid = `lasci-plan-${plan.id}@lasciviens.github.io`
   return { uid, plan: series, ics: eventObject({ uid, body: series.body, area: o.area, look: o.look, notes: plan.notes, link: dayLink(o.appUrl, series.first), now: o.now, place: eventPlace(plan.place),

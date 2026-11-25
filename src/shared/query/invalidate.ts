@@ -5,10 +5,10 @@ import { qk } from './keys'
 // ("the task graph changed") and every view that shows it refreshes. Each
 // group lists roots, so every query under them matches by prefix.
 const groups = {
-  /** A task, its schedule slot or its calendar event changed. */
+  /** A task or its schedule slot changed. */
   // shop items and football plans: a deleted task clears their task_id (ON DELETE SET NULL).
-  taskGraph: [qk.tasks.all, qk.schedule.all, qk.calendar.all, qk.shop.items(), qk.football.plans()],
-  schedule: [qk.schedule.all, qk.calendar.all],
+  taskGraph: [qk.tasks.all, qk.schedule.all, qk.shop.items(), qk.football.plans()],
+  schedule: [qk.schedule.all],
   /** Anything in the food diary / plan / targets / water. A supplement dose is
    *  taken while its diary line exists (160), so its doses refresh too. */
   nutrition: [qk.foodLog.all, qk.mealPlan.all, qk.water.all, qk.dayTargets.all, qk.dayTargets.profiles, qk.health.cutDiaryAll, qk.supplements.all],
@@ -25,7 +25,7 @@ const groups = {
   ],
   /** After an Ask-AI turn: every table the assistant can write. */
   aiWrite: [
-    qk.tasks.all, qk.schedule.all, qk.calendar.all,
+    qk.tasks.all, qk.schedule.all,
     qk.recipes.all, qk.ingredients.all, qk.mealPlan.all, qk.foodLog.all, qk.water.all, qk.dayTargets.all, qk.quickGuess.all, qk.supplements.all,
     qk.health.cutDiaryAll,
     qk.shop.all, qk.projects.all, qk.media.movies, qk.media.tv, qk.media.watchedAll, qk.media.nextEpisodeAll, qk.media.recent(),

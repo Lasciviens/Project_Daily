@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  The item screen's Calendar row (owner's point 5) and a Google Task's list.
 //  The row names where the item goes — "Apple Calendar · busy", "Google
-//  Tasks", "Not on Google" (never "Auto": sheetRules) — with Apple's or
+//  Tasks", "Only in this app" (never "Auto": sheetRules) — with Apple's or
 //  Google's mark (the app's own when it stays here), always shown; the mark
 //  gets a red dot only when Apple refused the item. Tapped, it lists the four
 //  choices with what each does, a blocked one with its reason.
@@ -44,7 +44,7 @@ export function CalendarRow({ shape, target, app, dated, refused, open, toggle, 
               icon={<span className="inline-flex h-4 w-4 shrink-0"><MarkIcon goes={goesOf(c.target, app, dated)} /></span>}
               onClick={() => { onPick(c.target); toggle(null) }} />
           ))}
-          <p className="pt-1.5 text-meta text-fg-muted">Which calendar each area uses is set in Settings → Calendar.</p>
+          <p className="pt-1.5 text-meta text-fg-muted">Each area's calendar is turned on or off in Settings → Calendar.</p>
         </Panel>
       )}
     </>

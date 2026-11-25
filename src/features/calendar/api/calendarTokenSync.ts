@@ -1,24 +1,13 @@
-// Deliberately SEPARATE from calendarApi.ts (which stays import-free of the
-// live supabase client / Zustand store singleton so its pure error classes —
-// CalendarApiError, isCalendarNotFound — stay requirable via sucrase in
-// scripts/verify-plan-modal-helpers.cjs without needing a live Vite env).
-// This file is exactly the opposite: it exists ONLY to hold the two helpers
-// that genuinely need the live singletons.
+// Deliberately SEPARATE from calendarApi.ts (which stays import-free of the live supabase client / Zustand store
+// singletons): this file holds the helper that genuinely needs them.
 import { supabase } from '../../../integrations/supabase/client'
 import { useCalendarStore } from '../../../app/store'
-import { refreshCalendarToken, deleteCalendarEvent, isCalendarNotFound } from './calendarApi'
+import { refreshCalendarToken } from './calendarApi'
 
-// The write-side equivalent of useCalendar.ts's `ensureToken` — that hook
-// version only runs inside a React component (needs the store's reactive
-// accessToken/setAccessToken via useCalendarStore()); every plain async API
-// function (scheduleApi.ts, tasksApi.ts, UnifiedPlanModal's linkCalendarEvent)
-// needs the same "give me a token that's actually still valid, refreshing if
-// not" behavior outside a component. Real gap this closes: every WRITE path
-// used to read the store's accessToken directly via calToken()/getState(),
-// ignoring expiresAt entirely — a token could sit expired-but-still-present
-// in the store (the read-side hooks refresh proactively on a timer, but
-// nothing guarantees that timer has fired yet) and every write call would
-// then 401 instead of refreshing, indistinguishable from "not connected".
+// A Google access token that is actually still valid, refreshing it if not — for every plain async call outside a
+// component (the Google Tasks api, its outbox drain). Never the stored token as is: a token could sit
+// expired-but-still-present in the store (useAutoRefreshCalendarToken refreshes on a timer, but nothing guarantees
+// that timer has fired yet) and every call would then 401 instead of refreshing, indistinguishable from "not connected".
 export async function ensureValidCalendarToken(): Promise<string | null> {
   const { accessToken, expiresAt, setAccessToken } = useCalendarStore.getState()
   if (accessToken && (!expiresAt || Date.now() < expiresAt - 60_000)) return accessToken
@@ -28,22 +17,5 @@ export async function ensureValidCalendarToken(): Promise<string | null> {
     return fresh.access_token
   } catch {
     return null // never connected, or the refresh itself failed — either way, no usable token
-  }
-}
-
-// Removes a deleted slot's Google Calendar event (deletedBlockEvents.ts calls
-// it right after a delete). Throws when the removal can't be confirmed — no
-// valid connection, or anything but a confirmed delete / already gone; the
-// caller logs it and the server's calendar outbox (migration 135), which
-// queued the event when its slot was deleted, removes it later. Before 135
-// this ran BEFORE the delete and refused the delete without a connection,
-// since the slot was the only pointer to its event.
-export async function ensureLinkedCalendarEventRemoved(eventId: string): Promise<void> {
-  const token = await ensureValidCalendarToken()
-  if (!token) throw new Error("Can't verify or remove the linked Google Calendar event — no valid Calendar connection")
-  try {
-    await deleteCalendarEvent(token, 'primary', eventId)
-  } catch (err) {
-    if (!isCalendarNotFound(err)) throw new Error(`Couldn't remove the Google Calendar event: ${(err as Error).message}`, { cause: err })
   }
 }

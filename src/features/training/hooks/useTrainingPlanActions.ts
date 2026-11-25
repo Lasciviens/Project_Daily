@@ -6,7 +6,7 @@ import { syncGoogleTasksSoon, useDeleteTask } from '../../todo/hooks/useTodos'
 import { useDeleteScheduleBlock, useDeleteTimeBlock } from '../../daily/hooks/useSchedule'
 import {
   ensurePlanTask, markPlanDone, planTaskId, movePlan, reopenPlan,
-  skipPlan, undoPlanSkip, carryPastWeekMoveToCalendar, fetchPastWeekOutcome,
+  skipPlan, undoPlanSkip, sendPastWeekMoveSoon, fetchPastWeekOutcome,
   type PlanTarget, type TrainingPlanRef,
 } from '../api/trainingPlanApi'
 import { pastWeekMoveLine, type PastWeekOutcome } from '../plan/sessionState'
@@ -71,7 +71,7 @@ export function useTrainingPlanActions() {
       await movePlan(rows, plan.info, { date, startHHMM })
       deliverGoogleTasks(rows.taskId)
       if (!pastWeek) return null
-      carryPastWeekMoveToCalendar(rows, date)
+      sendPastWeekMoveSoon()
       return fetchPastWeekOutcome(rows.taskId, date, { routineId: plan.info.routineId, title: plan.info.title })
     },
     invalidates: [...INVALIDATES],

@@ -136,8 +136,6 @@ export interface GoogleTasksSyncSummary {
   drain_failed?: number
   imported?:     number
   added?:        number
-  /** The same run's Google Calendar read-back: changes applied to slots and plans. */
-  readback?:     { applied?: number } | null
   partial_errors?: unknown
 }
 

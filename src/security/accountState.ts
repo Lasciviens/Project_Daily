@@ -1,6 +1,5 @@
 import { supabase } from '../integrations/supabase/client'
 import { useCalendarStore } from '../app/store'
-import { SERIES_PENDING_KEY } from '../features/calendar/calendarSeries'
 import { forgetCalendarPrefs } from '../features/calendar/areas/calendarPrefsMemory'
 import { forgetLayouts } from '../shared/hooks/useLayoutMemory'
 import { forgetKeptAnswers } from '../shared/query/persist'
@@ -19,6 +18,8 @@ const AUTO_SYNC_PREFIX = 'lasci.games.autoSync.'
 const SHOP_HANDOVER_TICKS_KEY = 'lasci.shop.handover'
 // Kept here as text too (useOwnedLayout's OWNED_LAYOUT_KEY): the shell never loads the Shop's code.
 const SHOP_OWNED_VIEW_KEY = 'lasci.shop.ownedView'
+// The same for Personal → Month's hidden kinds (useMonthKinds' MONTH_KINDS_KEY).
+const MONTH_HIDDEN_KEY = 'lasci.daily.monthHidden'
 
 const PUSH_LOOKUP_MS = 3000
 
@@ -65,14 +66,14 @@ export async function clearAccountState(): Promise<void> {
   // Started first (memory is emptied at once), awaited last: the reload after a sign-out must not cut the delete short.
   let answersGone: Promise<void> = Promise.resolve()
   try { answersGone = forgetKeptAnswers() } catch { /* */ }
+  // The Google token; the write also drops a Google calendar list an older version kept (store.ts → partialize).
   try { useCalendarStore.getState().setAccessToken(null) } catch { /* */ }
-  // The Google calendars picked: their ids name the account (the main one is its address).
-  try { useCalendarStore.getState().setSelectedCalendarIds(null) } catch { /* */ }
   try { localStorage.removeItem('lasci-ai-chat') } catch { /* */ }
   try { localStorage.removeItem('lasci.googleTasks.warnedError') } catch { /* */ }
-  // Repeating-plan Calendar pushes waiting for a retry (they name this account's plans).
-  try { localStorage.removeItem(SERIES_PENDING_KEY) } catch { /* */ }
-  // Which areas are on Apple Calendar (the Google calls' copy of Settings → Calendar).
+  // Google Calendar's retry list of repeating plans (gone with Google Calendar, 25.11.2026; a device may still hold
+  // one — it names this account's plans).
+  try { localStorage.removeItem('lasci.calendarSeries.pending') } catch { /* */ }
+  // Which areas are on Apple Calendar (the remembered copy of Settings → Calendar).
   try { forgetCalendarPrefs() } catch { /* */ }
   // What the pages looked like when their data last landed (row counts, heights): this account's.
   try { forgetLayouts() } catch { /* */ }
@@ -80,6 +81,8 @@ export async function clearAccountState(): Promise<void> {
   try { localStorage.removeItem(SHOP_HANDOVER_TICKS_KEY) } catch { /* */ }
   // Shop: how Owned shows its things (rows, list, big pictures).
   try { localStorage.removeItem(SHOP_OWNED_VIEW_KEY) } catch { /* */ }
+  // Personal → Month: which kinds of lines under the dates are hidden.
+  try { localStorage.removeItem(MONTH_HIDDEN_KEY) } catch { /* */ }
   // Games: the IGDB review list (this account's games) and the daily auto-sync marks.
   try { localStorage.removeItem(IGDB_BATCH_KEY) } catch { /* */ }
   try {

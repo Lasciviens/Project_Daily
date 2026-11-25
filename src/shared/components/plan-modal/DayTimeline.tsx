@@ -17,7 +17,6 @@ import { formatDurationMinutes } from '../../utils/formatDuration'
 import { buildDaySchedule } from '../../../features/daily/daySchedule'
 import { addDaysIso } from '../../../features/daily/recurrence'
 import { useScheduleBlocks, useTimeBlocks } from '../../../features/daily/hooks/useSchedule'
-import { useCalendarEventsForDay } from '../../../features/calendar/hooks/useCalendar'
 import { displayDate } from './planModal.config'
 import {
   DAY_MINUTES, dragTimes, endOf, nudgeTimes, overlapsOf, spanLanes, timeOfMinutes, timelineCentre,
@@ -43,19 +42,18 @@ function useDaySpans(day: string, own: { blockId?: string | null; scheduleBlockI
   const blocks = useTimeBlocks(day)
   const prevBlocks = useTimeBlocks(addDaysIso(day, -1))
   const templates = useScheduleBlocks()
-  const events = useCalendarEventsForDay(day)
   const answered = blocks.isSuccess && templates.isSuccess
   const spans = useMemo<DaySpan[]>(() => {
     if (!blocks.data || !templates.data) return []
     const items = buildDaySchedule({
-      date: day, blocks: blocks.data, prevBlocks: prevBlocks.data ?? [], templates: templates.data, events: events.data ?? [],
+      date: day, blocks: blocks.data, prevBlocks: prevBlocks.data ?? [], templates: templates.data,
     })
     return items
-      .filter(i => !i.allDay && i.startHour >= 0)
+      .filter(i => i.startHour >= 0)
       .filter(i => i.canonicalId !== own.blockId && i.canonicalId !== own.scheduleBlockId
         && !(own.scheduleBlockId && i.block?.schedule_block_id === own.scheduleBlockId))
       .map(i => ({ id: i.id, title: i.title, start: Math.round(i.startHour * 60), end: Math.max(Math.round(i.endHour * 60), Math.round(i.startHour * 60) + 10) }))
-  }, [day, blocks.data, prevBlocks.data, templates.data, events.data, own.blockId, own.scheduleBlockId])
+  }, [day, blocks.data, prevBlocks.data, templates.data, own.blockId, own.scheduleBlockId])
   return { spans, answered }
 }
 

@@ -26,12 +26,13 @@ console.log('\n== The settings ==')
 const d = A.readCalendarPrefs(null)
 eq(A.AREA_KEYS, ['training', 'work', 'personal', 'media', 'football', 'games'], 'six areas (owner, 29.10.2026; Games its own, 31.10.2026)')
 eq(A.AREA_KEYS.map(k => d.areas[k].alertMinutes), [null, null, null, null, null, null], 'no area has an alert by default (owner, 31.10.2026: "off by default")')
-eq([d.areas.games.name, d.areas.games.emoji, d.areas.games.app], ['Lasci · Games', '🎮', 'google'], 'Games: its own calendar, on Google until switched')
+eq([d.areas.games.name, d.areas.games.emoji, d.areas.games.enabled], ['Lasci · Games', '🎮', true], 'Games: its own calendar, in use')
 eq(A.AREA_KEYS.every(k => d.areas[k].emoji && d.areas[k].enabled && /^#[0-9A-F]{6}$/.test(d.areas[k].color)), true, 'every area has an emoji, a colour and is in use by default')
 const saved = A.readCalendarPrefs({ areas: { training: { name: '  Gym  ', emoji: '💪', color: '#ff00aa', alertMinutes: 30, enabled: false }, work: { name: 'Jobb – æøå' } } })
-eq(saved.areas.training, { name: 'Gym', emoji: '💪', color: '#FF00AA', alertMinutes: 30, enabled: false, app: 'google' }, 'a saved area is read as saved (name trimmed, colour upper case)')
-eq([A.readCalendarPrefs({ areas: { football: { app: 'apple' } } }).areas.football.app, A.readCalendarPrefs({ areas: { football: { app: 'outlook' } } }).areas.football.app, d.areas.training.app],
-  ['apple', 'google', 'google'], "an area goes to Google Calendar until it is switched to Apple (Phase 2b); anything else reads as Google")
+eq(saved.areas.training, { name: 'Gym', emoji: '💪', color: '#FF00AA', alertMinutes: 30, enabled: false }, 'a saved area is read as saved (name trimmed, colour upper case)')
+eq([A.readCalendarPrefs({ areas: { football: { app: 'apple' } } }).areas.football, A.readCalendarPrefs({ areas: { football: { app: 'google' } } }).areas.football].map(a => 'app' in a),
+  [false, false], "Apple Calendar is the only calendar (208): an old saved `app` key is not read")
+eq([A.onApple({ enabled: true }), A.onApple({ enabled: false })], [true, false], 'an area in use goes to Apple Calendar; one turned off has no calendar')
 eq(saved.areas.work.name, 'Jobb – æøå', 'æøå in a name are kept')
 eq([saved.areas.work.emoji, saved.areas.work.alertMinutes], ['💼', null], 'a value not saved keeps its default')
 const bad = A.readCalendarPrefs({ areas: { media: { name: '', emoji: '😀'.repeat(13), color: 'purple', alertMinutes: -7, enabled: 'yes' }, football: { alertMinutes: null, emoji: '' } } })
@@ -90,43 +91,34 @@ const F = new Function(`${code}\nreturn { sealKey, sealSecret, openSecret, isSea
 console.log('\n== The switch per area (2b-2) ==')
 const g = A.readCalendarPrefs(null)
 const withApp = (over) => A.readCalendarPrefs({ areas: over })
-eq(A.areaSwitches(g, withApp({ football: { app: 'apple' } })), [{ area: 'football', to: 'apple' }], 'an area set to Apple is a switch to Apple')
-eq(A.areaSwitches(withApp({ football: { app: 'apple' } }), g), [{ area: 'football', to: 'google' }], '…and back')
-eq(A.areaSwitches(withApp({ football: { app: 'apple' } }), withApp({ football: { app: 'apple', enabled: false } })), [{ area: 'football', to: 'google' }],
-  'an area on Apple switched off goes back to Google (an area not in use has no calendar of its own)')
-eq(A.areaSwitches(g, withApp({ football: { app: 'apple', emoji: '🥅' }, media: { emoji: '🎬' } })).length, 1, 'other edits are no switch')
-eq(A.areaSwitches(g, withApp({ media: { app: 'apple', enabled: false } })), [], 'Apple picked for an area not in use moves nothing')
-const res = { toApple: 0, toGoogle: 0, notOnGoogle: 0, foreign: 0, failed: 0, waiting: 0, partial: false }
+const off = withApp({ football: { enabled: false } })
+eq(A.areaSwitches(off, g), [{ area: 'football' }], 'an area turned on is a switch: its items move into Apple Calendar')
+eq(A.areaSwitches(g, off), [], '…one turned off moves nothing (its events already in Apple Calendar stay)')
+eq(A.areaSwitches(g, withApp({ football: { emoji: '🥅' }, media: { emoji: '🎬' } })).length, 0, 'other edits are no switch')
+const res = { toApple: 0, failed: 0, waiting: 0, partial: false }
 eq(A.switchResultText({ ...res, toApple: 14 }), 'Calendar settings saved · 14 items in Apple Calendar', 'what moved, in one line')
 eq(A.switchResultText(res), 'Calendar settings saved · nothing to move', '…or that nothing had to')
-eq(A.switchResultText({ ...res, toGoogle: 3, notOnGoogle: 1 }), "Calendar settings saved · 3 items back in Google Calendar · 1 item stayed in Apple Calendar (Google didn't take it; saving one puts it in Google Calendar)",
-  'one Google did not take stays in Apple Calendar, and says what puts it there')
 eq(A.switchResultText({ ...res, toApple: 2, problem: 'Apple did not accept the password' }), 'Calendar settings saved · 2 items in Apple Calendar · stopped: Apple did not accept the password — the rest goes within minutes',
   'a run that stopped says why')
 eq(A.switchNeedsAttention({ ...res, problem: 'x' }), true, '…as a warning')
-eq([A.switchNeedsAttention({ ...res, toApple: 2 }), A.switchNeedsAttention({ ...res, foreign: 1 }), A.switchNeedsAttention({ ...res, failed: 1 })], [false, true, true],
+eq([A.switchNeedsAttention({ ...res, toApple: 2 }), A.switchNeedsAttention({ ...res, partial: true }), A.switchNeedsAttention({ ...res, failed: 1 })], [false, true, true],
   'a result with something left behind is a warning, not a plain success')
 
-console.log('\n== The browser asks before it makes a Google Calendar event (2b-2) ==')
+console.log('\n== No Google Calendar event is made any more (25.11.2026) ==')
 const read = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
-const linkBlock = read('src/features/calendar/api/linkBlockCalendarEvent.ts')
-eq(/if \(block\.google_calendar_event_id\) return 'linked'\n[^\n]*\n\s*if \(await appleAreaOf\(slotAreaInput\(block\)\)\) return 'not_linked'\n/.test(linkBlock)
-   && linkBlock.indexOf('appleAreaOf(') < linkBlock.indexOf('createCalendarEvent(token'), true, "a slot in an area on Apple never gets a Google Calendar event (asked before any create)")
-const series = read('src/features/calendar/api/scheduleSeriesCalendar.ts')
-const linkSeries = series.slice(series.indexOf('export async function linkScheduleSeries'), series.indexOf('export async function syncScheduleSeriesAfterSave'))
-eq(/if \(await appleAreaOf\(\{ category: row\.category, domain: row\.domain \}\)\) return 'not_linked'/.test(linkSeries)
-   && linkSeries.indexOf('appleAreaOf(') < linkSeries.indexOf('createSeriesEvent('), true, "…nor a repeating plan's series")
-eq((series.match(/await createSeriesEvent\(/g) || []).length, 1, "the series is made in that one place only")
+eq(['src/features/calendar/api/linkBlockCalendarEvent.ts', 'src/features/calendar/api/scheduleSeriesCalendar.ts', 'src/features/calendar/api/calendarApi.ts']
+  .map(f => fs.existsSync(path.join(__dirname, '..', f)) && /googleapis\.com\/calendar/.test(read(f))), [false, false, false],
+  'nothing in the browser calls Google Calendar (the link and series writers are gone; the sign-in api names no Calendar endpoint)')
 const settle = read('src/features/calendar/api/itemCalendar.ts')
 const appleSettle = settle.slice(settle.indexOf('async function settleItemApple'), settle.indexOf('export async function settleItemGoogle'))
 eq(appleSettle.indexOf('await drainTasks()') < appleSettle.indexOf('await drainICloudNow(') && /outcome\.calendar === 'linked' && google === 'calendar'/.test(appleSettle)
    && appleSettle.indexOf("outcome.calendar = now === side.area ? 'linked' : 'unknown'") < appleSettle.indexOf('google_sync_enabled: false'), true,
   'after a save in an Apple area: Google Tasks is sent first, then Apple; the Google Task goes only once the Apple copy is confirmed')
 const move = read('src/features/calendar/areas/areaMoveApi.ts')
-eq(/catch \(err\) \{\n\s*return putBack\(err\)\n\s*\}/.test(move) && /if \(toApple\.length && !toGoogle\.length && result\.toApple === 0 && !\(await anyInApple\(toApple\.map\(s => s\.area\)\)\)\) return putBack\(err\)/.test(move)
+eq(/catch \(err\) \{\n\s*return putBack\(err\)\n\s*\}/.test(move) && /if \(result\.toApple === 0 && !\(await anyInApple\(switches\.map\(s => s\.area\)\)\)\) return putBack\(err\)/.test(move)
    && move.indexOf('saveCalendarPrefsChanges(next, previous)') > 0 && /if \(error \|\| \(data \?\? \[\]\)\.length\) return true/.test(move), true,
   'a move that fails before anything moved puts the settings back; one that stopped part-way (some already in Apple) keeps the switch')
-eq(/if \(toApple\.length\) throw err\n\s*result\.problem = /.test(move), true, 'moving back to Google never waits on iCloud')
+eq(!/linkBlockCalendarEvent|linkScheduleSeries|runGoogleTasksSync|toGoogle/.test(move), true, 'an area move never writes Google Calendar (only Apple Calendar is left)')
 eq(/const items = appleRowsOf\(answer, \{ entity: side\.table === 'time_blocks' \? 'slot' : 'plan', id: side\.id \}, editedBlockId\)\n\s*let sent = await drainICloudNow\(\{ items \}\)/.test(appleSettle)
    && /for \(const wait of BUSY_WAITS_MS\) \{\n\s*if \(!sent\.busy\) break/.test(appleSettle) && /const BUSY_WAITS_MS = \[3000, 6000, 12000, 24000\]/.test(settle), true,
   'a save names its rows, so the server sends them first; while another run is sending, it asks again after 3, 6, 12 and 24 s (longer than a whole opening run)')

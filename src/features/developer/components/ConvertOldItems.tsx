@@ -2,19 +2,18 @@ import { useState } from 'react'
 import { ArrowRightLeft } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals'
 import { Button, Skeleton, ToneDot, Truncate, type Tone } from '../../../shared/ui'
-import { formatDate, formatDateTime } from '../../../shared/utils/dateFormat'
-import { useCalendarReadbackState, useConvertOldItems, useConvertPreview } from '../../items/useItems'
-import type { CalendarReadbackState, ConvertPreview } from '../../items/itemTypes'
+import { formatDate } from '../../../shared/utils/dateFormat'
+import { useConvertOldItems, useConvertPreview } from '../../items/useItems'
+import type { ConvertPreview } from '../../items/itemTypes'
 
 // Two parts of Settings → Subscriptions → Google for the one-item change
 // (owner, 15.10.2026; migration 155):
 // - "Convert old items": slots made before the change have no task, so Daily
 //   can't tick them. Nothing converts by itself — the button shows what would
 //   change first (counts and a few examples), and only "Convert" applies it;
-//   the hook reports the result with its own Undo. Nothing is deleted, and a
-//   slot's Google Calendar event stays its one Google entry.
-// - The line saying when changes made in Google Calendar were last read back
-//   (moved / renamed / deleted events), like the Google Tasks sync line.
+//   the hook reports the result with its own Undo. Nothing is deleted.
+// (Its second part — when Google Calendar changes were last read back — went
+// with Google Calendar, 25.11.2026.)
 
 export function ConvertOldItemsButton() {
   const [open, setOpen] = useState(false)
@@ -111,34 +110,7 @@ function ConvertPreviewBody({ preview, loading, error, onRetry }: {
           </ul>
         </div>
       )}
-      <p className="text-meta text-fg-muted">Nothing is deleted, and each slot keeps its Google Calendar event. The result offers Undo.</p>
+      <p className="text-meta text-fg-muted">Nothing is deleted, and each slot keeps its calendar event. The result offers Undo.</p>
     </div>
-  )
-}
-
-const READBACK_TONE = { never: 'neutral', ok: 'success', failed: 'danger' } as const
-
-function readbackHealth(s: CalendarReadbackState): { kind: keyof typeof READBACK_TONE; text: string } {
-  if (s.lastError) {
-    return {
-      kind: 'failed',
-      text: `Reading Google Calendar changes failed${s.lastRunAt ? ` ${formatDateTime(s.lastRunAt)}` : ''}: ${s.lastError}`
-        + (s.lastCleanAt ? ` · last good ${formatDateTime(s.lastCleanAt)}` : ''),
-    }
-  }
-  if (!s.lastCleanAt) return { kind: 'never', text: 'Google Calendar changes have not been read back yet' }
-  return { kind: 'ok', text: `Google Calendar changes read back ${formatDateTime(s.lastCleanAt)}` }
-}
-
-/** When the app last read back what changed in Google Calendar (moved, renamed, deleted events). */
-export function CalendarReadbackLine() {
-  const { data, error } = useCalendarReadbackState()
-  if (!data && !error) return null
-  const h = data ? readbackHealth(data) : { kind: 'failed' as const, text: `Couldn't read the Google Calendar read-back state: ${error?.message ?? ''}` }
-  return (
-    <p className="mt-2 flex items-start gap-1.5 text-meta text-fg-muted" role={h.kind === 'failed' ? 'alert' : undefined}>
-      <ToneDot tone={READBACK_TONE[h.kind]} className="mt-1 shrink-0" />
-      <Truncate lines={2} className="min-w-0 flex-1">{h.text}</Truncate>
-    </p>
   )
 }

@@ -1,20 +1,12 @@
 #!/usr/bin/env node
 /*
- * Verification — one item's Google Calendar event and the Calendar read-back
- * (migration 155): src/features/calendar/calendarEventRules.ts, against the
- * REAL un-mocked module via sucrase, plus static checks on the files that
- * must agree with it.
- *   1. the hand mirror in supabase/functions/google-tasks-sync/index.ts is
- *      identical to the src file;
+ * Verification — one item's calendar event (migration 155; Apple Calendar's events are built from it since Google
+ * Calendar went, 25.11.2026): src/features/calendar/calendarEventRules.ts, against the REAL un-mocked module via
+ * sucrase.
+ *   1. Google Calendar's half is gone: no mirror in google-tasks-sync, no PATCH or read-back helpers;
  *   2. "✓ " in the title of a done item, never twice, off again on reopen;
- *   3. a slot's event: all-day (end = the day after), Busy / Free, wall-clock
- *      times in a zone, a length crossing midnight, a nominal end;
- *   4. a Google event read back: wall clock in its zone (offsets, DST),
- *      length, all-day, Free, a cancelled instance's day, no "✓ ";
- *   5. the sync-token plan: a baseline with timeMin, then syncToken with no
- *      timeMin / timeMax / updatedMin / showDeleted, 410 = start over;
- *   6. google-tasks-sync's read-back: only stored ids, the token moves only
- *      when every change was applied, 410 → a new baseline.
+ *   3. a slot's event: all-day (end = the day after), Busy / Free, wall-clock times in a zone, a length crossing
+ *      midnight, a nominal end; Show As (193) and the calendar fields' allow-lists.
  *
  *   Run:  node scripts/verify-calendar-event-rules.cjs
  */
@@ -33,72 +25,46 @@ function check(name, cond, detail) {
 }
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
-const RULES_FILE = 'src/features/calendar/calendarEventRules.ts'
-const FUNCTION_FILE = 'supabase/functions/google-tasks-sync/index.ts'
-const START = '// <calendar-event-rules>'
-const END = '// </calendar-event-rules>'
-const block = (s) => { const a = s.indexOf(START); const b = s.indexOf(END); return a >= 0 && b > a ? s.slice(a, b) : null }
-const fn = read(FUNCTION_FILE)
-
-console.log('\n1 · The edge function carries the same rules')
-check('both files have the <calendar-event-rules> block', !!block(read(RULES_FILE)) && !!block(fn))
-check('google-tasks-sync mirror is identical to calendarEventRules.ts', block(read(RULES_FILE)) === block(fn), 'copy the block from the src file into the function')
-check('the function has exactly one block', fn.split(START).length === 2)
+console.log('\n1 · Google Calendar\'s half is gone (25.11.2026)')
+const fn = read('supabase/functions/google-tasks-sync/index.ts')
+check('google-tasks-sync carries no calendar rules, outbox drain or read-back',
+  !/calendar-event-rules|calendar-outbox-rules|calendar_outbox|google_calendar_sync_state|apply_calendar_readback|googleapis\.com\/calendar/.test(fn))
+check('the rules have no Google PATCH, reminders or read-back helper',
+  ['eventPatchFor', 'fullEventPatch', 'timePatch', 'withTimePatch', 'doneMarkPatch', 'googleReminders', 'readbackEvent', 'readbackPlan', 'isSyncTokenGone']
+    .every(k => !(k in R)))
+check('a slot\'s event carries no Google-only field (location, reminders)', (() => {
+  const b = R.blockEventBody({ date: '2026-11-12', start_time: '17:00', duration_minutes: 60, title: 'Gym', place: { name: 'Jernbanetorget' }, alerts: [10] }, { done: false, timeZone: 'Europe/Oslo' })
+  return !('location' in b) && !('reminders' in b)
+})())
 
 console.log('\n2 · "✓ " for a done item')
 check('done → "✓ Gym"', R.calendarTitle('Gym', true) === '✓ Gym')
 check('open → "Gym"', R.calendarTitle('Gym', false) === 'Gym')
 check('never twice', R.calendarTitle('✓ Gym', true) === '✓ Gym' && R.calendarTitle('✓ ✓Gym', true) === '✓ Gym')
 check('reopened → off again', R.calendarTitle('✓ Gym', false) === 'Gym')
-check('the read-back strips it', R.stripDoneMark('✓ Lunch with Ola') === 'Lunch with Ola' && R.stripDoneMark('  Plain ') === 'Plain')
+check('stripDoneMark takes it off', R.stripDoneMark('✓ Lunch with Ola') === 'Lunch with Ola' && R.stripDoneMark('  Plain ') === 'Plain')
 check('null title → empty', R.calendarTitle(null, false) === '')
 
 console.log('\n3 · A slot\'s event')
 const TZ = 'Europe/Oslo'
 const allDay = R.blockEventBody({ date: '2026-10-18', start_time: null, duration_minutes: 60, title: 'Water plants' }, { done: false, timeZone: TZ })
-check('no time → all-day: { date } to the day after (Google\'s end is exclusive)', eq(allDay.start, { date: '2026-10-18' }) && eq(allDay.end, { date: '2026-10-19' }))
+check('no time → all-day: { date } to the day after (DTEND is exclusive)', eq(allDay.start, { date: '2026-10-18' }) && eq(allDay.end, { date: '2026-10-19' }))
 check('…and Free', allDay.transparency === 'transparent')
 check('…across a month and a year end', eq(R.blockEventBody({ date: '2026-12-31', start_time: null, duration_minutes: 60, title: 'x' }, { done: false, timeZone: TZ }).end, { date: '2027-01-01' }))
 const busy = R.blockEventBody({ date: '2026-10-15', start_time: '17:30:00', duration_minutes: 60, title: 'Gym', busy: true }, { done: true, timeZone: TZ })
 check('a time with a length → Busy, wall clock in the zone', eq(busy.start, { dateTime: '2026-10-15T17:30:00', timeZone: TZ }) && eq(busy.end, { dateTime: '2026-10-15T18:30:00', timeZone: TZ }) && busy.transparency === 'opaque')
 check('…a done item\'s title has "✓ "', busy.summary === '✓ Gym')
 const free = R.blockEventBody({ date: '2026-10-15', start_time: '14:00', duration_minutes: R.NOMINAL_EVENT_MINUTES, title: 'Call bank', busy: false }, { done: false, timeZone: TZ })
-check('no length → Free, with the nominal 15-minute end (a zero-length event risks timeRangeEmpty)', free.transparency === 'transparent' && free.end.dateTime === '2026-10-15T14:15:00' && R.NOMINAL_EVENT_MINUTES === 15)
+check('no length → Free, with the nominal 15-minute end', free.transparency === 'transparent' && free.end.dateTime === '2026-10-15T14:15:00' && R.NOMINAL_EVENT_MINUTES === 15)
 check('a slot from before 155 (no busy) is Busy', R.blockEventBody({ date: '2026-10-15', start_time: '09:00', duration_minutes: 30, title: 'x' }, { done: false, timeZone: TZ }).transparency === 'opaque')
 const late = R.blockEventBody({ date: '2026-10-15', start_time: '23:00', duration_minutes: 120, title: 'Night', busy: true }, { done: false, timeZone: TZ })
 check('crossing midnight ends the next day', late.end.dateTime === '2026-10-16T01:00:00')
-check('DST day (25.10.2026): wall clock kept, Google converts in the zone', R.blockEventBody({ date: '2026-10-25', start_time: '02:30', duration_minutes: 60, title: 'x' }, { done: false, timeZone: TZ }).start.dateTime === '2026-10-25T02:30:00')
+check('DST day (25.10.2026): wall clock kept, the calendar converts in the zone', R.blockEventBody({ date: '2026-10-25', start_time: '02:30', duration_minutes: 60, title: 'x' }, { done: false, timeZone: TZ }).start.dateTime === '2026-10-25T02:30:00')
 check('no zone → Europe/Oslo (the server\'s)', R.blockEventBody({ date: '2026-10-15', start_time: '09:00', duration_minutes: 30, title: 'x' }, { done: false, timeZone: '' }).start.timeZone === 'Europe/Oslo')
 check('no usable day → no event', R.blockEventBody({ date: 'soon', start_time: '09:00', duration_minutes: 30, title: 'x' }, { done: false, timeZone: TZ }) === null)
 check('a length over a day is capped at 24 h', R.blockEventBody({ date: '2026-10-15', start_time: '09:00', duration_minutes: 5000, title: 'x' }, { done: false, timeZone: TZ }).end.dateTime === '2026-10-16T09:00:00')
 
-console.log('\n3b · A done / reopen push is the title ONLY (never the day back over a move made in Google)')
-check('eventPatchFor(body, \'title\') carries the summary and nothing else', eq(Object.keys(R.eventPatchFor(busy, 'title')), ['summary'])
-  && R.eventPatchFor(busy, 'title').summary === '✓ Gym')
-check('…no start, end or transparency in it', !('start' in R.eventPatchFor(busy, 'title')) && !('end' in R.eventPatchFor(busy, 'title')) && !('transparency' in R.eventPatchFor(busy, 'title')))
-// A whole-event PATCH also carries the place (186): none is null, so a place taken off in the app leaves Google.
-// …and its reminders (193): an item with no alerts of its own puts the calendar's default back.
-const busyPatch = { ...busy, start: { ...busy.start, date: null }, end: { ...busy.end, date: null }, location: null, reminders: { useDefault: true, overrides: [] } }
-check('\'all\' (and a missing or unknown value — older queue rows) is the whole event', eq(R.eventPatchFor(busy, 'all'), busyPatch) && eq(R.eventPatchFor(busy, undefined), busyPatch) && eq(R.eventPatchFor(busy, 'x'), busyPatch))
-
-console.log('\n3c · A PATCH clears the date form it does not use (Google merges objects; start and end must both be timed or both all-day)')
-{
-  const day = R.blockEventBody({ date: '2026-10-21', start_time: null, duration_minutes: 60, title: 'Trip' }, { done: false, timeZone: 'Europe/Oslo' })
-  const timed = R.blockEventBody({ date: '2026-10-21', start_time: '18:45', duration_minutes: 120, title: 'Match' }, { done: false, timeZone: 'Europe/Oslo' })
-  check('all-day → its date, with dateTime and timeZone null (a timed event turned all-day)',
-    eq(R.eventPatchFor(day, 'all').start, { date: '2026-10-21', dateTime: null, timeZone: null }) && eq(R.eventPatchFor(day, 'all').end, { date: '2026-10-22', dateTime: null, timeZone: null }))
-  check('timed → its dateTime and zone, with date null (an all-day event given a time)',
-    eq(R.eventPatchFor(timed, 'all').start, { dateTime: '2026-10-21T18:45:00', timeZone: 'Europe/Oslo', date: null }))
-  check('an insert keeps the plain body (no nulls)', eq(day.start, { date: '2026-10-21' }) && !('date' in timed.start) && !('dateTime' in day.start))
-  check('withTimePatch keeps every other field (a series body)', eq(R.withTimePatch({ summary: 'S', recurrence: ['RRULE:FREQ=WEEKLY'], start: { date: '2026-10-21' }, end: { date: '2026-10-22' } }).recurrence, ['RRULE:FREQ=WEEKLY']))
-  const sched = read('src/features/daily/api/scheduleApi.ts')
-  const series = read('src/features/calendar/api/scheduleSeriesCalendar.ts')
-  check('every browser PATCH of a slot or series goes through the patch form (scheduleApi, itemCalendar, the series push)',
-    /updateCalendarEvent\(token, 'primary', eventId, \{ \.\.\.eventPatchFor\(body, 'all'\) \}\)/.test(sched)
-    && /eventPatchFor\(body, fields\)/.test(read('src/features/calendar/api/itemCalendar.ts'))
-    && !/updateCalendarEvent\([^)]*\{ \.\.\.plan\.body \}/.test(series))
-}
-console.log('\n3d · Show As, Alert and Second Alert on Google (193)')
+console.log('\n3b · Show As and the calendar fields (193)')
 {
   const at = (x) => R.blockEventBody({ date: '2026-11-12', start_time: '17:00', duration_minutes: 60, title: 'Gym', busy: true, ...x }, { done: false, timeZone: 'Europe/Oslo' })
   const day = (x) => R.blockEventBody({ date: '2026-11-12', start_time: null, duration_minutes: 60, title: 'Trip', ...x }, { done: false, timeZone: 'Europe/Oslo' })
@@ -107,17 +73,6 @@ console.log('\n3d · Show As, Alert and Second Alert on Google (193)')
   check('no Show As (every item before 193): Busy with a length, Free without and all day — as before', at({}).transparency === 'opaque'
     && at({ busy: false }).transparency === 'transparent' && day({}).transparency === 'transparent')
   check('a Show As that is no choice reads as not set', at({ show_as: 'BUSY' }).transparency === 'opaque' && at({ busy: false, show_as: 'tentative' }).transparency === 'transparent')
-  check('alerts → popup reminders, minutes before the start, in order', eq(at({ alerts: [60, 10] }).reminders, { useDefault: false, overrides: [{ method: 'popup', minutes: 60 }, { method: 'popup', minutes: 10 }] }))
-  check('none of its own → no reminders field on an insert (Google\'s default, as before)', !('reminders' in at({})) && !('reminders' in at({ alerts: null })))
-  check('"None" → no reminders at all (useDefault false, no overrides)', eq(at({ alerts: [] }).reminders, { useDefault: false, overrides: [] }))
-  check('all day: 1 day / 2 days / a week before at 09:00 = 900 / 2340 / 9540 minutes before midnight; "on the day" can\'t be said and is left out',
-    eq(day({ alerts: [1440, 0] }).reminders.overrides, [{ method: 'popup', minutes: 900 }]) && eq(day({ alerts: [2880, 10080] }).reminders.overrides.map(o => o.minutes), [2340, 9540]))
-  check('hostile alerts read as none of its own: a negative one, three, a repeat, text, one off the list', [[-5], [5, 10, 15], [10, 10], ['10'], [7], 'x', { 0: 5 }]
-    .every(a => !('reminders' in at({ alerts: a }))))
-  check('a whole-event PATCH carries its own reminders; none of its own → the default with no overrides (alerts taken off leave Google)',
-    eq(R.fullEventPatch(at({ alerts: [30] })).reminders, { useDefault: false, overrides: [{ method: 'popup', minutes: 30 }] })
-    && eq(R.fullEventPatch(at({})).reminders, { useDefault: true, overrides: [] }) && !('reminders' in R.eventPatchFor(at({ alerts: [30] }), 'title')))
-  check('the default is a fresh object each time (a caller can\'t change the shared one)', R.fullEventPatch(at({})).reminders !== R.fullEventPatch(at({})).reminders && R.DEFAULT_REMINDERS.overrides.length === 0)
   check('allow-lists: Apple\'s alerts, travel times, a link of at most 2 048 characters', eq(R.ALERT_MINUTES, [0, 5, 10, 15, 30, 60, 120, 1440, 2880, 10080])
     && eq(R.TRAVEL_MINUTES, [0, 5, 15, 30, 60, 90, 120]) && R.ITEM_URL_MAX === 2048 && R.MAX_ITEM_ALERTS === 2)
   check('eventUrl takes https links only, never a line break, a quote, a space, a user name or an over-long one',
@@ -126,95 +81,7 @@ console.log('\n3d · Show As, Alert and Second Alert on Google (193)')
       'https://example.com@evil.example/', 'javascript:alert(1)', 'https://[::1]/', 'https://example.com/%zz', `https://example.com/${'a'.repeat(2048)}`, 'https://example.com/\\x',
       ' https://example.com', 'https://example.com/<b>', 'HTTPS://example.com', 5, null ].every(u => R.eventUrl(u) === null))
   check('eventTravel: 0 or an allow-listed time, else automatic (null)', R.eventTravel(0) === 0 && R.eventTravel(90) === 90 && [-1, 45, '30', null, undefined, 1e9].every(t => R.eventTravel(t) === null))
-  const back = R.readbackEvent({ id: 'e1', start: { date: '2026-11-12' }, end: { date: '2026-11-13' }, transparency: 'opaque' }, 'Europe/Oslo')
-  check('the read-back keeps an event\'s Show As, all day too (busy still false there, as since 155)', back.showAs === 'busy' && back.busy === false
-    && R.readbackEvent({ id: 'e2', start: { dateTime: '2026-11-12T17:00:00+01:00' }, end: { dateTime: '2026-11-12T18:00:00+01:00' }, transparency: 'transparent' }, 'Europe/Oslo').showAs === 'free')
 }
-
-check('doneMarkPatch: only the summary, with or without "✓ "', eq(R.doneMarkPatch('Gym', true), { summary: '✓ Gym' }) && eq(R.doneMarkPatch('✓ Gym', false), { summary: 'Gym' }))
-const itemCal = read('src/features/calendar/api/itemCalendar.ts')
-check('the browser\'s done / reopen push sends the title only (refreshTaskEventSoon, a repeat\'s day done / undone)',
-  /pushBlockCalendarEvent\(block\.id, 'title'\)/.test(itemCal) && (itemCal.match(/pushBlockCalendarEvent\(answer\.blockId, 'title'\)/g) ?? []).length === 2
-  && /eventPatchFor\(body, fields\)/.test(itemCal))
-check('the server\'s queued push sends what the row asked for (payload.fields)', /eventPatchFor\(body, row\.payload\?\.fields\)/.test(fn))
-const mig = read('supabase/migrations/155_one_item.sql')
-check('the done mark queues a title-only request; a slot change queues the whole event; merged, \'all\' wins',
-  /jsonb_build_object\('fields', 'title', 'title', b\.title, 'date', b\.date, 'done'/.test(mig)
-  && /jsonb_build_object\('fields', 'all', 'title', new\.title/.test(mig)
-  && /or coalesce\(excluded\.payload ->> 'fields', 'all'\) = 'all' then 'all' else 'title' end/.test(mig))
-
-console.log('\n4 · A Google event read back')
-const moved = R.readbackEvent({ id: 'evLunch', status: 'confirmed', summary: '✓ Lunch', start: { dateTime: '2026-10-23T10:30:00Z', timeZone: 'Europe/Oslo' }, end: { dateTime: '2026-10-23T12:00:00Z' }, updated: '2026-10-15T09:00:00.000Z' }, 'Europe/Oslo')
-check('a UTC instant reads as the event zone\'s wall clock (12:30 in Oslo, summer time)', moved.date === '2026-10-23' && moved.time === '12:30:00', JSON.stringify(moved))
-check('…its length from the two instants (90 min), Busy by default, no "✓ "', moved.minutes === 90 && moved.busy && moved.title === 'Lunch' && !moved.allDay)
-check('…its updated time kept (the stale check)', moved.updated === '2026-10-15T09:00:00.000Z')
-const winter = R.readbackEvent({ id: 'w', start: { dateTime: '2026-11-02T08:00:00+01:00' }, end: { dateTime: '2026-11-02T09:00:00+01:00' } }, 'Europe/Oslo')
-check('an offset date-time in winter (no event zone → the calendar\'s)', winter.date === '2026-11-02' && winter.time === '08:00:00' && winter.minutes === 60)
-const otherZone = R.readbackEvent({ id: 'ny', start: { dateTime: '2026-10-23T18:00:00-04:00', timeZone: 'America/New_York' }, end: { dateTime: '2026-10-23T19:00:00-04:00' } }, 'Europe/Oslo')
-check('an event in another zone reads in ITS zone', otherZone.time === '18:00:00' && otherZone.date === '2026-10-23')
-const ad = R.readbackEvent({ id: 'ad', summary: 'Pack', start: { date: '2026-10-24' }, end: { date: '2026-10-25' }, transparency: 'transparent' }, 'Europe/Oslo')
-check('all-day: the date, no time, Free', ad.allDay && ad.date === '2026-10-24' && ad.time === null && !ad.busy && ad.minutes === 1440)
-const freeEv = R.readbackEvent({ id: 'f', start: { dateTime: '2026-10-23T14:00:00+02:00' }, end: { dateTime: '2026-10-23T14:15:00+02:00' }, transparency: 'transparent' }, 'Europe/Oslo')
-check('transparent → busy false', freeEv.busy === false && freeEv.minutes === 15)
-const gone = R.readbackEvent({ id: 'evP1_20261028T153000Z', status: 'cancelled', recurringEventId: 'evP1', originalStartTime: { dateTime: '2026-10-28T15:30:00Z', timeZone: 'Europe/Oslo' } }, 'Europe/Oslo')
-check('a cancelled instance: its series and its day (only id, recurringEventId, originalStartTime are promised)',
-  gone.status === 'cancelled' && gone.seriesId === 'evP1' && gone.originalDate === '2026-10-28' && gone.title === null)
-check('a cancelled one-off has only its id', eq(R.readbackEvent({ id: 'x', status: 'cancelled' }, TZ).seriesId, null))
-const late2 = R.readbackEvent({ id: 'l', start: { dateTime: '2026-10-23T22:30:00Z' }, end: { dateTime: '2026-10-23T23:30:00Z' } }, 'Europe/Oslo')
-check('late UTC is the next day in Oslo', late2.date === '2026-10-24' && late2.time === '00:30:00')
-const adInstance = R.readbackEvent({ id: 's_20261025', recurringEventId: 's', originalStartTime: { date: '2026-10-25' }, start: { date: '2026-10-26' }, end: { date: '2026-10-27' } }, TZ)
-check('an all-day series\' moved day: originalStartTime.date', adInstance.originalDate === '2026-10-25' && adInstance.date === '2026-10-26')
-check('no id → nothing', R.readbackEvent({ status: 'confirmed' }, TZ) === null)
-
-console.log('\n5 · The sync-token plan')
-check('no token → a baseline', eq(R.readbackPlan(null), { mode: 'baseline' }) && eq(R.readbackPlan({ sync_token: '' }), { mode: 'baseline' }))
-check('a token → incremental', eq(R.readbackPlan({ sync_token: 'tok' }), { mode: 'incremental', syncToken: 'tok' }))
-const now = Date.parse('2026-10-15T12:00:00Z')
-const base = R.readbackListParams({ mode: 'baseline' }, now)
-check('the baseline reads from 7 days back, 2500 a page', base.timeMin === '2026-10-08T12:00:00.000Z' && base.maxResults === '2500' && !('syncToken' in base))
-const inc = R.readbackListParams({ mode: 'incremental', syncToken: 'tok' }, now, 'page2')
-check('incremental: syncToken + pageToken, none of timeMin/timeMax/updatedMin/orderBy/q (Google: 400 with a syncToken)',
-  inc.syncToken === 'tok' && inc.pageToken === 'page2' && !['timeMin', 'timeMax', 'updatedMin', 'orderBy', 'q'].some(k => k in inc))
-check('showDeleted is never sent (it may not be false with a syncToken; the same set both times)', !('showDeleted' in inc) && !('showDeleted' in base))
-check('singleEvents is never sent (a series comes once; a moved day as its own exception)', !('singleEvents' in inc) && !('singleEvents' in base))
-check('410 = the token is gone; 404 / 500 are not', R.isSyncTokenGone(410) && !R.isSyncTokenGone(404) && !R.isSyncTokenGone(500) && !R.isSyncTokenGone(null))
-
-console.log('\n6 · google-tasks-sync\'s read-back')
-const rb = fn.slice(fn.indexOf('async function readCalendarChanges('), fn.indexOf('// ── Handler ──'))
-check('it runs BEFORE the calendar outbox (a move made in Google reaches the slot before the drain pushes it)',
-  /readback = await readCalendarChanges\(access_token, userId\)/.test(fn) && fn.indexOf('readCalendarChanges(access_token') < fn.indexOf('calendar = await drainCalendarOutbox(access_token'))
-check('it reads only the primary calendar', /\/calendars\/primary\/events\?/.test(fn))
-check('410 → a new baseline in the same run (once)', /isSyncTokenGone\(res\.status\) && plan\.mode === 'incremental' && !reset/.test(rb) && /plan = \{ mode: 'baseline' \}/.test(rb))
-check('a baseline applies nothing (only incremental items are kept)', /if \(plan\.mode === 'incremental'\) items\.push/.test(rb))
-check('only events a slot or plan of this account stores are applied',
-  /from\('time_blocks'\)\.select\('google_calendar_event_id, time_zone'\)\.eq\('user_id', userId\)\.in\('google_calendar_event_id', chunk\)/.test(rb)
-  && /from\('schedule_blocks'\)\.select\('google_calendar_event_id, time_zone, google_calendar_time_zone'\)\.eq\('user_id', userId\)\.in\('google_calendar_event_id', chunk\)/.test(rb)
-  && /if \(!ours\.has\(c\.id\) && !\(c\.seriesId && ours\.has\(c\.seriesId\)\)\) continue/.test(rb))
-check('each change is read on its item\'s own zone (183): a slot\'s, a series day\'s plan\'s',
-  /zones\.set\(r\.google_calendar_event_id, itemTimeZone\(r\.time_zone\)\)/.test(rb)
-  && /const itemZone = zones\.get\(x\.c\.id\) \?\? \(x\.c\.seriesId \? zones\.get\(x\.c\.seriesId\) : undefined\)/.test(rb)
-  && /readbackEvent\(x\.e, zone, itemZone\)/.test(rb))
-// 183: the item's zone wins over the event's own and the calendar's.
-{
-  const istanbul = R.readbackEvent({ id: 'i', start: { dateTime: '2026-11-12T14:00:00Z', timeZone: 'Europe/Oslo' }, end: { dateTime: '2026-11-12T15:00:00Z' } }, 'Europe/Oslo', 'Europe/Istanbul')
-  check('an item in Istanbul moved in Google to 14:00 UTC reads 17:00 on its own clock', istanbul.date === '2026-11-12' && istanbul.time === '17:00:00' && istanbul.minutes === 60)
-  const late = R.readbackEvent({ id: 'l', start: { dateTime: '2026-11-12T22:30:00Z' }, end: { dateTime: '2026-11-12T23:00:00Z' } }, 'Europe/Oslo', 'Asia/Tokyo')
-  check('…its day too (22:30 UTC is the next morning in Tokyo)', late.date === '2026-11-13' && late.time === '07:30:00')
-  const day = R.readbackEvent({ id: 's_1', recurringEventId: 's', originalStartTime: { dateTime: '2026-11-12T22:30:00Z', timeZone: 'UTC' }, start: { dateTime: '2026-11-13T00:30:00Z' }, end: { dateTime: '2026-11-13T01:30:00Z' } }, 'Europe/Oslo', 'Asia/Tokyo')
-  check('a day of a series: its original day on the plan\'s clock, not the zone Google wrote', day.originalDate === '2026-11-13')
-  const forged = R.readbackEvent({ id: 'f', start: { dateTime: '2026-11-12T14:00:00Z' }, end: { dateTime: '2026-11-12T15:00:00Z' } }, 'Europe/Oslo', 'Europe/Oslo\r\nX:1')
-  check('a zone that is no zone name reads on the home zone', forged.time === '15:00:00')
-  check('itemTimeZone: a real zone, else the home zone', R.itemTimeZone('America/New_York') === 'America/New_York' && R.itemTimeZone(' Europe/Istanbul ') === 'Europe/Istanbul'
-    && R.itemTimeZone('Not/AZone') === 'Europe/Oslo' && R.itemTimeZone('Europe/Oslo;X') === 'Europe/Oslo' && R.itemTimeZone(null) === 'Europe/Oslo' && R.itemTimeZone('x'.repeat(65)) === 'Europe/Oslo')
-  const body = R.blockEventBody({ date: '2026-11-12', start_time: '17:00', duration_minutes: 60, title: 'Gym' }, { done: false, timeZone: 'Europe/Oslo\r\nATTENDEE:mailto:x@example.com' })
-  check('blockEventBody never carries a zone that is no zone name', body.start.timeZone === 'Europe/Oslo' && body.end.timeZone === 'Europe/Oslo')
-}
-check('each change goes through apply_calendar_readback with this user', /rpc\('apply_calendar_readback', \{ p_user: userId, p_event: c \}\)/.test(rb))
-check('the token moves only when every change was applied', /if \(failures\) \{[\s\S]*?return summary\s*\}\s*await record\(\{\s*sync_token: nextSyncToken/.test(rb))
-check('no token on the last page → said, nothing moves', /if \(!nextSyncToken\) \{/.test(rb))
-check('a missing state table (before 155) is skipped quietly', /isMissingTableError\(stateError\)\) return \{ \.\.\.summary, skipped: 'not_migrated' \}/.test(rb))
-check('the read-back state is written for the user only (service role, upsert on user_id)', /from\('google_calendar_sync_state'\)\s*\.upsert\(\{ user_id: userId/.test(rb))
-check('its trouble is reported (last_error) under "Calendar changes"', /readback: 'Calendar changes'/.test(fn) && /reported\.readback = readbackProblem/.test(fn))
 
 console.log(`\n${passed} passed, ${failed} failed`)
-process.exit(failed ? 1 : 0)
+if (failed) process.exit(1)

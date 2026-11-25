@@ -184,7 +184,7 @@ interface StopSnapshot { tasks: DeletedRows | null; plans: DeletedRows | null; f
 /**
  * Unsubscribe, and Unfollow (owner, 25.10.2026: "When unsubscribed from a team
  * it does not remove the events.. Now I have duplicates"): the coming matches
- * the team's subscription put in your day leave it — their Google Calendar
+ * the team's subscription put in your day leave it — their Apple Calendar
  * events too, through THE task delete — and so do their records, so
  * subscribing again adds them again. It asks first, then "Unsubscribed from
  * Galatasaray · 5 matches removed from your day · Undo"; Undo puts back the
@@ -236,7 +236,7 @@ export function useStopSubscription() {
     const removed = `${matchCount(leaving.length)} removed from your day`
     await confirmDelete<StopSnapshot>({
       title: unfollow ? `Unfollow ${f.name}?` : `Unsubscribe from ${f.name}?`,
-      message: `Its ${matchCount(leaving.length)} coming up ${leaving.length === 1 ? 'leaves' : 'leave'} your day (and Google Calendar). Matches you planned yourself stay.`,
+      message: `Its ${matchCount(leaving.length)} coming up ${leaving.length === 1 ? 'leaves' : 'leave'} your day (and Apple Calendar). Matches you planned yourself stay.`,
       confirmLabel: unfollow ? 'Unfollow' : 'Unsubscribe',
       remove: async () => {
         // Off first, so no run of the subscription adds them back meanwhile.

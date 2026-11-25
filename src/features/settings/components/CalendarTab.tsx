@@ -15,17 +15,17 @@ import { CALENDAR_SETTINGS_BOARD, type CalendarSettingsSection } from '../settin
 // Settings → Calendar (owner, 29.10.2026: "Add those to the settings as well,
 // and other settings that you are coding but I couldn't change without asking
 // you"). The app's calendars in Apple Calendar, one per area: name, emoji,
-// colour, default alert, on/off, and where the area's events show — Google
-// Calendar or Apple Calendar (2b-2: switching moves them, AreaSwitchDialog).
+// colour, default alert and on/off (2b-2: turning one on moves its items into
+// Apple Calendar, AreaSwitchDialog; Apple is the only calendar since 208).
 // docs/features/calendar-plan.md. A short view first (owner, 10.11.2026: "a
 // short view first, with the details when a part is opened"): one line per
-// area — its colour, emoji, name, where its events show and its state — that
+// area — its colour, emoji, name and its state — that
 // opens its settings; the same for every Apple Calendar event. Then the item
 // screen's own choice: whether every row shows where its field goes.
 
 const sameDoc = (a: CalendarPrefs, b: CalendarPrefs) => JSON.stringify(a) === JSON.stringify(b)
 
-function AreaRow({ areaKey, area, locked, ready, failure, appleAvailable, open, onOpen, onChange }: {
+function AreaRow({ areaKey, area, locked, ready, icloudOff, failure, open, onOpen, onChange }: {
   areaKey: AreaKey
   area: CalendarArea
   /** Its settings show (one area at a time). */
@@ -34,9 +34,9 @@ function AreaRow({ areaKey, area, locked, ready, failure, appleAvailable, open, 
   /** The saved settings aren't loaded yet: an edit now would be made on the defaults. */
   locked: boolean
   ready: boolean | undefined
+  /** iCloud says it is not connected: an area in use says so, never "Apple Calendar". */
+  icloudOff: boolean
   failure: string | undefined
-  /** iCloud is connected: Apple Calendar can be picked. */
-  appleAvailable: boolean
   onChange: (next: CalendarArea) => void
 }) {
   const problem = areaProblem(area)
@@ -52,7 +52,7 @@ function AreaRow({ areaKey, area, locked, ready, failure, appleAvailable, open, 
         <span aria-hidden className="h-3 w-3 shrink-0 rounded-full" style={{ background: area.color }} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="text-meta font-semibold text-fg-2">{label}</span>
-          <Truncate className="text-meta text-fg-muted">{`${area.emoji ? `${area.emoji} ` : ''}${area.name} · ${area.enabled ? (area.app === 'apple' ? 'Apple Calendar' : 'Google Calendar') : 'not in use'}`}</Truncate>
+          <Truncate className="text-meta text-fg-muted">{`${area.emoji ? `${area.emoji} ` : ''}${area.name} · ${!area.enabled ? 'not in use' : icloudOff ? 'iCloud not connected' : 'Apple Calendar'}`}</Truncate>
         </span>
         {!area.enabled ? <TonePill tone="neutral">Off</TonePill>
           : failure ? <TonePill tone="danger">Not made</TonePill>
@@ -94,14 +94,6 @@ function AreaRow({ areaKey, area, locked, ready, failure, appleAvailable, open, 
           </label>
         )}
         <label className="flex items-center gap-1.5 text-meta text-fg-2">
-          Shows in
-          <select className="select w-auto" value={area.app} disabled={off} aria-label={`${label}: where its events show`}
-            onChange={e => onChange({ ...area, app: e.target.value === 'apple' ? 'apple' : 'google' })}>
-            <option value="google">Google Calendar</option>
-            <option value="apple" disabled={!appleAvailable && area.app !== 'apple'}>Apple Calendar</option>
-          </select>
-        </label>
-        <label className="flex items-center gap-1.5 text-meta text-fg-2">
           <input type="checkbox" className="h-4 w-4 accent-accent-500" checked={area.enabled} disabled={locked} onChange={e => onChange({ ...area, enabled: e.target.checked })} />
           In use
         </label>
@@ -117,7 +109,7 @@ const NOTES_LABEL: Record<NotesMode, string> = {
   'notes+link': 'Your notes + a link to the app', notes: 'Your notes only', link: 'A link to the app only', none: 'No notes',
 }
 
-/** For every event in Apple Calendar (2b-3): what its notes carry, and an all-day event's alert. Google's events keep theirs. */
+/** For every event in Apple Calendar (2b-3): what its notes carry, and an all-day event's alert. */
 function EveryEventRow({ notes, allDayAlert, locked, open, onOpen, onChange }: {
   notes: NotesMode
   allDayAlert: AllDayAlert | null
@@ -192,8 +184,8 @@ function AreasCard() {
   const missing = AREA_KEYS.some(k => form.areas[k].enabled && !ready(k))
   const failures = new Map((setup.data?.areas ?? []).filter(a => a.state === 'failed').map(a => [a.area, a.detail ?? 'iCloud did not take it']))
   const busy = save.isPending || setup.isPending
-  // An area whose events change app (2b-2): its move is asked about first.
-  const switches = loaded ? areaSwitches(prefs, readCalendarPrefs(form)) : []
+  // An area turned on while iCloud is connected (2b-2): moving its items into Apple Calendar is asked about first.
+  const switches = loaded && connected ? areaSwitches(prefs, readCalendarPrefs(form)) : []
   const [switching, setSwitching] = useState<AreaSwitch[] | null>(null)
   // The short view: one part's settings open at a time.
   const [opened, setOpened] = useState<AreaKey | 'every' | null>(null)
@@ -230,8 +222,8 @@ function AreasCard() {
         <>
           <ul className="flex flex-col">
             {AREA_KEYS.map(k => (
-              <AreaRow key={k} areaKey={k} area={form.areas[k]} locked={!loaded} ready={connected ? ready(k) : undefined}
-                failure={failures.get(k)} appleAvailable={connected} open={opened === k} onOpen={() => openPart(k)}
+              <AreaRow key={k} areaKey={k} area={form.areas[k]} locked={!loaded} ready={connected ? ready(k) : undefined} icloudOff={status.data?.connected === false}
+                failure={failures.get(k)} open={opened === k} onOpen={() => openPart(k)}
                 onChange={next => setEdits(e => ({ ...e, [k]: next }))} />
             ))}
           </ul>
@@ -248,8 +240,8 @@ function AreasCard() {
                 <Button size="sm" onClick={() => status.refetch()}>Retry</Button>
               </span>
             ) : status.data?.connected === false && (
-              <p className="text-meta text-fg-muted">
-                To make them in Apple Calendar, connect iCloud in <Link to={{ search: '?tab=subscriptions' }} className="text-accent-600 underline">Settings → Subscriptions</Link>.
+              <p role="status" className="text-meta text-warn">
+                iCloud not connected: nothing reaches Apple Calendar, and items in an area in use wait in the app. Connect iCloud in <Link to={{ search: '?tab=subscriptions' }} className="text-accent-600 underline">Settings → Subscriptions</Link>.
               </p>
             )}
           </div>
@@ -275,7 +267,7 @@ function ItemScreenCard() {
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-body font-medium text-fg-2">Show where each field goes</p>
-          <p className="text-meta text-fg-muted">Apple's, Google's or the app's mark on each row. The Calendar row always shows its own.</p>
+          <p className="text-meta text-fg-muted">Apple's, Google's or the app's mark on each row (Google: Google Tasks). The Calendar row always shows its own.</p>
         </div>
         <Switch on={on} label="Show where each field goes" disabled={!loaded || save.isPending}
           onChange={showMarks => save.mutate({ base: prefs, showMarks })} />

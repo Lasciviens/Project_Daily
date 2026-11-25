@@ -209,8 +209,13 @@ check('hero: splits wherever the board places it from step 2 (full band at 1280,
 for (const [name, board] of [['Month', D.MONTH_BOARD]]) {
   check(`${name}: the picker is always shown`, [1, 2, 3, 4].every(s => B.keysAt(board, s).includes('picker') || B.keysAt(board, s).includes('pair')))
   check(`${name}: steps 3–4 show the picked day AND upcoming together`, [3, 4].every(s => ['picked', 'upcoming'].every(k => B.keysAt(board, s).includes(k))))
-  check(`${name}: picker track capped at 40rem`, [2, 3, 4].every(s => B.resolveBoardLayout(board, s).main === '40rem'))
-  check(`${name} at 2450: at most one side track left empty`, W.monitor - fill(W.monitor, 4, '40rem') <= 384, `left ${W.monitor - fill(W.monitor, 4, '40rem')}px`)
+  // owner, 25.11.2026: "i want Bigger calendar … It should be well visible." — the calendar takes the page's width.
+  check(`${name}: the calendar's track has no cap (it takes what the side panes leave)`, [2, 3, 4].every(s => B.resolveBoardLayout(board, s).main === D.PICKER_MAIN) && parseFloat(D.PICKER_MAIN) >= 131)
+  for (const [px, tracks, at] of [[W.laptop, 2, 1469], [1795 - 232 - 64, 2, 1795], [W.fhd, 3, 1920], [W.monitor, 3, 2450]]) {
+    const cal = B.columnWidthPx(px, B.resolveBoardLayout(board, B.pageStepForWidth(px)), 0, 1)
+    check(`${name} at ${at}: the board fills the page, the calendar is the rest (${Math.round(cal)}px ≥ 44rem)`,
+      Math.abs(fill(px, tracks, D.PICKER_MAIN) - px) < 1 && cal >= 44 * 16)
+  }
 }
 const groupsAt = (s) => B.keysAt(D.TASKS_BOARD, s).flatMap(k => D.TASK_SECTION_GROUPS[k])
 for (const s of [1, 2, 3, 4]) {
@@ -233,13 +238,13 @@ check('Tasks: groups read left to right by time from step 2', [2, 3, 4].every(s 
       && !fs.existsSync(path.join(__dirname, '../src/features/daily/components/WeekWidget.tsx')))
   check('Personal opens a view only from its own state: no ?tab= / ?mode= / saved tab to fall back from (a ?date= opens that day\'s Today view)',
     !/searchParams\.get\('(?:tab|mode|view)'\)/.test(daily) && !/useRemembered|localStorage/.test(daily) && /searchParams\.get\('date'\)/.test(daily))
-  check('the Google calendar choice moved with the Week card to the Month card (never lost)',
-    /<CalendarFilter\b/.test(src('src/features/daily/components/MonthWidget.tsx')) && /setSelectedCalendarIds/.test(src('src/features/calendar/components/CalendarFilter.tsx')))
+  check('the Month card has no Google calendar choice any more (Google Calendar went, 25.11.2026)',
+    !/CalendarFilter/.test(src('src/features/daily/components/MonthWidget.tsx')) && !fs.existsSync(path.join(__dirname, '../src/features/calendar/components/CalendarFilter.tsx')))
 }
 
 console.log('boardWidthRem (page headers stop where the board stops)')
 check('one track → no cap', B.boardWidthRem(D.MONTH_BOARD, 1) === null && B.boardWidthRem(HOME_BOARD, 1) === null)
-check('Month: 40rem picker + one side = 65rem; + three sides = 115rem', [D.MONTH_BOARD].every(b => B.boardWidthRem(b, 2) === 65 && B.boardWidthRem(b, 4) === 115))
+check('Month: the uncapped calendar + one side, + two sides at 1920 and 2450', B.boardWidthRem(D.MONTH_BOARD, 2) === parseFloat(D.PICKER_MAIN) + 25 && B.boardWidthRem(D.MONTH_BOARD, 4) === parseFloat(D.PICKER_MAIN) + 50)
 check('Tasks: 42rem main → 67 / 92 / 117rem', B.boardWidthRem(D.TASKS_BOARD, 2) === 67 && B.boardWidthRem(D.TASKS_BOARD, 3) === 92 && B.boardWidthRem(D.TASKS_BOARD, 4) === 117)
 check('Day at step 4 is the full 131rem board', B.boardWidthRem(D.DAY_BOARD, 4) === B.BOARD_MAX_REM)
 check('a non-rem main cap gives no cap', B.boardWidthRem({ 1: ['a'], 2: { main: '50%', columns: [['a'], []] } }, 2) === null)

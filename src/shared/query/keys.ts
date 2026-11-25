@@ -12,7 +12,6 @@ export const qk = {
   items: {
     all: ['items'] as const,
     convertPreview: () => ['items', 'convert-preview'] as const,
-    calendarReadback: () => ['items', 'calendar-readback'] as const,
   },
   tasks: {
     all: ['tasks'] as const,
@@ -44,6 +43,8 @@ export const qk = {
     all: ['schedule'] as const,
     day: (date: string) => ['schedule', 'day', date] as const,
     trainingRange: (from: string, to: string) => ['schedule', 'training-range', from, to] as const,
+    /** Every slot in a range, narrow columns (the month calendar's plans line). */
+    range: (from: string, to: string) => ['schedule', 'range', from, to] as const,
     /** A training repeat's days that are tasks on their day (156), in a range. */
     trainingDays: (from: string, to: string) => ['schedule', 'training-days', from, to] as const,
     templates: () => ['schedule', 'blocks'] as const,
@@ -52,14 +53,7 @@ export const qk = {
     /** The one-off block a day of a weekly plan became (migration 142). */
     occurrence: (templateId: string, date: string) => ['schedule', 'occurrence', templateId, date] as const,
   },
-  calendar: {
-    all: ['calendar'] as const,
-    list: () => ['calendar', 'list'] as const,
-    day: (date: string, calIds: string) => ['calendar', 'day', date, calIds] as const,
-    /** Prefix: every calendar selection's events for one day. */
-    dayAll: (date: string) => ['calendar', 'day', date] as const,
-    dates: (from: string, to: string, calIds: string) => ['calendar', 'dates', from, to, calIds] as const,
-  },
+
   // Food: the diary (food_log_entries) is read under two roots today.
   foodLog: {
     all: ['food-log'] as const,

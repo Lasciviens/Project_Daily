@@ -25,51 +25,58 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 const TODAY = '2026-10-15' // a Thursday
 const weekly = { kind: 'weekly', daysOfWeek: [1, 3, 5], startsOn: TODAY }
 
-console.log('\n== 1. Google: the default, the problems, the labels ==')
+console.log('\n== 1. Where it goes: the default, the problems, the labels (Apple Calendar only since 25.11.2026) ==')
 {
-  check('a time → Google Calendar', R.defaultGoogleTarget({ time: '17:30', repeat: null }) === 'calendar')
+  check('a time → the calendar', R.defaultGoogleTarget({ time: '17:30', repeat: null }) === 'calendar')
   check('no time → Google Tasks', R.defaultGoogleTarget({ time: null, repeat: null }) === 'tasks')
-  check('a repeat with no time → Google Calendar (an all-day series)', R.defaultGoogleTarget({ time: null, repeat: weekly }) === 'calendar')
+  check('a repeat with no time → the calendar (an all-day series)', R.defaultGoogleTarget({ time: null, repeat: weekly }) === 'calendar')
   check('never Both by default', ['tasks', 'calendar'].includes(R.defaultGoogleTarget({ time: '9:00', repeat: weekly })))
   check('Tasks for a repeat is allowed (156: one Google Task per day)', R.googleTargetProblem({ repeat: weekly, google: 'tasks' }) === null)
-  check('Both for a repeat only warns', same(R.googleTargetProblem({ repeat: weekly, google: 'both' }), { level: 'warning', message: 'Shows twice in Google Calendar' }))
-  check('Both warns "Shows twice in Google Calendar"',
-    same(R.googleTargetProblem({ repeat: null, google: 'both' }), { level: 'warning', message: 'Shows twice in Google Calendar' }))
-  check('Calendar / Tasks / Not on Google: no problem',
+  check('Both is no problem any more (the event in Apple Calendar, the task in Google Tasks: two apps)',
+    R.googleTargetProblem({ repeat: weekly, google: 'both' }) === null && R.googleTargetProblem({ repeat: null, google: 'both' }) === null)
+  check('Calendar / Tasks / Only in this app: no problem',
     ['calendar', 'none'].every(g => R.googleTargetProblem({ repeat: weekly, google: g }) === null)
     && R.googleTargetProblem({ repeat: null, google: 'tasks' }) === null)
+  check('a calendar choice in an area that is off says so (Settings → Calendar); Tasks and None never',
+    same(R.googleTargetProblem({ repeat: null, google: 'calendar' }, 'none'), { level: 'warning', message: 'Its area has no calendar — turn it on in Settings → Calendar' })
+    && same(R.googleTargetProblem({ repeat: weekly, google: 'both' }, 'none'), { level: 'warning', message: 'Its area has no calendar — turn it on in Settings → Calendar' })
+    && R.googleTargetProblem({ repeat: null, google: 'tasks' }, 'none') === null && R.googleTargetProblem({ repeat: null, google: 'none' }, 'none') === null)
+  check('iCloud not connected: the chip, the menu and the warning say so — never "Apple Calendar" (owner-critic, 25.11.2026)',
+    R.googleTargetLabel({ time: '9:00', durationMinutes: 60, repeat: null }, 'calendar', 'icloud-off') === 'iCloud not connected'
+    && R.googleTargetLabel({ time: '9:00', durationMinutes: 60, repeat: null }, 'both', 'icloud-off') === 'Google Tasks · iCloud not connected'
+    && !/Apple Calendar/.test(R.googleChoices({ time: null, durationMinutes: null, repeat: null }, 'icloud-off')[0].hint)
+    && same(R.googleTargetProblem({ repeat: null, google: 'calendar' }, 'icloud-off'), { level: 'warning', message: 'iCloud not connected — connect it in Settings → Subscriptions' })
+    && R.googleTargetProblem({ repeat: null, google: 'tasks' }, 'icloud-off') === null)
+  check('Both has one name: the menu line is the chip\'s', R.googleChoices({ time: null, durationMinutes: null, repeat: null })[2].label === R.googleTargetLabel({ time: null, durationMinutes: null, repeat: null }, 'both'))
   check('a picked choice wins while it fits', R.effectiveGoogleTarget({ time: '9:00', repeat: null }, 'tasks') === 'tasks')
   check('…Tasks for a repeat is kept (156)', R.effectiveGoogleTarget({ time: null, repeat: weekly }, 'tasks') === 'tasks')
   check('nothing picked → the default', R.effectiveGoogleTarget({ time: null, repeat: null }, null) === 'tasks')
   check('labels say busy / free / all day — never "Auto"',
-    R.googleTargetLabel({ time: '17:30', durationMinutes: 60, repeat: null }, 'calendar') === 'Google Calendar · busy'
-    && R.googleTargetLabel({ time: '17:30', durationMinutes: null, repeat: null }, 'calendar') === 'Google Calendar · free'
-    && R.googleTargetLabel({ time: null, durationMinutes: null, repeat: null }, 'calendar') === 'Google Calendar · all day'
-    && R.googleTargetLabel({ time: null, durationMinutes: null, repeat: null }, 'none') === 'Not on Google'
-    && R.googleTargetLabel({ time: null, durationMinutes: null, repeat: null }, 'both') === 'Google Tasks + Calendar')
+    R.googleTargetLabel({ time: '17:30', durationMinutes: 60, repeat: null }, 'calendar') === 'Apple Calendar · busy'
+    && R.googleTargetLabel({ time: '17:30', durationMinutes: null, repeat: null }, 'calendar') === 'Apple Calendar · free'
+    && R.googleTargetLabel({ time: null, durationMinutes: null, repeat: null }, 'calendar') === 'Apple Calendar · all day'
+    && R.googleTargetLabel({ time: null, durationMinutes: null, repeat: null }, 'none') === 'Only in this app'
+    && R.googleTargetLabel({ time: null, durationMinutes: null, repeat: null }, 'both') === 'Google Tasks + Apple Calendar')
   check('a repeat on Google Tasks reads "Google Tasks · one per day"',
     R.googleTargetLabel({ time: null, durationMinutes: null, repeat: weekly }, 'tasks') === 'Google Tasks · one per day'
     && R.googleTargetLabel({ time: null, durationMinutes: null, repeat: null }, 'tasks') === 'Google Tasks')
   const choices = R.googleChoices({ time: null, durationMinutes: null, repeat: weekly })
-  check('the menu: four choices, none disabled for a repeat; Tasks is "Google Tasks · one per day"',
+  check('the menu: four choices, none disabled for a repeat; Tasks is "Google Tasks · one per day"; no Google Calendar',
     same(choices.map(c => c.target), ['calendar', 'tasks', 'both', 'none'])
     && choices.every(c => !c.disabled) && choices[1].label === 'Google Tasks · one per day'
-    && choices[2].hint === 'Shows twice in Google Calendar')
+    && choices[0].label === 'Apple Calendar' && choices[2].hint === 'In Apple Calendar and as a Google Task' && choices[3].label === 'Only in this app'
+    && choices.every(c => !/Google Calendar/.test(`${c.label} ${c.hint}`)))
   check('…an all-day repeat says so', choices[0].hint === 'An all-day repeating event')
   check('…nothing disabled without a repeat', R.googleChoices({ time: '9:00', durationMinutes: 30, repeat: null }).every(c => !c.disabled))
-  // Its area on Apple Calendar (2b-2): the event is in Apple Calendar, Google Tasks stays Google Tasks.
   const one = { time: '17:30', durationMinutes: 60, repeat: null }
-  check('an item in an area on Apple says "Apple Calendar"; Tasks stays "Google Tasks"; none is "Only in this app"',
-    R.googleTargetLabel(one, 'calendar', 'apple') === 'Apple Calendar · busy'
-    && R.googleTargetLabel(one, 'both', 'apple') === 'Google Tasks + Apple Calendar'
-    && R.googleTargetLabel({ ...one, repeat: weekly }, 'both', 'apple') === 'Apple Calendar + Google Tasks · one per day'
-    && R.googleTargetLabel(one, 'tasks', 'apple') === 'Google Tasks'
-    && R.googleTargetLabel(one, 'none', 'apple') === 'Only in this app')
-  const appleChoices = R.googleChoices(one, 'apple')
-  check('…its menu names Apple Calendar, and Both shows twice nowhere (two apps)',
-    appleChoices[0].label === 'Apple Calendar' && appleChoices[2].hint === 'In Apple Calendar and as a Google Task'
-    && R.googleTargetProblem({ repeat: null, google: 'both' }, 'apple') === null)
-  check('…Google areas read exactly as before', R.googleTargetLabel(one, 'calendar') === 'Google Calendar · busy' && R.googleChoices(one)[0].label === 'Google Calendar')
+  check('Both says both apps; a repeat\'s Both is one Google Task per day',
+    R.googleTargetLabel(one, 'both', 'apple') === 'Google Tasks + Apple Calendar'
+    && R.googleTargetLabel({ ...one, repeat: weekly }, 'both', 'apple') === 'Google Tasks + Apple Calendar · one per day'
+    && R.googleTargetLabel(one, 'tasks', 'apple') === 'Google Tasks')
+  const off = R.googleChoices(one, 'none')
+  check('an area that is off: the row says so, and the menu\'s calendar choices say why',
+    R.googleTargetLabel(one, 'calendar', 'none') === 'Apple Calendar · area off'
+    && off[0].hint === 'Its area is off (Settings → Calendar)' && off[2].hint === 'Its area is off (Settings → Calendar)' && off[1].hint === 'A to-do in the Google Tasks widget')
 }
 
 console.log('\n== 2. The section follows the date ==')
