@@ -1,6 +1,6 @@
 # iCloud Calendar (CalDAV)
 
-Checked: 29.10.2026 (Phase 1), 30.10.2026 (the research table, the cross-check) against the CalDAV standard (RFC 4791 calendar access, RFC 6578 sync-collection, RFC 5545 iCalendar), Apple's support pages on app-specific passwords (support.apple.com/102654, support.apple.com/121539) and published iCloud CalDAV guides (cli.nylas.com/guides/icloud-caldav-settings; tsdav's iCloud notes). **Live sample: the owner's Apple check, 29.10.2026** (Phase 1: test events written to the owner's iCloud, what iCloud kept read back, the owner's report of the iPhone and Mac — results in the field table and the Log). Read my calendars ran live the same day (the owner's own iCloud calendar read; subscriptions, Google and work calendars aren't in iCloud). Lines still marked *(to confirm)* have no live run yet.
+Checked: 29.10.2026 (Phase 1), 30.10.2026 (the research table, the cross-check), 25.11.2026 (the invite test, against RFC 6638 scheduling and RFC 5546 iTIP — no live run yet) against the CalDAV standard (RFC 4791 calendar access, RFC 6578 sync-collection, RFC 5545 iCalendar), Apple's support pages on app-specific passwords (support.apple.com/102654, support.apple.com/121539) and published iCloud CalDAV guides (cli.nylas.com/guides/icloud-caldav-settings; tsdav's iCloud notes). **Live sample: the owner's Apple check, 29.10.2026** (Phase 1: test events written to the owner's iCloud, what iCloud kept read back, the owner's report of the iPhone and Mac — results in the field table and the Log). Read my calendars ran live the same day (the owner's own iCloud calendar read; subscriptions, Google and work calendars aren't in iCloud). Lines still marked *(to confirm)* have no live run yet.
 
 The owner's wishes and the phases this serves: `docs/features/calendar-plan.md`.
 
@@ -91,7 +91,7 @@ Which items get one (2b-2): an item that wants a calendar (its Google choice is 
 
 **Why a send failed** (the row's `last_error`, the card, the save's warning): iCloud's own failures keep iCloud's words — "iCloud could not be reached", "iCloud did not answer" (also an answer cut off mid-way, which `dav` now turns into iCloud's failure) and the status texts; the event rules' guards name what they refused ("… — not written"; only their three exact texts, `GUARD_REFUSALS` — an allow-list, never a pattern, so no other error's text reaches the row or the browser); anything else is a fault in the app's own code: "The app could not build this event — a fault in the app, not in iCloud" (`sendFailureText`; logged by its kind only). Until 03.11.2026 such a fault read "iCloud did not answer". When Apple refuses the password or iCloud asks the app to wait, the run stops — and a save's own row still records that it was just tried, so a row waiting for a retry goes early at most once per 10 s in every case (guardian review, 03.11.2026). Every other step that fails — the read-back, the check, reading the calendars, setup, the timer and a whole run — says whose fault it was the same way (`stepFailureText`: iCloud's own words, else "Something went wrong in the app, not in iCloud"); only a real network failure reads "iCloud did not answer". A fault in the app's code is logged by its kind and code frames only (`faultFrames`: never the message, which could hold an item's text).
 
-Deliberately not written: `STATUS:TENTATIVE` and `CLASS:PRIVATE` (no visible effect on Apple, Phase 1), `ATTENDEE` (no invitations). A place changed on the iPhone isn't read back (the read-back takes the day, time and title).
+Deliberately not written: `STATUS:TENTATIVE` and `CLASS:PRIVATE` (no visible effect on Apple, Phase 1), `ATTENDEE` (no invitations; only the one-off invite test writes one, below). A place changed on the iPhone isn't read back (the read-back takes the day, time and title).
 
 ## What an event in Apple Calendar can hold (research, 30.10.2026)
 
@@ -124,6 +124,60 @@ The owner (24.11.2026): "Default alert on apple calendar should be none on every
 - **The read-back never takes a default for the owner's choice:** an alarm whose `X-APPLE-DEFAULT-ALARM` (any parameters, any case) is `TRUE` reads as a default (`alarmToken` → `'DEFAULT'`) and is left out of the comparison — an alert set on the iPhone beside a leftover default still comes back; an event whose only alerts are defaults says nothing about the item's own; an unreadable alert still stops the read of them all (`fieldsChangeOf`, `verify-item-calendar-fields`).
 - **Not confirmed live:** that the iPhone shows "None" for the marker and rings nothing (Apple documents none of this; the sources above are Apple's open-source server, an IETF draft and client bug reports). iCloud may differ from the open-source server in details the code doesn't show.
 
+## The invite test (25.11.2026)
+
+A one-off live test before invitations are built (proposed 29.10.2026 in `docs/features/calendar-plan.md`; the research row "Invitations" above): does iCloud email invitations for an event a server wrote, does a rewrite send a second one, does removing a guest send a cancellation, and can the guests' answers be read back? **Not run live yet** — the steps are the checklist's row "Apple Calendar: the invite test". Settings → Subscriptions → **Invite test** (a card under Apple Calendar, shown only while iCloud is connected; it says it is a one-off test). Nothing of it touches items, slots, the queue or the read-back.
+
+**What happens.** iCloud's implicit scheduling (RFC 6638): when the account's own calendar gets an event whose `ORGANIZER` is one of the account's addresses and which has `ATTENDEE`s, iCloud's server sends each attendee an iTIP invitation by email, from Apple, in the owner's name; it keeps each answer (`PARTSTAT`) and its delivery code (`SCHEDULE-STATUS`) in the organizer's copy. Apple doesn't document this for third-party writers — hence the test.
+
+| Action (`icloud-calendar`) | Requests | Counted |
+|---|---|---|
+| `inviteSend` `{ guests: [1–2 addresses] }` | `PROPFIND /` (`current-user-principal`) → `PROPFIND <principal>` (`C:calendar-user-address-set`) → `GET <event>` (must be 404) → `PUT <event>` with `If-None-Match: *` → `GET <event>` | yes |
+| `inviteCheck` | `GET <event>` (the text, `ETag`, `Schedule-Tag`) | no |
+| `inviteRewrite` `{ etag }` | the two `PROPFIND`s → `GET <event>` (its `ETag` must be the one the card showed, else "The event changed since you checked — tap Check") → `PUT <event>` with `If-Match: <that ETag>` → `GET` | yes |
+| `inviteRemoveGuest` `{ guest, etag }` | as Rewrite, without that guest (the last one removed: a plain event, no `ORGANIZER`/`ATTENDEE`) | yes |
+| `inviteDelete` | `GET <event>` → `DELETE <event>` with `If-Match` (only when its `UID` is the test's) → `GET`. When iCloud gives no usable `ETag`, the DELETE goes **without** `If-Match` — on purpose, so the test can always be cleaned up (only the fixed place, only the test's `UID`) | no — it must always be able to clean up |
+
+Every action answers the event as iCloud has it afterwards: the day (while still 12:00–12:30 on Oslo's clock), `SEQUENCE`, `ETag`, `Schedule-Tag` (RFC 6638 §3.2.10, shown as given), the organizer (masked, `o…@icloud.com`, as the iCloud card shows the Apple ID) and each guest's `PARTSTAT` and `SCHEDULE-STATUS` (`1.2` delivered, `2.0` done, `3.7` unknown address, `5.x` not delivered…), and the day's count.
+
+**The lines written** (Send; `icloud-calendar` → `inviteLines`, folded at 75 octets, CRLF), in one `VCALENDAR` with `PRODID:-//Lasci's Board//Invite test//EN`, `CALSCALE:GREGORIAN` and Phase 1's Europe/Oslo `VTIMEZONE`:
+
+```
+BEGIN:VEVENT
+UID:lasci-invite-test@lasciviens.github.io
+DTSTAMP:<now, UTC>
+DTSTART;TZID=Europe/Oslo:<tomorrow>T120000
+DTEND;TZID=Europe/Oslo:<tomorrow>T123000
+SEQUENCE:0
+SUMMARY:Invite test
+DESCRIPTION:A one-off test invitation from Lasci's Board. Answer it or ignore it. It will be deleted.
+TRANSP:OPAQUE
+ORGANIZER:mailto:<the account's address>
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=CHAIR;PARTSTAT=ACCEPTED:mailto:<the account's address>
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:<guest 1>
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:<guest 2>
+BEGIN:VALARM
+ACTION:NONE
+TRIGGER;VALUE=DATE-TIME:19760401T005545Z
+END:VALARM
+END:VEVENT
+```
+
+The organizer is also an attendee with `ROLE=CHAIR` (as Apple's own clients write it). Rewrite and Remove guest write the same lines with each guest's `PARTSTAT` as read (`ACCEPTED`, `DECLINED`, `TENTATIVE`; `RSVP=TRUE` only while unanswered), the `SEQUENCE` as read (none when iCloud's copy had none) — **unchanged on purpose**, also for Remove guest: the test asks whether an identical write re-sends, so the app never bumps it — the day as read, and a new `DTSTAMP`. Nothing iCloud added (names, `EMAIL=`, `SCHEDULE-STATUS`, X- lines) is written back.
+
+**Security** (the warning in `AGENTS.md`; each input and what an attacker controlling it could do):
+
+- **The place** — `UID` and file name are fixed constants (`lasci-invite-test@lasciviens.github.io`, `lasci-invite-test.ics`); the calendar is the Personal area calendar from `icloud_credentials.area_calendars` (service role only), taken only when it is stored exactly in its normal form (`new URL(stored).toString() === stored`), ends in `/` and has no query, and the address must be exactly that calendar + the file name (`inviteEventUrl`). The browser names no calendar, place or UID: a stolen session can't aim a PUT or DELETE anywhere else. Every request still goes only to iCloud's hosts (`dav`, `isICloudUrl`), writes never follow a redirect to another path, and an answer for another path is refused.
+- **Who may send** — Send, Rewrite and Remove guest (the actions that email someone) need a **password sign-in in the last 10 minutes**, the same check `connect` makes (`signedInAt`, the password entry of the token's `amr`, `FRESH_SIGN_IN_MS`); otherwise "Sign in again first…" before anything reaches iCloud or the cap. Check and Delete don't. A stolen, refreshed session can't send in the owner's name.
+- **An end date** — `INVITE_TEST_LAST_DAY` = 31.12.2026 (Oslo): after it every action but Delete is refused ("The invite test ended on 31.12.2026 — only Delete still works"). A removal PR takes the test out once the owner has sent the results.
+- **The organizer** — read at the moment of use from iCloud's `calendar-user-address-set` (the `mailto:` iCloud marks preferred, else the first that passes the allow-list); none → refused. Never input.
+- **The guests** (browser input) — 1–2, each trimmed, plain ASCII, lower-cased, ≤ 254 characters and `^[a-z0-9._%+-]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)+$`; distinct; never one of the account's own addresses. No display name, no parameter. Remove guest takes one address through the same allow-list, and only one that is a guest of the event read.
+- **iCloud's copy** (read back, input too) — read through the same allow-lists: an address off the list, an answer the app doesn't know (`DELEGATED`…), another organizer, more than two guests, a moved time, a day that isn't a real calendar day, or a sequence that isn't 1–6 digits → Rewrite and Remove guest refuse; Delete refuses an event at the test's place whose `UID` isn't the test's.
+- **The last guard** (`inviteGuard`) — every line is one of the builder's constants or matches its one exact shape (`DTSTAMP`, `DTSTART`/`DTEND` at 12:00/12:30 Oslo on the same day, `SEQUENCE`, `ORGANIZER`, the `CHAIR` line, a guest line); one event; an organizer (with its `CHAIR` line) exactly when there are 1–2 guests, none of them the organizer, none twice; no line over 400 characters. Anything else is refused ("An invite test line is not one the app builds — not written").
+- **Mail in the owner's name** — at most **5** Send / Rewrite / Remove guest a day (Oslo's day) per account, reserved by the database before the PUT (`icloud_invite_test_reserve`, migration 209, a per-account lock; the table and functions are service-role only, owner-locked, not audited, so Undo can't reset it). Each of the three, and Delete, asks first with the addresses it emails.
+- **Errors and logs** — refusals are the app's own sentences; iCloud's failures say only the status (`iCloud answered 412 …`), never its body; the log gets the error's kind only; addresses are shown only on the card and in the confirmations (the mutations don't log their input). The card's "Last problem" is left alone.
+- **No other path** — Ask AI and ✨ (the `claude` function) never call it; the drain never addresses it (its rows name only items); the read-back takes only `lasci-slot-`/`lasci-plan-<uuid>.ics` files, so this event is "not the app's" there and never rewritten or deleted; and the drain's INVITED guard is unchanged.
+
 ## Fields we read
 
 The read-back looks only for the properties above (present or not, and their values) in what `calendar-multiget` returns; Check changes reads each changed event's `SUMMARY` and `DTSTART` (a UTC time is shown on the Oslo clock). Stored in Phase 1: the test calendar's URL (saved before any event is written, so Remove can always find them), its sync token, and the last check's result (`last_check`: the steps, the calendar's name, the day, and per event what iCloud kept — no password, no URL), so the card still shows what to look for after the owner comes back from the Calendar app.
@@ -135,7 +189,7 @@ The read-back looks only for the properties above (present or not, and their val
 ## Fields deliberately not used (Phase 1)
 
 - `ATTACH` — the owner dropped attachments (11).
-- `ATTENDEE` / `ORGANIZER` — the events are the owner's own; an attendee makes iCloud send invitation mail.
+- `ATTENDEE` / `ORGANIZER` — the events are the owner's own; an attendee makes iCloud send invitation mail. Only the invite test (25.11.2026) writes them, on its one event.
 - Reminders (`VTODO`) — Apple's Reminders left CalDAV in iOS 13 ("a private silo that only the Apple Reminders app can access"); reaching them takes a script on the device (Scriptable / Shortcuts).
 
 ## Traps
@@ -150,6 +204,7 @@ The read-back looks only for the properties above (present or not, and their val
 
 ## Log
 
+- 25.11.2026 — **The invite test (migration 209):** Settings → Subscriptions → Invite test sends one event that invites 1–2 addresses (the owner as organizer, from iCloud's `calendar-user-address-set`), then Check / Rewrite / Remove guest / Delete; fixed UID and place in the Personal calendar, an address allow-list, a last guard of exact line shapes, 5 counted actions a day. Not run live yet (the checklist's row).
 - 24.11.2026 — **Default alerts** (owner: "Default alert on apple calendar should be none on everything"): researched (section above). The writer already put the no-alert marker on every event with no alert picked (since 30.10.2026, 2b-3a) — now checked on every builder path; the read-back leaves out a default-marked alarm (`X-APPLE-DEFAULT-ALARM:TRUE`) instead of taking it as the item's own alert; the owner's one-off SQL (checklist) sets every saved area alert and the all-day alert to none. No migration. Not run live (a real iPhone, live iCloud).
 - 10.11.2026 — **Apple's extra fields (migration 193, the one item screen step 2, data side):** an item's own Alert + Second Alert (`VALARM` ×1–2), Show As (`TRANSP`), link (`URL`), Travel Time (`X-APPLE-TRAVEL-DURATION`) and a repeat's End Repeat (`RRULE` `COUNT` / `UNTIL`) written; the first four read back from the iPhone when they differ from what the app writes (`fieldsChangeOf`). Four new guards with their own texts on the card (`GUARD_REFUSALS`). Golden copies of a slot and a series in `scripts/golden/`. Not run live yet (the checklist's row once the screen exists).
 

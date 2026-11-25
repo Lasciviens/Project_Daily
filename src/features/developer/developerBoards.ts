@@ -150,18 +150,20 @@ export const AI_VIEW_BOARDS: ReadonlyArray<BoardLayouts<string>> = [AI_OVERVIEW_
 // carries the subscription summary strip and 'otherSubs' (subscriptions for
 // services without a card) ends the server-side column at every width.
 // Anthropic (20.11.2026, the Claude layer) is the last server-side card: its
-// key is a server secret, so it only says whether the key is set.
+// key is a server secret, so it only says whether the key is set. The invite
+// test (25.11.2026, a one-off) sits right under Apple Calendar while iCloud is
+// connected.
 export const CONNECTION_SECTIONS = [
-  'intro', 'google', 'icloud', 'strava', 'psn', 'trakt', 'steam', 'igdb', 'hevy', 'health', 'kobo', 'anthropic',
+  'intro', 'google', 'icloud', 'inviteTest', 'strava', 'psn', 'trakt', 'steam', 'igdb', 'hevy', 'health', 'kobo', 'anthropic',
   'accountsLabel', 'serverLabel', 'serverCards', 'otherSubs',
 ] as const
 export type ConnectionSection = typeof CONNECTION_SECTIONS[number]
 
-const ACCOUNTS = ['accountsLabel', 'google', 'icloud', 'strava', 'psn', 'trakt'] as const
+const ACCOUNTS = ['accountsLabel', 'google', 'icloud', 'inviteTest', 'strava', 'psn', 'trakt'] as const
 const SERVER = ['serverLabel', 'serverCards', 'otherSubs'] as const
 
 export const CONNECTIONS_BOARD: BoardLayouts<ConnectionSection> = {
-  1: ['intro', 'google', 'icloud', 'strava', 'psn', 'trakt', 'steam', 'igdb', 'hevy', 'health', 'kobo', 'anthropic', 'otherSubs'],
+  1: ['intro', 'google', 'icloud', 'inviteTest', 'strava', 'psn', 'trakt', 'steam', 'igdb', 'hevy', 'health', 'kobo', 'anthropic', 'otherSubs'],
   2: { top: ['intro'], columns: [ACCOUNTS, ['serverLabel', 'steam', 'igdb', 'hevy', 'health', 'kobo', 'anthropic', 'otherSubs']] },
   3: { top: ['intro'], main: '42rem', columns: [ACCOUNTS, { stack: SERVER, span: 2 }] },
   4: { top: ['intro'], main: '42rem', columns: [ACCOUNTS, { stack: SERVER, span: 3 }] },
