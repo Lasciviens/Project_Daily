@@ -5,7 +5,7 @@ import { SHOP_PRIORITY_TONE } from '../shopMeta'
 import { openModels } from '../wishModel'
 import { beltOf, initialsOf, readPrice, tintOf } from '../wishTile'
 import { imageOf, money, moneyRange, num } from './shopFormat'
-import { PictureWell } from './tileKit'
+import { PictureWell, TILE_ACTIONS, TILE_TITLE, TileLines } from './tileKit'
 import type { UsdRates } from '../../settings/subscriptionRules'
 import type { ShopItem, ShopPriceWatch } from '../types'
 
@@ -47,19 +47,21 @@ export function GeneralWishTile({ wish, models, watches, rates, topId, icon, tod
           corner={wish.priority !== 'medium' && (
             <TonePill tone={SHOP_PRIORITY_TONE[wish.priority]}>{wish.priority === 'high' ? 'High' : 'Low'}<span className="sr-only"> priority</span></TonePill>
           )} />
-        <Truncate as="span" lines={2} className="mx-1.5 mt-2 min-h-10 text-body font-semibold text-fg">{wish.title}</Truncate>
+        <Truncate as="span" lines={2} className={TILE_TITLE}>{wish.title}</Truncate>
       </button>
-      <div className="flex flex-col gap-0.5 px-1.5 pb-2 pt-0.5">
-        <p className="text-meta text-fg-muted">
-          {from
-            ? <>from <span className="whitespace-nowrap text-ui font-semibold tabular-nums text-fg">{money(from.amount, from.currency)}</span></>
-            : range
-              ? <span className="whitespace-nowrap text-ui font-semibold tabular-nums text-fg">{moneyRange(range.min, range.max, cur)}</span>
-              : <span className="text-ui">No price yet</span>}
-        </p>
-        <MetaLine className="text-meta tabular-nums text-fg-muted" items={['Any model', range && `${num(range.min)}–${num(range.max)}`]} />
-      </div>
-      <div className="mt-auto flex items-center gap-1 border-t border-line pt-1">
+      {/* The same fixed lines as a wish's tile, so both are one size; the last keeps its room. */}
+      <TileLines
+        price={
+          <Truncate as="span" className="min-w-0 flex-1">
+            {from
+              ? <>from <span className="text-ui font-semibold tabular-nums text-fg">{money(from.amount, from.currency)}</span></>
+              : range
+                ? <span className="text-ui font-semibold tabular-nums text-fg">{moneyRange(range.min, range.max, cur)}</span>
+                : <span className="text-ui">No price yet</span>}
+          </Truncate>
+        }
+        meta={<Truncate as="span" className="min-w-0 flex-1"><MetaLine as="span" items={['Any model', range && `${num(range.min)}–${num(range.max)}`]} /></Truncate>} />
+      <div className={TILE_ACTIONS}>
         <button type="button" onClick={onOpen} className="btn-ghost btn-sm min-w-0 flex-1 justify-center gap-1.5">
           Compare
           {open.length > 0 && <span className="count-badge">{open.length}<span className="sr-only"> model{open.length === 1 ? '' : 's'}</span></span>}

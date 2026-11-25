@@ -14,6 +14,7 @@ import { QUICK_GUESS_PHOTO_JOB, RECEIPT_READ_JOB } from './job-photo.ts'
 import { DEV_REQUEST_DRAFT_JOB, ERROR_EXPLAIN_JOB } from './job-dev-drafts.ts'
 import { AD_IMPROVE_JOB, PLACE_IDEAS_JOB, WORK_WEEK_JOB } from './job-text-features.ts'
 import { SHOP_TIDY_JOB } from './job-shop-tidy.ts'
+import { PRODUCT_PHOTO_JOB } from './job-product-photo.ts'
 import { QUICK_LIST_PARSE_JOB } from './job-quick-list.ts'
 import { COACH_ASSESSMENT_JOB } from './job-coach.ts'
 import { KOBO_ASK_JOB, PHONE_ASK_JOB } from './job-device.ts'
@@ -28,6 +29,8 @@ export const JOB_LIST: readonly JobDefinition[] = [
   ITEM_FILL_JOB, RECIPE_FROM_TEXT_JOB, RECIPE_FROM_LINK_JOB, RECIPE_MACROS_JOB, QUICK_GUESS_JOB, QUICK_GUESS_OPTIONS_JOB,
   // The AI features the owner picked (22.11.2026): photos, Dev Requests, Work, Shop, Wishes.
   QUICK_GUESS_PHOTO_JOB, RECEIPT_READ_JOB, DEV_REQUEST_DRAFT_JOB, ERROR_EXPLAIN_JOB, WORK_WEEK_JOB, AD_IMPROVE_JOB, PLACE_IDEAS_JOB, SHOP_TIDY_JOB,
+  // Shop → a thing from photos (owner, 25.11.2026).
+  PRODUCT_PHOTO_JOB,
   QUICK_LIST_PARSE_JOB, COACH_ASSESSMENT_JOB, KOBO_ASK_JOB, PHONE_ASK_JOB, WEEKLY_REPORT_JOB, SUGGEST_WEEKLY_JOB, LEARN_EVAL_JOB, TEST_BENCH_JOB, DIAGNOSE_JOB, CHAT_JOB,
 ]
 

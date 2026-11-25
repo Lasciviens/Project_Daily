@@ -168,6 +168,9 @@ const ALLOW = {
   [`${SHOP}/hooks/useProductPicture.ts`]: { parts: ['useProductPicture'], why: 'the module itself' },
   [`${SHOP}/hooks/useShopTidy.ts`]: { parts: ['useProductPicture'], why: 'Tidy up info reads its AI suggestion\'s product page for many things at once, in its own review popup (it writes through updateShopItem with one Undo)' },
   [`${SHOP}/hooks/useReadReceipts.ts`]: { parts: ['useProductPicture'], why: 'Read a receipt sends the owner\'s best picture sites (usePreferredHosts) with the file as a hint; the pictures themselves are read in the body' },
+  // 📷✨ (owner, 25.11.2026) lives in the body's own autofill (components/autofill/, rendered only by RecordBody's add and open modes).
+  [`${SHOP}/components/autofill/AutofillPanel.tsx`]: { parts: ['useProductPicture'], why: 'the body\'s autofill: a 📷✨ draft\'s product page is read for its picture, the same reader as a receipt line\'s, filling the picture fact only while the field is empty' },
+  [`${SHOP}/components/autofill/useProductPhotoStep.ts`]: { parts: ['useProductPicture'], why: 'the body\'s 📷✨ step sends the owner\'s best picture sites (usePreferredHosts) as a hint, as Read a receipt does' },
 }
 /** The quick list's errand sheet: not a thing, so none of the parts. */
 const ERRAND = [`${SHOP}/components/ShopItemSheet.tsx`, `${SHOP}/components/ShopItemForm.tsx`]

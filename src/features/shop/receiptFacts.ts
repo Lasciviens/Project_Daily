@@ -3,7 +3,7 @@
 // and `mergeFacts` / `fieldsAfter` already guarantee the rest: a fact fills its field only when the field is empty or
 // still holds what an earlier receipt fact put there — never over what the owner typed — and a new pick of a receipt
 // line replaces the earlier receipt facts. Pure: scripts/verify-ai-features.cjs runs it.
-import type { Fact, FactSource } from './autofillModel'
+import type { CategoryFact, Fact, FactSource } from './autofillModel'
 import type { ReceiptFill } from '../ai/claude/featureRules'
 import type { ShopCategory, ShopCurrency } from './types'
 
@@ -28,13 +28,17 @@ export function receiptFacts(fill: ReceiptFill, at: string, categories: readonly
   if (fill.condition) facts.push({ key: 'condition', value: fill.condition, source: SOURCE, confidence: 'likely', on: true, at })
   // The category the function chose from the owner's own list (by number, mapped back to an id that was sent): the
   // subcategory when one fits. A guess from a line, so "check"; an id that is no longer in the list is left out.
-  const cat = fill.categoryId ? categories.find(c => c.id === fill.categoryId) : undefined
-  if (cat) {
-    const top = cat.parent_id ? categories.find(c => c.id === cat.parent_id) : undefined
-    if (!cat.parent_id || top) {
-      facts.push({ key: 'category', value: { topId: top ? top.id : cat.id, subId: top ? cat.id : '', name: top ? `${top.name} › ${cat.name}` : cat.name }, source, confidence: 'check', on: true, at })
-    }
-  }
+  const cat = categoryFactValue(fill.categoryId, categories)
+  if (cat) facts.push({ key: 'category', value: cat, source, confidence: 'check', on: true, at })
   if (fill.storeLabel) facts.push({ key: 'store', value: fill.storeLabel, source: SOURCE, confidence: fill.storeId ? 'exact' : 'check', on: true, at })
   return facts
+}
+
+/** A category id of the owner's own list as a category fact's value (the subcategory under its top one), or null when it is no longer there. */
+export function categoryFactValue(id: string | null | undefined, categories: readonly ShopCategory[]): CategoryFact | null {
+  const cat = id ? categories.find(c => c.id === id) : undefined
+  if (!cat) return null
+  const top = cat.parent_id ? categories.find(c => c.id === cat.parent_id) : undefined
+  if (cat.parent_id && !top) return null
+  return { topId: top ? top.id : cat.id, subId: top ? cat.id : '', name: top ? `${top.name} › ${cat.name}` : cat.name }
 }

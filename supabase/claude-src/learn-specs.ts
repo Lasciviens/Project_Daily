@@ -231,6 +231,27 @@ const RECEIPT_SPEC: LearnSpec = {
   }),
 }
 
+// ── product_photo ────────────────────────────────────────────────────────────
+// Shop's 📷✨ (25.11.2026): the draft's name, brand, model, category and condition against what the add or the record saved.
+// The photos are never kept, so a case is never replayed; its text is the owner's own line beside them, or the saved name.
+// No rules: a photo has no key a rule could match on.
+const PHOTO_FIELDS = { name: { kind: 'line', max: 120 }, brand: { kind: 'line', max: 60 }, model: { kind: 'line', max: 60 }, category_id: { kind: 'category' }, condition: { kind: 'word', words: ['new', 'used', 'refurbished'] } } as const
+
+const PRODUCT_PHOTO_SPEC: LearnSpec = {
+  job: 'product_photo',
+  trust: 'owner_confirmed',
+  replayable: false,
+  fields: PHOTO_FIELDS,
+  freeFields: ['name'],
+  ruleFields: [],
+  // A questions answer has no draft fields: nothing of it is compared.
+  values: result => (result.kind === 'draft' ? flatValues(result, PHOTO_FIELDS) : {}),
+  caseText: (input, saved) => storedValue(learnStr(input?.text) || saved.name || '', 500),
+  matchKey: (input, _field, ai) => normKey(learnStr(input?.text) || ai.name || ''),
+  setRule: () => false,
+  outputText: (output, input) => joined(output, (f, v) => (f === 'category_id' ? `category: ${categoryPath(input, v)}` : `${f}: ${v}`)),
+}
+
 // ── quick_guess ──────────────────────────────────────────────────────────────
 const GUESS_FIELDS: Record<string, FieldKind> = {
   title: { kind: 'line', max: 60 }, portion: { kind: 'line', max: 120 },
@@ -424,7 +445,7 @@ const DEV_REQUEST_DRAFT_SPEC: LearnSpec = {
 }
 
 export const LEARN_SPECS: ReadonlyMap<string, LearnSpec> = new Map([
-  SHOP_TIDY_SPEC, RECEIPT_SPEC, QUICK_GUESS_SPEC, ITEM_FILL_SPEC, RECIPE_SPEC,
+  SHOP_TIDY_SPEC, RECEIPT_SPEC, PRODUCT_PHOTO_SPEC, QUICK_GUESS_SPEC, ITEM_FILL_SPEC, RECIPE_SPEC,
   QUICK_GUESS_PHOTO_SPEC, RECIPE_LINK_SPEC, RECIPE_MACROS_SPEC, QUICK_GUESS_OPTIONS_SPEC, DEV_REQUEST_DRAFT_SPEC,
 ].map(s => [s.job, s]))
 
