@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { Button, IconButton, SegmentedControl, TonePill, cx } from '../../../../shared/ui'
@@ -39,6 +39,10 @@ import { useSavePicture } from './useFindPicture'
 import { ShopAutofill } from './ShopAutofill'
 import { recordAutofillPatch, recordShopDraft } from './recordAutofill'
 import type { Fact } from '../../autofillModel'
+import { photoLearnReport } from '../../photoFacts'
+import { useReportAiSave } from '../../../ai/claude/hooks/useReportAiSave'
+import { useProductPhotoStep, type PhotoTarget, type ProductPhotoStep } from '../autofill/useProductPhotoStep'
+import { PhotoAskButton, ProductPhotoPanel } from '../autofill/ProductPhotoStep'
 import type { ShopDraft } from '../ShopItemForm'
 import { ReceiptPhoto } from './ReceiptPhoto'
 import { LookElsewhere } from '../purchase/LookElsewhere'
@@ -120,6 +124,17 @@ export function RecordBody(props: RecordBodyProps) {
   const { ref: actionsRef, width: actionsRoom } = useElementWidthRem<HTMLDivElement>()
   // One column below 46rem: the add's "Filled in for you" list folds to a line there.
   const { ref: rootRef, width: rootWidth } = useElementWidthRem<HTMLDivElement>()
+  const narrow = rootWidth != null && rootWidth < 46
+  // 📷✨ (owner, 25.11.2026): ONE step per body. Adding offers it always (not for "Any model"); a saved thing while its category,
+  // picture, brand or model is empty. It shows in ONE place: the top line beside the switch on a narrow add (on a phone the
+  // autofill sits under the facts), else in the autofill's link row. Its results go through the autofill (`photoTarget`).
+  const photoTarget = useRef<PhotoTarget | null>(null)
+  const setPhotoTarget = useCallback((t: PhotoTarget | null) => { photoTarget.current = t }, [])
+  const photoStep = useProductPhotoStep({ categories, target: photoTarget })
+  const photoOffered = c ? (c.kind as string) !== 'general'
+    : !!r && mode === 'open' && state !== 'general' && (!item.category_id || !item.image_url || !item.facts?.brand || !item.facts?.model)
+  const photoInBar = !!c && photoOffered && narrow
+  const photo = photoOffered ? { step: photoStep, setTarget: setPhotoTarget, inRow: !photoInBar } : null
   const { shown, more } = fitActions(actionsRoom, r && mode === 'open' ? r.actions : [])
   const actions = r && mode === 'open' && r.actions.length > 0 && (
     <div ref={actionsRef} className="min-w-0">
@@ -171,13 +186,13 @@ export function RecordBody(props: RecordBodyProps) {
 
   return (
     <div ref={rootRef} className="@container flex flex-col gap-3">
-      {c && <AddBar c={c} finder={finder} />}
+      {c && <AddBar c={c} finder={finder} photo={photoInBar ? photoStep : null} />}
       {/* Nothing is editable while a save is out: what it writes is what was on screen when it was tapped. */}
       <fieldset disabled={busy} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
         {head}
         {r && mode === 'open' && <OpenLines r={r} sections={sections} />}
         <Sections mode={mode} r={r} c={c} p={p} bought={props.mode === 'bought' ? props.bought : true} fromReceipt={props.mode === 'bought' && !!props.fromReceipt}
-          item={item} state={state} today={today} owned={owned} watch={watch} sections={sections} d={d} narrow={rootWidth != null && rootWidth < 46}
+          item={item} state={state} today={today} owned={owned} watch={watch} sections={sections} d={d} narrow={narrow} photo={photo}
           finder={mode === 'bought' ? finder : null} />
         {/* Delete (asks, then Undo) ends a saved record: the footer shows only with changes to save, so the Story keeps its room. */}
         {r && mode === 'open' && <Button variant="ghost" size="sm" icon={<Trash2 />} className="-ml-2 w-fit text-danger" onClick={() => { void r.del() }}>Delete</Button>}
@@ -221,7 +236,7 @@ function OpenLines({ r, sections }: { r: ShopRecordModel; sections: ReturnType<t
 }
 
 /** Adding: a read receipt's lines "1 of 3 ‹ ›" (a saved line shows ✓) and the switch of what is made. */
-function AddBar({ c, finder }: { c: CreateRecordModel; finder: ReactNode }) {
+function AddBar({ c, finder, photo }: { c: CreateRecordModel; finder: ReactNode; photo: ProductPhotoStep | null }) {
   const { spec, st, count, index } = c
   const stepper = count > 1 && (
     <div className="flex items-center gap-1">
@@ -239,12 +254,20 @@ function AddBar({ c, finder }: { c: CreateRecordModel; finder: ReactNode }) {
     <SegmentedControl<'one' | 'any'> size="sm" value={st.general ? 'any' : 'one'} onChange={x => c.patch(s => ({ ...s, general: x === 'any' }))}
       options={[{ value: 'one', label: 'One', tip: 'One product' }, { value: 'any', label: 'Any model', tip: 'Any model that fits' }]} />
   ) : null
-  if (!stepper && !switches && !finder) return null
-  return <div className="flex flex-wrap items-center gap-x-3 gap-y-2">{stepper}{switches}{finder && <div className="ml-auto">{finder}</div>}</div>
+  if (!stepper && !switches && !finder && !photo) return null
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {stepper}{switches}
+        {(photo || finder) && <div className="ml-auto flex items-center gap-2">{photo && <PhotoAskButton step={photo} />}{finder}</div>}
+      </div>
+      {photo && <ProductPhotoPanel step={photo} />}
+    </>
+  )
 }
 
 /** The sections, each once; a mode hides the ones it has no use for. */
-function Sections({ mode, r, c, p, bought, fromReceipt, item, state, today, owned, watch, sections, d, narrow, finder }: {
+function Sections({ mode, r, c, p, bought, fromReceipt, item, state, today, owned, watch, sections, d, narrow, finder, photo }: {
   mode: RecordBodyProps['mode']
   r: ShopRecordModel | null
   c: CreateRecordModel | null
@@ -260,6 +283,7 @@ function Sections({ mode, r, c, p, bought, fromReceipt, item, state, today, owne
   sections: ReturnType<typeof useOpenSections>
   d: ShopRecordModel['d']
   narrow: boolean
+  photo: PhotoPart
 }) {
   const open = mode === 'open' && r
   const resale = open && (state === 'mine' || state === 'gone')
@@ -334,7 +358,7 @@ function Sections({ mode, r, c, p, bought, fromReceipt, item, state, today, owne
       </>)}
       {mode !== 'bought' && box('facts', 'Facts', c ? undefined : factsSummary, null, <>
         {/* The link reader, scan and "Filled in for you" on a saved thing too (owner, 24.11.2026): the same autofill, onto the record's draft. */}
-        {r && state !== 'general' && <OpenAutofill r={r} narrow={narrow} />}
+        {r && state !== 'general' && <OpenAutofill r={r} narrow={narrow} photo={photo} />}
         {/* One list of facts for every mode: adding opens every editor (`create`); the link is the autofill's (but a general wish's). */}
         <RecordFacts item={c ? c.base : item} d={d} state={state} categories={r?.categories ?? c?.categories ?? []} today={today} parents={r ? r.parents : c?.parents}
           create={c ? { without: state === 'general' ? [] : ['link'] } : undefined} without={r && state !== 'general' ? ['link'] : []} />
@@ -354,7 +378,7 @@ function Sections({ mode, r, c, p, bought, fromReceipt, item, state, today, owne
   // Adding something you own has tools beside its facts (the autofill, a receipt), so two columns from 46rem; a wish is one
   // column with the link reader on top. Narrow, the facts come first (name and category on the first screen). A saved thing
   // has its Story beside the sections.
-  const side = c ? <AddTools c={c} narrow={narrow} /> : open && story.length > 0 ? <RecordStory steps={story} today={today} /> : null
+  const side = c ? <AddTools c={c} narrow={narrow} photo={photo} /> : open && story.length > 0 ? <RecordStory steps={story} today={today} /> : null
   const two = c ? c.owns : story.length > 0
   return (
     <div className={cx('grid items-start gap-3', two && '@[46rem]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] @[46rem]:gap-5')}>
@@ -408,7 +432,10 @@ function PurchaseInPlace({ r, onDone, onReceiptFacts }: { r: ShopRecordModel; on
  * A saved thing's link reader, scan and "Filled in for you": the add's autofill on the record's draft (`recordAutofill.ts`) —
  * it fills only empty fields and writes nothing; the record's Save does. Its facts list starts again after a save.
  */
-function OpenAutofill({ r, narrow }: { r: ShopRecordModel; narrow: boolean }) {
+/** The body's 📷✨ as the autofill takes it: the one step, its target, and whether it shows in the link row. */
+type PhotoPart = { step: ProductPhotoStep; setTarget: (t: PhotoTarget | null) => void; inRow: boolean } | null
+
+function OpenAutofill({ r, narrow, photo }: { r: ShopRecordModel; narrow: boolean; photo: PhotoPart }) {
   const [facts, setFacts] = useState<Fact[]>([])
   const latest = useRef({ item: r.item, draft: r.d.draft, facts })
   useEffect(() => { latest.current = { item: r.item, draft: r.d.draft, facts } })
@@ -416,6 +443,10 @@ function OpenAutofill({ r, narrow }: { r: ShopRecordModel; narrow: boolean }) {
   const saved = r.item.updated_at
   const [seenSaved, setSeenSaved] = useState(saved)
   if (seenSaved !== saved) { setSeenSaved(saved); setFacts([]) }
+  // A 📷✨ draft tells the function what the record's own Save kept (Developer → AI → Learned) — that Save only, never another write.
+  const { mutate: reportSave } = useReportAiSave()
+  const { onSaved } = r
+  useEffect(() => onSaved(row => { const report = photoLearnReport(latest.current.facts, row); if (report) reportSave(report) }), [onSaved, reportSave])
   const { set } = r.d
   const categories = r.categories
   const apply = (patch: Partial<ShopDraft>) => {
@@ -427,17 +458,17 @@ function OpenAutofill({ r, narrow }: { r: ShopRecordModel; narrow: boolean }) {
     const now = latest.current
     apply(change(recordShopDraft(now.item, now.draft, categories, now.facts)))
   }
-  return <ShopAutofill draft={recordShopDraft(r.item, r.d.draft, categories, facts)} onChange={apply} update={update} categories={categories} collapsible={narrow} selfId={r.item.id} savedTitle={r.item.title} />
+  return <ShopAutofill draft={recordShopDraft(r.item, r.d.draft, categories, facts)} onChange={apply} update={update} categories={categories} collapsible={narrow} selfId={r.item.id} savedTitle={r.item.title} photo={photo} />
 }
 
 /** Adding: the link reader, scan and "Filled in for you"; a receipt (handed to Read a receipt); the receipt's other lines. */
-function AddTools({ c, narrow }: { c: CreateRecordModel; narrow: boolean }) {
+function AddTools({ c, narrow, photo }: { c: CreateRecordModel; narrow: boolean; photo: PhotoPart }) {
   const { st, kind, owns, batch } = c
   const showAutofill = (kind as string) !== 'general'
   if (!showAutofill && !(owns && !batch) && !c.pictureNote && !(st.receipt && st.receipt.others.length > 0 && st.receipt.currency && !batch)) return null
   return (
     <div className="order-2 flex min-w-0 flex-col gap-3 @[46rem]:order-1">
-      {showAutofill && <ShopAutofill draft={c.view} onChange={c.onChange} update={c.update} categories={c.categories} collapsible={narrow} />}
+      {showAutofill && <ShopAutofill draft={c.view} onChange={c.onChange} update={c.update} categories={c.categories} collapsible={narrow} photo={photo} />}
       {owns && !batch && <ReceiptPhoto stores={c.stores} onFill={c.fromReceipt} handoff onHandoff={c.closeIfClean} />}
       {c.pictureNote && <p className="text-meta text-fg-muted" role="status">{c.pictureNote}</p>}
       {st.receipt && st.receipt.others.length > 0 && st.receipt.currency && !batch && (
