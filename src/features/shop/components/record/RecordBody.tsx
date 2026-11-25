@@ -39,6 +39,9 @@ import { useSavePicture } from './useFindPicture'
 import { ShopAutofill } from './ShopAutofill'
 import { recordAutofillPatch, recordShopDraft } from './recordAutofill'
 import type { Fact } from '../../autofillModel'
+import { photoLearnReport } from '../../photoFacts'
+import { useReportAiSave } from '../../../ai/claude/hooks/useReportAiSave'
+import type { SaveReport } from '../../../ai/claude/learnSave'
 import type { ShopDraft } from '../ShopItemForm'
 import { ReceiptPhoto } from './ReceiptPhoto'
 import { LookElsewhere } from '../purchase/LookElsewhere'
@@ -412,10 +415,21 @@ function OpenAutofill({ r, narrow }: { r: ShopRecordModel; narrow: boolean }) {
   const [facts, setFacts] = useState<Fact[]>([])
   const latest = useRef({ item: r.item, draft: r.d.draft, facts })
   useEffect(() => { latest.current = { item: r.item, draft: r.d.draft, facts } })
-  // A save (the row's new stamp) starts the list again — worked out while rendering, React's way to follow a prop.
+  // A save (the row's new stamp) starts the list again — worked out while rendering, React's way to follow a prop. A 📷✨ draft
+  // that was there tells the function what the save kept (Developer → AI → Learned), once, after the save.
   const saved = r.item.updated_at
   const [seenSaved, setSeenSaved] = useState(saved)
-  if (seenSaved !== saved) { setSeenSaved(saved); setFacts([]) }
+  const [learnReport, setLearnReport] = useState<{ at: string; report: SaveReport | null } | null>(null)
+  if (seenSaved !== saved) { setSeenSaved(saved); setLearnReport({ at: saved, report: photoLearnReport(facts, r.item) }); setFacts([]) }
+  const { mutate: reportSave } = useReportAiSave()
+  const sentAt = useRef<string | null>(null)
+  useEffect(() => {
+    if (!learnReport?.report || sentAt.current === learnReport.at) return
+    sentAt.current = learnReport.at
+    reportSave(learnReport.report)
+  }, [learnReport, reportSave])
+  // 📷✨ on a saved thing only while some of what it fills is empty (owner, 25.11.2026); it never fills over what is there.
+  const photo = !r.item.category_id || !r.item.image_url || !r.item.facts?.brand || !r.item.facts?.model
   const { set } = r.d
   const categories = r.categories
   const apply = (patch: Partial<ShopDraft>) => {
@@ -427,7 +441,7 @@ function OpenAutofill({ r, narrow }: { r: ShopRecordModel; narrow: boolean }) {
     const now = latest.current
     apply(change(recordShopDraft(now.item, now.draft, categories, now.facts)))
   }
-  return <ShopAutofill draft={recordShopDraft(r.item, r.d.draft, categories, facts)} onChange={apply} update={update} categories={categories} collapsible={narrow} selfId={r.item.id} savedTitle={r.item.title} />
+  return <ShopAutofill draft={recordShopDraft(r.item, r.d.draft, categories, facts)} onChange={apply} update={update} categories={categories} collapsible={narrow} selfId={r.item.id} savedTitle={r.item.title} photo={photo} />
 }
 
 /** Adding: the link reader, scan and "Filled in for you"; a receipt (handed to Read a receipt); the receipt's other lines. */

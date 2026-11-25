@@ -11,6 +11,10 @@ import { useGroceryByEan } from '../../hooks/useGrocery'
 import { ean13 } from '../../productFacts'
 import { storeNames } from '../../shopModel'
 import { readNote } from '../../watchWords'
+import { useProductPicture } from '../../hooks/useProductPicture'
+import { pictureFact } from '../../productPicture'
+import { photoFacts } from '../../photoFacts'
+import type { PhotoDraft } from '../../../ai/claude/photoProductRules'
 import {
   duplicatesOf, editFact, factKept, factsFromRead, factsFromScan, factsFromTitle, fieldsAfter, mergeFacts, ownWithEan,
   ownedWords, searchWords, storeRowsOf, toggleFact, type Fact, type FactKey, type FactOrigin,
@@ -20,6 +24,8 @@ import type { ShopDraft } from '../ShopItemForm'
 import { FactList } from './FactList'
 import { FindIt } from './FindIt'
 import { MaybeYours } from './MaybeYours'
+import { PhotoAskButton, ProductPhotoPanel } from './ProductPhotoStep'
+import { useProductPhotoStep } from './useProductPhotoStep'
 
 /** A change of the draft worked out from the draft as it is when it lands (a read or a lookup answers later). */
 export type DraftUpdate = (update: (d: ShopDraft) => Partial<ShopDraft>) => void
@@ -37,7 +43,7 @@ const TITLE_REST_MS = 500
  * anything else offers "Find it" with its digits; a title asks only the owner's own history. Possible duplicates
  * are named, never a block on Add.
  */
-export default function AutofillPanel({ draft, onChange, update, categories, collapsible = false, selfId, savedTitle }: {
+export default function AutofillPanel({ draft, onChange, update, categories, collapsible = false, selfId, savedTitle, photo = true }: {
   draft: ShopDraft
   onChange: (patch: Partial<ShopDraft>) => void
   update: DraftUpdate
@@ -48,6 +54,8 @@ export default function AutofillPanel({ draft, onChange, update, categories, col
   selfId?: string
   /** A saved thing's title as saved: its history is asked only once the owner changes it. */
   savedTitle?: string
+  /** Offer 📷✨ (a thing from photos): always while adding; on a saved thing while some of its fields are empty. */
+  photo?: boolean
 }) {
   const { data: allItems = [] } = useShopItems()
   const items = useMemo(() => (selfId ? allItems.filter(i => i.id !== selfId) : allItems), [allItems, selfId])
@@ -100,8 +108,8 @@ export default function AutofillPanel({ draft, onChange, update, categories, col
   }
 
   // Stable while the camera runs (BarcodeScanner restarts it when this changes): the latest things come from a ref.
-  const latest = useRef({ items, addFacts, modal })
-  useEffect(() => { latest.current = { items, addFacts, modal } }, [items, addFacts, modal])
+  const latest = useRef({ items, addFacts, modal, image: draft.image })
+  useEffect(() => { latest.current = { items, addFacts, modal, image: draft.image } }, [items, addFacts, modal, draft.image])
   const onDetected = useCallback((code: string) => {
     setScanOpen(false); setLast('scan'); setFindOpen(null)
     const ean = ean13(code)
@@ -112,6 +120,26 @@ export default function AutofillPanel({ draft, onChange, update, categories, col
     // The owner's own thing comes first: said, and opened over the sheet.
     if (mine.length) latest.current.modal.open({ kind: 'shop-item', id: mine[0].id })
   }, [])
+
+  // 📷✨ (owner, 25.11.2026): the AI's draft lands as facts "photo + AI" — never over what was typed — and its product page, read
+  // through shop-price like a receipt line's, gives the picture while the field is empty. Code first: a link or a barcode number
+  // typed beside the photos goes to the link reader or the barcode lookup, with no AI call.
+  const readPicture = useProductPicture()
+  const [pictureNote, setPictureNote] = useState<string | null>(null)
+  const onPhotoDraft = useCallback((d: PhotoDraft, callId: string | null) => {
+    setPictureNote(null); setLast(null)
+    latest.current.addFacts('photo', photoFacts(d, categories, new Date().toISOString(), callId))
+    if (!d.page_urls?.length || latest.current.image) return
+    void readPicture(d.page_urls, d.name ?? [d.brand, d.model].filter(Boolean).join(' '), d.page_named === true).then(p => {
+      const fact = pictureFact(p, new Date().toISOString())
+      if (fact && !latest.current.image) latest.current.addFacts('page', [fact])
+      else if (!fact) setPictureNote(p.note)
+    })
+  }, [categories, readPicture])
+  const step = useProductPhotoStep({
+    categories, onDraft: onPhotoDraft, onBarcode: onDetected,
+    onLink: u => { onChange({ url: u }); setReadFor(''); void read(u) },
+  })
 
   const looking = !!scan?.ean && !scan.mine.length && lookup.isFetching
   const lookedUp = !!scan?.ean && !scan.mine.length && !lookup.isFetching && (lookup.isSuccess || lookup.isError)
@@ -150,9 +178,12 @@ export default function AutofillPanel({ draft, onChange, update, categories, col
               ? <span aria-hidden className="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent" />
               : <ScanBarcode aria-hidden />}
           </IconButton>
+          {photo && <PhotoAskButton step={step} />}
         </div>
         {note && <p className="mt-1 text-meta text-fg-muted" role="status">{note}</p>}
       </div>
+      <ProductPhotoPanel step={step} />
+      {pictureNote && <p className="text-meta text-fg-muted" role="status">{pictureNote}</p>}
       {scan && scan.mine.length > 0 && <MaybeYours duplicates={scan.mine.slice(0, 1).map(item => ({ item, by: 'ean' }))} lead={ownedWords(scan.mine[0])} />}
       <MaybeYours duplicates={duplicates} />
       <FactList facts={draft.facts} fields={draft} collapsible={collapsible}

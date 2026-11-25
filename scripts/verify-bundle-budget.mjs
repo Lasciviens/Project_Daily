@@ -43,7 +43,8 @@ const PAGE_KB = {                                          // the shell plus the
                                                            // Needs-a-look rows' hooks — are part of the Shop now; their models, writes and the
                                                            // autofill still load in their own chunks
   'src/features/projects/pages/ProjectPage.tsx': 375,      // [354]
-  'src/features/work/pages/WorkPage.tsx': 375,             // [355]
+  'src/features/work/pages/WorkPage.tsx': 376,             // [355] main was just under 375 on 25.11.2026; +1 that day: no code of Shop's 📷✨ is in its graph, but the new
+                                                           // chunks change the hashed names its chunks import (+1–2 bytes each, 375.015 in all)
   'src/features/books/pages/BooksPage.tsx': 370,           // [350]
   'src/features/wishes/pages/WishesPage.tsx': 355,         // [337]
   'src/features/football/pages/FootballPage.tsx': 350,     // [331]

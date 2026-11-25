@@ -146,7 +146,7 @@ check('quick guess: the whole line from the owner\'s rules (numbers in range), w
 check('the example block escapes the case\'s text and names the category by its path', (() => { const t = SP.exampleBody(tidy, '<b>x</b> & y', { category_id: 'c_audio', name: 'N' }, tidyInput); return t.includes('&lt;b&gt;x&lt;/b&gt; &amp; y') && t.includes('category: Electronics / Audio') && !t.includes('c_audio') })())
 check('keptInput leaves out photos, files and long text values', J(Object.keys(SP.keptInput({ text: 'a', image: 'x', documents: [1], pdf: 'p', big: 'y'.repeat(7000) }))) === J(['text']))
 check('every spec\'s fields are field names the database takes, and every rule field is a reviewed field', [...SP.LEARN_SPECS.values()].every(s => Object.keys(s.fields).every(f => /^[a-z_]{1,40}$/.test(f)) && s.ruleFields.every(f => f in s.fields)))
-check('the jobs that learn by fields are the reviewed ones (critic 13: every form an AI fills and the owner saves)', J([...SP.LEARN_SPECS.keys()].sort()) === J(['dev_request_draft', 'item_fill', 'quick_guess', 'quick_guess_options', 'quick_guess_photo', 'receipt_read', 'recipe_from_link', 'recipe_from_text', 'recipe_macros', 'shop_tidy']))
+check('the jobs that learn by fields are the reviewed ones (critic 13: every form an AI fills and the owner saves)', J([...SP.LEARN_SPECS.keys()].sort()) === J(['dev_request_draft', 'item_fill', 'product_photo', 'quick_guess', 'quick_guess_options', 'quick_guess_photo', 'receipt_read', 'recipe_from_link', 'recipe_from_text', 'recipe_macros', 'shop_tidy']))
 
 // ── §8 ──
 section('§8 the run\'s retry, source memory, knowledge labels')

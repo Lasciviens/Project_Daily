@@ -7,6 +7,8 @@ import { useQuietCheck } from '../../hooks/useShopPrices'
 import { useCreateCostsForThing, useCreateShopLink, useFillRatesNow } from '../../hooks/useShopMoney'
 import { useProductPicture } from '../../hooks/useProductPicture'
 import { pictureFact, type PagePicture } from '../../productPicture'
+import { photoLearnReport } from '../../photoFacts'
+import { useReportAiSave } from '../../../ai/claude/hooks/useReportAiSave'
 import { useLawRules, useShopStores, useStoreRules } from '../../hooks/useShopStores'
 import { isPossession } from '../../ownModel'
 import { categoryPath, currencyOf, listOf } from '../../shopModel'
@@ -46,7 +48,8 @@ export function useCreateRecord({ spec, batch, onSaved, onClose, categories }: {
   const saveCategory = useSaveCategory()
   const costsOf = useCreateCostsForThing()
   const readPicture = useProductPicture()
-  const count = batch ? batch.fills.length : 1
+  const { mutate: reportSave } = useReportAiSave()
+  const count =batch ? batch.fills.length : 1
   // Seeded once: a background refetch never overwrites what is being typed.
   const [states, setStates] = useState<CreateState[]>(() => Array.from({ length: count }, (_, i) => {
     const kept = batch?.restore?.[i]
@@ -209,6 +212,9 @@ export function useCreateRecord({ spec, batch, onSaved, onClose, categories }: {
       try { await costsOf.mutateAsync(costsAtSave(s, row.id, today)) } catch { /* the hook toasted it */ }
     }
     onSaved?.(row)
+    // A 📷✨ draft: what this Save kept of it goes to the function's learning (a background note; the save already reported).
+    const learnReport = photoLearnReport(s.facts, row)
+    if (learnReport) reportSave(learnReport)
     if (row.url && row.list !== 'quick') check([row.id])
     if (currencyOf(row) !== 'NOK' || wanted.some(c => c.currency !== 'NOK') || (s.had && s.draft.sale_currency && s.draft.sale_currency !== 'NOK')) fillRates()
     batch?.onSaved?.(at, row, { ...s, savedId: row.id })
