@@ -22,7 +22,12 @@ export const RETURN_COUNT_DAYS = 14
 /** A complaint right ending shows from 60 days ahead (Needs a look's `COMPLAINT_SOON_DAYS`). */
 export const COMPLAINT_TAG_DAYS = 60
 
-export interface RowTag { text: string; tone: Tone }
+/**
+ * Which fact a tag tells: money to claim, a return counted in days or by its date, an open listing, the complaint right
+ * ending, an old estimate. `day` is the date a `return_by` or `complaint` tag counts to.
+ */
+export type RowTagKind = 'cheaper' | 'return_soon' | 'return_by' | 'listing' | 'complaint' | 'estimate'
+export interface RowTag { kind: RowTagKind; text: string; tone: Tone; day?: string }
 /** One fact of a row's second line; `tone` colours a result (a profit is green on every screen). */
 export interface RowFact { text: string; tone?: 'success' }
 
@@ -61,19 +66,38 @@ export function rowTag(i: ShopItem, watch: ShopPriceWatch | null | undefined, to
     const left = daysBetween(today, i.return_by)
     const now = watch?.status === 'ok' ? cleanPrice(i, watch) : null
     if (now && i.price != null && now.currency === currencyOf(i) && now.amount < i.price) {
-      return { text: `${money(i.price - now.amount, now.currency)} cheaper`, tone: deadlineTone(left, 'warn') }
+      return { kind: 'cheaper', text: `${money(i.price - now.amount, now.currency)} cheaper`, tone: deadlineTone(left, 'warn') }
     }
-    return { text: returnWords(left, i.return_by), tone: deadlineTone(left, left <= RETURN_COUNT_DAYS ? 'info' : 'neutral') }
+    const tone = deadlineTone(left, left <= RETURN_COUNT_DAYS ? 'info' : 'neutral')
+    return left > RETURN_COUNT_DAYS
+      ? { kind: 'return_by', day: i.return_by, text: returnWords(left, i.return_by), tone }
+      : { kind: 'return_soon', text: returnWords(left, i.return_by), tone }
   }
   const selling = listing && listing.item_id === i.id ? listingTag(listing, today) : null
-  if (selling) return selling
+  if (selling) return { kind: 'listing', ...selling }
   if (i.warranty_until && i.warranty_until >= today) {
     const left = daysBetween(today, i.warranty_until)
-    if (left <= COMPLAINT_TAG_DAYS) return { text: `Complaint until ${formatDate(i.warranty_until)}`, tone: deadlineTone(left, 'info') }
+    if (left <= COMPLAINT_TAG_DAYS) return { kind: 'complaint', day: i.warranty_until, text: `Complaint until ${formatDate(i.warranty_until)}`, tone: deadlineTone(left, 'info') }
   }
   const age = valueAgeDays(i, today)
-  if (i.value_now != null && age != null && age > VALUE_STALE_DAYS) return { text: 'Old estimate', tone: 'info' }
+  if (i.value_now != null && age != null && age > VALUE_STALE_DAYS) return { kind: 'estimate', text: 'Old estimate', tone: 'info' }
   return null
+}
+
+/** A tag as a big-picture card shows it: a date tag as an icon and its date (the whole words in its title and accessible name). */
+export interface CardTag extends RowTag { icon?: 'return' | 'complaint'; short?: string }
+
+/**
+ * The row's tag for a 12rem card, where "Return by 03.01.2027" and "Complaint until 24.12.2026" are cut (owner, 24.11.2026):
+ * a return window counted by its date shows the return icon and "03.01.2027", the complaint right the shield and its date —
+ * the date whole (every visible date is DD.MM.YYYY). Every other tag is short already and stays as it is.
+ */
+export function cardTag(i: ShopItem, watch: ShopPriceWatch | null | undefined, today: string, listing?: ShopListing | null): CardTag | null {
+  const tag = rowTag(i, watch, today, listing)
+  if (!tag) return null
+  if (tag.kind === 'return_by' && tag.day) return { ...tag, icon: 'return', short: formatDate(tag.day) }
+  if (tag.kind === 'complaint' && tag.day) return { ...tag, icon: 'complaint', short: formatDate(tag.day) }
+  return tag
 }
 
 /** How long, in a row's few letters: "12 days", "18 months", "3 years", "2½ years". */
@@ -152,36 +176,6 @@ export function rowStacks(widthRem: number | null): number {
 /** How many columns a category's subcategories are dealt into: as many as there are room for, never more than there are subcategories. */
 export const subColumns = (subs: number, stacks: number): number => Math.max(1, Math.min(stacks, subs))
 
-/** The widest a subcategory's big-picture cards go (the card's own cap, 12rem, and the gap): its cards flow into one block this wide at most. */
-export const PICTURE_CARD_REM = 12
-export const pictureBlockRem = (cards: number): number => cards * PICTURE_CARD_REM + Math.max(0, cards - 1) * 0.5
-/** The gap between two blocks of cards on a line, and between the cards in one. */
-export const PICTURE_BLOCK_GAP_REM = 1.5
-export const PICTURE_CARD_GAP_REM = 0.5
-
-/**
- * How many card columns each subcategory's block gets, so a line of blocks uses the whole width (owner, 23.11.2026: a strip of
- * 410px stayed empty at 1920): blocks are packed in order; a block that does not fit what is left of the line takes the
- * columns that are left (two at least — its own cards then wrap into more rows) and a block that cannot even have two starts
- * the next line. Never more columns than cards, never more than a line holds. Not measured yet: every block its full width.
- */
-export function pictureColumns(cards: readonly number[], widthRem: number | null): number[] {
-  const cols = (rem: number) => Math.max(0, Math.floor((rem + PICTURE_CARD_GAP_REM) / (PICTURE_CARD_REM + PICTURE_CARD_GAP_REM)))
-  if (widthRem == null || widthRem <= 0) return cards.map(n => Math.max(1, n))
-  const line = Math.max(1, cols(widthRem))
-  let used = 0
-  return cards.map(n => {
-    const want = Math.max(1, Math.min(n, line))
-    const free = widthRem - used - (used ? PICTURE_BLOCK_GAP_REM : 0)
-    const fit = cols(free)
-    if (used > 0 && fit < want) {
-      if (fit >= 2) { used = widthRem; return fit }
-      used = 0
-    }
-    used += (used ? PICTURE_BLOCK_GAP_REM : 0) + pictureBlockRem(want)
-    return want
-  })
-}
 
 // ── The filter bar's one row ─────────────────────────────────────────────────
 // The bar above Owned's things is ONE line wherever it can be (owner, 23.11.2026): it measures its own width and

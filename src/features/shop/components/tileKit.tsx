@@ -1,58 +1,91 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { Skeleton, Truncate, cx } from '../../../shared/ui'
 import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
-import { BELT, packGroups, spanPosition, tileColumns, type BeltKind, type PriceSpan } from '../wishTile'
+import {
+  BELT, TILE_GAP_REM, TILE_GRID, TILE_LINE, TILE_LINES, TILE_NARROW_REM, TILE_REM, categoryLines, pictureColumns, pictureLines, spanPosition, tileBlocks, tileColumns,
+  tilesRem, type BeltKind, type PriceSpan, type TileLayout,
+} from '../wishTile'
 import { money, num } from './shopFormat'
 import { DisposalBadge, DisposalRibbon } from './DisposalRibbon'
 import type { ShopDisposal, ShopItem } from '../types'
 
-// The Wishlist's picture tiles (THEME.md §6.3 "Picture tiles"): the grid, the
-// picture well (and its row-sized square for Owned's compact rows), the history
-// bar and the loading copy.
+// The Shop's picture tiles (THEME.md §6.3 "Picture tiles"): the one layout of
+// every picture view (the Wishlist, Owned's big pictures and its Gone fold),
+// the picture well (and its row-sized square for Owned's compact rows), the
+// history bar, the tile's fixed parts and the loading copy.
 
 /**
- * Tiles flow into content-width columns (W2): two a row on a 375–402px phone,
- * more as the track widens — never wider tiles. 10rem is the most two columns
- * fit on the smallest phone (343px of content). One gap at every width, so
- * `tileColumns` counts the same columns as the grid.
+ * One category's tiles, each subcategory a block named once above its own tiles — the one layout of every picture view.
+ * Every tile is one size: two equal columns on a list under 40rem (a phone), else fixed 12rem tracks. The blocks are laid
+ * in lines by `pictureLines` from the list's own width (measured before the first paint): a block shares a line only when
+ * all its tiles fit in what is left, so no line has a hole, and a small block fills the end of an earlier line (two
+ * one-tile subcategories share a phone's row). Before the measure, every block takes the whole width with the CSS grid
+ * (`TILE_GRID`). Inside `PictureCategories` the list hands down the category's `layout` (its own columns).
  */
-export const TILE_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] items-stretch gap-2.5'
-
-/**
- * One category's tiles with its subcategories packed into shared rows
- * (`packGroups`), each named once above its own tiles. The column count is
- * auto-fill's, from the grid's own width (measured before the first paint);
- * until then, and without subcategories, the plain auto-fill grid.
- */
-export function PackedTiles({ id, subs, card }: {
-  id: string
+export function PictureBlocks({ id, subs, card, layout }: {
+  id?: string
   subs: readonly { key: string; title: string | null; items: readonly ShopItem[] }[]
   card: (item: ShopItem) => ReactNode
+  layout?: TileLayout
 }) {
   const { ref, width } = useElementWidthRem()
   const labelled = subs.some(s => s.title)
-  const cols = width == null ? null : tileColumns(width)
-  if (!labelled || cols == null) {
+  const counts = subs.map(s => s.items.length)
+  const plan = layout ? { ...layout, lines: pictureLines(counts, layout.line) } : width == null ? null : tileBlocks(counts, width)
+  const block = (sub: (typeof subs)[number]) => {
+    const cols = plan ? pictureColumns(sub.items.length, plan.line) : 1
+    // On a phone the columns share the box: `cols` of `line` equal columns and the gaps between them.
+    const box: CSSProperties | undefined = plan == null ? undefined
+      : plan.narrow ? { width: cols >= plan.line ? '100%' : `calc((100% - ${plan.line - 1} * ${TILE_GAP_REM}rem) * ${cols / plan.line} + ${cols - 1} * ${TILE_GAP_REM}rem)` }
+        : { width: `${tilesRem(cols)}rem` }
+    const grid: CSSProperties | undefined = plan == null ? undefined
+      : { gridTemplateColumns: plan.narrow ? `repeat(${cols}, minmax(0, 1fr))` : `repeat(${cols}, ${TILE_REM}rem)` }
     return (
-      <div ref={ref} id={id} className={TILE_GRID}>
-        {subs.flatMap(sub => sub.items.map(item => <div key={item.id} className="flex min-w-0 flex-col [&>*]:flex-1">{card(item)}</div>))}
+      <div key={sub.key} data-block className={cx('flex min-w-0 shrink-0 flex-col gap-1', plan == null && 'w-full')} style={box}>
+        {labelled && <Truncate as="p" className="section-label px-1">{sub.title ?? 'Other'}</Truncate>}
+        <ul className={plan == null ? TILE_GRID : 'grid items-start gap-2.5'} style={grid}>
+          {sub.items.map(item => <li key={item.id} data-tile className="flex min-w-0 flex-col [&>*]:flex-1">{card(item)}</li>)}
+        </ul>
       </div>
     )
   }
   return (
-    <div ref={ref} id={id} className="grid items-stretch gap-2.5" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-      {packGroups(subs.map(s => s.items.length), cols).map(p => {
-        const sub = subs[p.group]
-        const at = { gridRow: p.line, gridColumn: `${p.col + 1} / span ${p.span}` }
-        return p.label
-          ? (
-            <div key={`label:${sub.key}`} style={at} className={cx('-mb-1.5 min-w-0', p.line > 1 && 'pt-1')}>
-              <Truncate as="p" className="section-label">{sub.title ?? 'Other'}</Truncate>
-            </div>
-          )
-          : <div key={sub.items[p.index].id} style={at} className="flex min-w-0 flex-col [&>*]:flex-1">{card(sub.items[p.index])}</div>
-      })}
+    <div ref={ref} id={id} className={TILE_LINES}>
+      {plan == null
+        ? subs.map(block)
+        : plan.lines.map(line => <div key={subs[line[0]].key} data-line className={TILE_LINE}>{line.map(i => block(subs[i]))}</div>)}
+    </div>
+  )
+}
+
+/**
+ * The categories of a picture view, packed like their blocks one level up (`categoryLines`): a category whose tiles fit in
+ * one row is as wide as that row and shares a line with others that fit (first fit, each with its own header, total and
+ * fold), so a small category never leaves the rest of the width empty; a category that needs more rows has the whole
+ * width. From the list's own width, measured before the first paint; until then, one category under the other. `render`
+ * draws item `i` with the layout its `PictureBlocks` gets.
+ */
+export function PictureCategories({ items, render }: {
+  items: readonly { key: string; blocks: readonly number[] }[]
+  render: (i: number, layout: TileLayout | undefined) => ReactNode
+}) {
+  const { ref, width } = useElementWidthRem()
+  const narrow = width != null && width < TILE_NARROW_REM
+  const line = width == null ? 0 : narrow ? 2 : tileColumns(width)
+  const plan = width == null ? null : categoryLines(items.map(x => x.blocks), line)
+  return (
+    <div ref={ref} className="flex min-w-0 flex-col gap-4">
+      {plan == null ? items.map((x, i) => <div key={x.key}>{render(i, undefined)}</div>) : plan.lines.map(l => (
+        <div key={items[l[0]].key} data-cat-line className={TILE_LINE}>
+          {l.map(i => {
+            const cols = plan.cols[i]
+            const box: CSSProperties = cols == null || cols >= line ? { width: '100%' }
+              : narrow ? { width: `calc((100% - ${TILE_GAP_REM}rem) / 2)` } : { width: `${tilesRem(cols)}rem` }
+            return <div key={items[i].key} data-cat className="min-w-0 shrink-0" style={box}>{render(i, { narrow, line: cols ?? line })}</div>
+          })}
+        </div>
+      ))}
     </div>
   )
 }
@@ -165,18 +198,45 @@ export function HistoryBar({ now, span }: { now: number; span: PriceSpan }) {
   )
 }
 
-/** A tile's loading copy: the well, two title lines, the price lines, the action row. */
+/** A tile's title: always two lines tall, cut by `Truncate` (a short one keeps the second line's room). */
+export const TILE_TITLE = 'mx-1.5 mt-2 h-10 text-body font-semibold text-fg'
+/** A tile's action row: one row of 36px controls (44 on touch), the same on every tile. */
+export const TILE_ACTIONS = 'flex items-center gap-1 border-t border-line pt-1'
+
+/**
+ * A tile's parts under its title, each a fixed height whatever it holds, so every tile is one height (owner, 24.11.2026):
+ * the price with where it was read (one line, the shop's address cut inside its link), the facts (one line, cut at the
+ * end), the price history (its own line, shown whenever the tile has one), and the notes — why a check read no price, the
+ * money a planned sale still leaves, the deal note — in two lines, cut at the end. A part with nothing keeps its room. Cut
+ * text shows whole on hover and in a bubble on a tap (never a More that grows the tile), and all of it is in the record.
+ */
+export function TileLines({ price, meta, history, notes }: { price: ReactNode; meta: ReactNode; history?: ReactNode; notes?: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5 px-1.5 pb-2 pt-0.5">
+      <span className="flex h-5 min-w-0 items-baseline gap-x-1 whitespace-nowrap text-meta text-fg-muted">{price}</span>
+      <span className="flex h-4 min-w-0 items-center text-meta tabular-nums text-fg-muted">{meta}</span>
+      <span className="flex h-4 min-w-0 items-center">{history}</span>
+      <span className="flex h-8 min-w-0 items-start text-meta text-fg-muted">{notes}</span>
+    </div>
+  )
+}
+
+/** A tile's loading copy at the tile's own fixed size: the well, the two-line title, the four parts, the action row. */
 export function TileSkeleton() {
   return (
     <div aria-hidden className="card flex flex-col p-1.5">
       <Skeleton rounded="rounded-row" className="aspect-[4/3] w-full" />
-      <span className="flex flex-col gap-1.5 px-1.5 pb-2 pt-2.5">
+      <span className="mx-1.5 mt-2 flex h-10 flex-col justify-center gap-1.5">
         <Skeleton className="h-3.5 w-11/12" />
         <Skeleton className="h-3.5 w-2/3" />
-        <Skeleton className="mt-1.5 h-4 w-3/5" />
-        <Skeleton className="h-3 w-1/2" />
       </span>
-      <span className="mt-auto border-t border-line pt-1"><Skeleton className="h-9 w-full" /></span>
+      <span className="flex flex-col gap-0.5 px-1.5 pb-2 pt-0.5">
+        <span className="flex h-5 items-center"><Skeleton className="h-4 w-3/5" /></span>
+        <span className="flex h-4 items-center"><Skeleton className="h-3 w-1/2" /></span>
+        <span className="h-4" />
+        <span className="h-8" />
+      </span>
+      <span className={TILE_ACTIONS}><Skeleton className="h-9 w-full [@media(pointer:coarse)]:h-11" /></span>
     </div>
   )
 }
