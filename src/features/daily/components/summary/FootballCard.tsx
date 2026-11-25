@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { CalendarClock, History, ListOrdered, Radio, TrendingUp, Trophy } from 'lucide-react'
 import { Cell, CellHeader, CellLink, StatBox, StatEmpty, StatNote, StatValue } from './cellKit'
 import { TonePill, Truncate, cx, type Tone } from '../../../../shared/ui'
+import { PagedStrip } from '../../../../shared/ui/ScrollPager'
 import { useEntityModal } from '../../../../shared/modals'
 import { ErrorBoundary } from '../../../../shared/components/ErrorBoundary'
 import { formatDate, formatWeekdayDate } from '../../../../shared/utils/dateFormat'
@@ -115,14 +116,14 @@ export function FootballCard({ date }: { date: string }) {
       ) : (
         <ErrorBoundary>
           {g.teams.length > 1 && (
-            <div role="tablist" aria-label="Favourite teams" className="-mt-1 flex gap-1.5 overflow-x-auto scrollbar-none">
+            <PagedStrip noun="teams" role="tablist" aria-label="Favourite teams" className="-mt-1 flex gap-1.5">
               {g.teams.map(t => (
                 <button key={t.id} type="button" role="tab" aria-selected={t.id === team.id} onClick={() => setPick(t.id)}
                   className={cx('chip shrink-0', t.id === team.id && 'border-transparent bg-accent-500 text-on-accent')}>
                   <Truncate as="span" className="max-w-[9rem]">{t.name}</Truncate>
                 </button>
               ))}
-            </div>
+            </PagedStrip>
           )}
           <div className="flex min-w-0 items-center gap-2">
             {team.logo && <img src={team.logo} alt="" className="h-6 w-6 shrink-0 object-contain" />}

@@ -202,6 +202,29 @@ console.log('\n== The read-back from the iPhone (icloud-calendar) ==')
     'two alerts, a link, Free and a travel time set on the iPhone come back, in the app\'s own terms')
   const hostile = mineEvent.ics.replace('TRIGGER:-PT10M', 'TRIGGER:-PT45M').replace(/URL;VALUE=URI:[^\r]*/, 'URL;VALUE=URI:http://example.com/x')
     .replace('TRANSP:OPAQUE', 'TRANSP:OPAQUE\r\nX-APPLE-TRAVEL-DURATION;VALUE=DURATION:PT45M')
+  // A default alert (owner, 24.11.2026: "Default alert on apple calendar should be none on everything"): one iCloud or a
+  // device added from the account's default, marked X-APPLE-DEFAULT-ALARM:TRUE — never the item's own.
+  const at30 = ['ACTION:DISPLAY', 'TRIGGER:-PT30M']
+  eq([X.alarmToken([...at30, 'X-APPLE-DEFAULT-ALARM:TRUE']), X.alarmToken(['X-APPLE-DEFAULT-ALARM;X-X=1:true', 'TRIGGER:-PT15M']),
+      X.alarmToken([...at30, 'x-apple-default-alarm:  True ']), X.alarmToken([...at30, 'X-APPLE-DEFAULT-ALARM;X-NOTE="a:b":TRUE']),
+      X.alarmToken(['ACTION:NONE', 'TRIGGER;VALUE=DATE-TIME:19760401T005545Z', 'X-APPLE-DEFAULT-ALARM:TRUE'])],
+    ['DEFAULT', 'DEFAULT', 'DEFAULT', 'DEFAULT', 'NONE'],
+    "a default alert is told apart by its property name, whatever its parameters or case, by the value after the last ':' (a default 'none' is none)")
+  eq([X.alarmToken([...at30, 'X-APPLE-DEFAULT-ALARM:FALSE']), X.alarmToken([...at30, 'X-APPLE-DEFAULT-ALARMS:TRUE']), X.alarmToken([...at30, 'X-APPLE-DEFAULT-ALARM:TRUEISH']),
+      X.alarmToken([...at30, 'X-APPLE-DEFAULT-ALARM;X-NOTE="TRUE":FALSE']), X.alarmToken([...at30, 'DESCRIPTION:X-APPLE-DEFAULT-ALARM:TRUE'])],
+    ['-30', '-30', '-30', '-30', '-30'], 'FALSE, another property name, another value, TRUE only in a parameter or in the text: a real alert')
+  const defaulted = mineEvent.ics.replace(/BEGIN:VALARM[\s\S]*?END:VALARM/, 'BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT30M\r\nX-APPLE-DEFAULT-ALARM:TRUE\r\nEND:VALARM')
+  eq(X.fieldsChangeOf(defaulted, uid, row, work10, look, true, appUrl), { showAs: 'busy' },
+    "an event whose only alert is iCloud's default: says nothing about the item's own (never taken, never read as \"none\")")
+  const beside = mineEvent.ics.replace(/BEGIN:VALARM[\s\S]*?END:VALARM/,
+    'BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT15M\r\nX-APPLE-DEFAULT-ALARM:TRUE\r\nEND:VALARM\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT30M\r\nEND:VALARM')
+  eq(X.fieldsChangeOf(beside, uid, row, work10, look, true, appUrl), { showAs: 'busy', alerts: [30] },
+    'an alert set on the iPhone beside a leftover default comes back — the default is left out, not the whole read')
+  const ownBeside = unfold(slot({ alerts: [60] }).ics).replace('END:VALARM', 'END:VALARM\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT15M\r\nX-APPLE-DEFAULT-ALARM:TRUE\r\nEND:VALARM')
+  eq(X.fieldsChangeOf(ownBeside, uid, { ...row, alerts: [60] }, work10, look, true, appUrl), { showAs: 'busy' },
+    "the item's own alert as the app wrote it, beside a default: no change")
+  const unreadable = beside.replace('TRIGGER:-PT15M', 'TRIGGER;RELATED=END:-PT5M').replace('X-APPLE-DEFAULT-ALARM:TRUE\r\n', '')
+  eq('alerts' in X.fieldsChangeOf(unreadable, uid, row, work10, look, true, appUrl), false, 'an unreadable alert beside a real one still stops the read of them all (as before)')
   eq(X.fieldsChangeOf(hostile, uid, row, work10, look, true, appUrl), { showAs: 'busy' },
     'an alert off Apple\'s list, an http link, a travel time off the list: left out (never applied, never guessed)')
   const three = mineEvent.ics.replace('TRIGGER:-PT10M', 'TRIGGER:-PT5M\r\nEND:VALARM\r\nBEGIN:VALARM\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\nBEGIN:VALARM\r\nTRIGGER:-PT15M')

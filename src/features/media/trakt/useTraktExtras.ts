@@ -6,9 +6,10 @@ import { qk } from '../../../shared/query/keys'
 import { STALE } from '../../../shared/query/stale'
 import {
   addToTraktList, createTraktList, deleteTraktList, fetchMediaScores, fetchTraktCalendar, fetchTraktListItems,
-  fetchTraktLists, fetchTraktPlayback, removeTraktPlayback, removeFromTraktList, type ListItemRef, type MediaScores, type TraktPlaybackItem,
+  fetchTraktLists, fetchTraktPlayback, removeTraktPlayback, removeFromTraktList, type ListItemRef, type MediaScores, type TraktList, type TraktPlaybackItem,
 } from './traktApi'
 import { useTraktStatus } from './useTrakt'
+import { QUEUE_NAME_TAKEN, isQueueName } from './traktQueue'
 
 const WEEK_MS = 7 * 24 * 3600_000
 
@@ -88,7 +89,8 @@ export function useCreateTraktList() {
     loadingMessage: 'Creating list…',
     successMessage: 'List created',
     mutationFn: ({ name, description, items }: { name: string; description?: string; items?: ListItemRef[] }) =>
-      createTraktList(name, description).then(async list => {
+      // The name "Queue" is the Queue's own (207): New list never makes or reuses it.
+      isQueueName(name) ? Promise.reject(new Error(QUEUE_NAME_TAKEN)) : createTraktList(name, description).then(async list => {
         if (items?.length) await addToTraktList(list.id, items)
         return list
       }),
@@ -101,7 +103,7 @@ export function useDeleteTraktList() {
     action: 'trakt_list_delete',
     loadingMessage: 'Deleting list…',
     silent: 'the delete flow reports the result',
-    mutationFn: async (listId: number) => { await deleteTraktList(listId); return true },
+    mutationFn: async (list: Pick<TraktList, 'id' | 'queue'>) => { await deleteTraktList(list); return true },
     invalidates: [qk.trakt.lists()],
   })
 }

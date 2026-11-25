@@ -173,7 +173,7 @@ check('news is last on the phone (a list) and lists more headlines as the band w
   HOME_BOARD[1][HOME_BOARD[1].length - 1] === 'news' && H.newsRows(1) === 8 && H.newsRows(2) < H.newsRows(3) && H.newsRows(3) < H.newsRows(4))
 
 console.log('Daily layouts')
-for (const [name, board, known] of [['Day', D.DAY_BOARD, D.DAY_SECTIONS], ['Week', D.WEEK_BOARD, D.PICKER_SECTIONS], ['Month', D.MONTH_BOARD, D.PICKER_SECTIONS], ['Tasks', D.TASKS_BOARD, D.TASK_SECTIONS], ['Diary', D.DIARY_BOARD, D.DIARY_SECTIONS]]) {
+for (const [name, board, known] of [['Day', D.DAY_BOARD, D.DAY_SECTIONS], ['Month', D.MONTH_BOARD, D.PICKER_SECTIONS], ['Tasks', D.TASKS_BOARD, D.TASK_SECTIONS], ['Diary', D.DIARY_BOARD, D.DIARY_SECTIONS]]) {
   const problems = B.validateBoardLayouts(board, known)
   check(`${name} layout is valid`, problems.length === 0, problems.join('; '))
 }
@@ -206,7 +206,7 @@ const heroSplits = (px) => px >= 54 * 16
 check('hero: a landscape phone (804px card) stacks; a 1024 tablet (892px) splits', !heroSplits(852 - 48) && heroSplits(W.tablet1024))
 check('hero: splits wherever the board places it from step 2 (full band at 1280, two tracks at 1920, main at 2450)',
   heroSplits(W.laptop1280) && heroSplits(B.columnWidthPx(W.fhd, { tracks: 3, main: '56rem' }, 0, 2)) && heroSplits(B.columnWidthPx(W.monitor, { tracks: 4, main: '56rem' }, 0, 1)))
-for (const [name, board] of [['Week', D.WEEK_BOARD], ['Month', D.MONTH_BOARD]]) {
+for (const [name, board] of [['Month', D.MONTH_BOARD]]) {
   check(`${name}: the picker is always shown`, [1, 2, 3, 4].every(s => B.keysAt(board, s).includes('picker') || B.keysAt(board, s).includes('pair')))
   check(`${name}: steps 3–4 show the picked day AND upcoming together`, [3, 4].every(s => ['picked', 'upcoming'].every(k => B.keysAt(board, s).includes(k))))
   check(`${name}: picker track capped at 40rem`, [2, 3, 4].every(s => B.resolveBoardLayout(board, s).main === '40rem'))
@@ -219,9 +219,27 @@ for (const s of [1, 2, 3, 4]) {
 }
 check('Tasks: groups read left to right by time from step 2', [2, 3, 4].every(s => eq(groupsAt(s), ['overdue', 'openNow', 'today', 'upcoming', 'noDate', 'done'])))
 
+// The switcher is Today · Month · Tasks · Diary (owner, 23.11.2026: "“Yesterday” “Tomorrow” “Week” Remove those.").
+// Daily's view lives only in its own state (no URL or saved tab opens one), so nothing else can open them.
+{
+  const fs = require('fs'), path = require('path')
+  const src = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8').replace(/^\s*\/\/.*$/gm, '')
+  const daily = src('src/features/daily/pages/DailyPage.tsx')
+  const opts = /const PERIODS[^=]*=\s*\[([\s\S]*?)\]/.exec(daily)
+  const labels = opts ? [...opts[1].matchAll(/label:\s*'([^']+)'/g)].map(m => m[1]) : []
+  check('Personal\'s switcher: Today · Month · Tasks · Diary, the same at every width', eq(labels, ['Today', 'Month', 'Tasks', 'Diary']) && !/PHONE_PERIODS|DESKTOP_PERIODS/.test(daily), labels.join(' · '))
+  check('no Yesterday / Tomorrow / Week view left in Personal (modes, periods, the week board, the week card)',
+    !/'yesterday'|'tomorrow'|'week'/.test(daily) && !/WeekWidget|WEEK_BOARD|WeekPicker/.test(daily) && D.WEEK_BOARD === undefined
+      && !fs.existsSync(path.join(__dirname, '../src/features/daily/components/WeekWidget.tsx')))
+  check('Personal opens a view only from its own state: no ?tab= / ?mode= / saved tab to fall back from (a ?date= opens that day\'s Today view)',
+    !/searchParams\.get\('(?:tab|mode|view)'\)/.test(daily) && !/useRemembered|localStorage/.test(daily) && /searchParams\.get\('date'\)/.test(daily))
+  check('the Google calendar choice moved with the Week card to the Month card (never lost)',
+    /<CalendarFilter\b/.test(src('src/features/daily/components/MonthWidget.tsx')) && /setSelectedCalendarIds/.test(src('src/features/calendar/components/CalendarFilter.tsx')))
+}
+
 console.log('boardWidthRem (page headers stop where the board stops)')
-check('one track → no cap', B.boardWidthRem(D.WEEK_BOARD, 1) === null && B.boardWidthRem(HOME_BOARD, 1) === null)
-check('Week/Month: 40rem picker + one side = 65rem; + three sides = 115rem', [D.WEEK_BOARD, D.MONTH_BOARD].every(b => B.boardWidthRem(b, 2) === 65 && B.boardWidthRem(b, 4) === 115))
+check('one track → no cap', B.boardWidthRem(D.MONTH_BOARD, 1) === null && B.boardWidthRem(HOME_BOARD, 1) === null)
+check('Month: 40rem picker + one side = 65rem; + three sides = 115rem', [D.MONTH_BOARD].every(b => B.boardWidthRem(b, 2) === 65 && B.boardWidthRem(b, 4) === 115))
 check('Tasks: 42rem main → 67 / 92 / 117rem', B.boardWidthRem(D.TASKS_BOARD, 2) === 67 && B.boardWidthRem(D.TASKS_BOARD, 3) === 92 && B.boardWidthRem(D.TASKS_BOARD, 4) === 117)
 check('Day at step 4 is the full 131rem board', B.boardWidthRem(D.DAY_BOARD, 4) === B.BOARD_MAX_REM)
 check('a non-rem main cap gives no cap', B.boardWidthRem({ 1: ['a'], 2: { main: '50%', columns: [['a'], []] } }, 2) === null)
@@ -249,7 +267,7 @@ console.log('early steps (a lowered main takes its next track as soon as it fits
   check('a step that isn\'t early starts at the page\'s threshold', B.stepStartRem(lowered, 2) === 60 && B.stepStartRem(HOME_BOARD, 3) === 100 && B.stepStartRem(HOME_BOARD, 4) === 128)
   check('the board steps early, the page doesn\'t', B.boardStepForWidth(92 * 16, lowered) === 3 && B.boardStepForWidth(92 * 16 - 1, lowered) === 2 && B.pageStepForWidth(92 * 16) === 2)
   check('a board without an early step steps with the page at every width', Object.values(W).concat([959, 960, 1599, 1600, 2047, 2048]).every(px =>
-    [HOME_BOARD, D.WEEK_BOARD, D.TASKS_BOARD, D.DAY_BOARD].every(b => B.boardStepForWidth(px, b) === B.pageStepForWidth(px))))
+    [HOME_BOARD, D.MONTH_BOARD, D.TASKS_BOARD, D.DAY_BOARD].every(b => B.boardStepForWidth(px, b) === B.pageStepForWidth(px))))
   check('validate: early needs a main cap in rem', B.validateBoardLayouts({ 1: ['a'], 3: { early: true, main: '60%', columns: [['a'], [], []] } }).some(p => /early needs a main cap in rem/.test(p)))
   check('validate: early on a 56rem main gains nothing (106rem > 100rem) and is refused', B.validateBoardLayouts({ 1: ['a'], 3: { early: true, columns: [['a'], [], []] } }).some(p => /early starts no sooner/.test(p)))
   check('validate accepts an early step on a lowered main', B.validateBoardLayouts(lowered).length === 0)

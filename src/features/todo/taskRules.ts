@@ -207,42 +207,6 @@ export function openOnDay(tasks: readonly DayFields[], day: string, today: strin
   return tasks.filter(t => isOpenTask(t) && onDay(t, day, today)).length
 }
 
-/**
- * A week's numbers (Daily's week card), counted the day lists' way: open =
- * every open task on one of its days (today's list brings the overdue and
- * undated Today ones), plus — in the current week — the undated This-week
- * ones; done = the week's own tasks (due in it, or undated This-week ones)
- * closed during it, so the % never drops at midnight. `todayTasks` is today's
- * day list (only read when today is in the week); `weekTasks` the week read.
- */
-export function weekCounts(input: {
-  weekTasks:  readonly (DayFields & Pick<Task, 'id'>)[]
-  todayTasks: readonly (DayFields & Pick<Task, 'id'>)[]
-  from: string
-  to:   string
-  today: string
-}): { open: number; done: number; percent: number } {
-  const { weekTasks, todayTasks, from, to, today } = input
-  const open = new Set<string>()
-  const done = new Set<string>()
-  const current = today >= from && today <= to
-  for (const t of weekTasks) {
-    if (isOpenTask(t)) {
-      if (t.due_date ? t.due_date >= from && t.due_date <= to : current) open.add(t.id)
-    } else if (t.status === 'done') {
-      const c = closedDay(t)
-      if (c && c >= from && c <= to) done.add(t.id)
-    }
-  }
-  if (current) {
-    for (const t of todayTasks) {
-      if (isOpenTask(t) && onDay(t, today, today)) open.add(t.id)
-    }
-  }
-  const total = open.size + done.size
-  return { open: open.size, done: done.size, percent: total ? Math.round((done.size / total) * 100) : 0 }
-}
-
 /** Focus (Work's strip) is for work still to do; a closed task leaves it. */
 export function isFocusedOpen(task: Pick<Task, 'status' | 'is_focused'>): boolean {
   return task.is_focused && isOpenTask(task)

@@ -1,4 +1,5 @@
-import { ArrowDown, ArrowUp, CalendarPlus, ChevronsUp, X } from 'lucide-react'
+import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
+import { ArrowDown, ArrowUp, CalendarPlus, ChevronsUp, MoreHorizontal, X } from 'lucide-react'
 import { posterUrl } from '../../../integrations/tmdb/client'
 import { useEntityModal } from '../../../shared/modals'
 import { IconButton, Skeleton, ToneDot, Truncate } from '../../../shared/ui'
@@ -34,11 +35,17 @@ export function QueuePanel({ onOpen }: { onOpen: OpenMediaDetail }) {
     void removeItems(list.id, refs, { title, done })
   }
   const finished = items.filter(i => libOf(i)?.bucket === 'completed')
+  const removeOne = (i: TraktListItem) => remove([i], `Take “${i.title}” out of the Queue?`, `Took “${i.title}” out of the Queue`)
+  const plan = (i: TraktListItem) => modal.open({
+    kind: 'time-block',
+    defaults: { title: `Watch: ${i.title}`, duration: i.type === 'show' ? 60 : 120, category: 'media', color: 'purple', alsoCreateTask: true },
+  })
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="@container flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-meta text-fg-muted">
-        <span>{items.length} title{items.length === 1 ? '' : 's'} · the order is saved on Trakt</span>
+        {/* The count is in the list's header line already. */}
+        <span>The order is saved on Trakt</span>
         {finished.length > 0 && (
           <button type="button" className="min-h-[44px] font-semibold text-accent-600" onClick={() => remove(finished, `Take ${finished.length} watched out of the Queue?`, `Took ${finished.length} watched out of the Queue`)}>
             Remove {finished.length} watched
@@ -63,15 +70,31 @@ export function QueuePanel({ onOpen }: { onOpen: OpenMediaDetail }) {
                   </span>
                 </span>
               </button>
+              {/* Narrow (a phone): up, down and ⋯ — the title keeps its room; wide: every action in the row. */}
               <div className="flex shrink-0 items-center">
-                {n > 1 && <IconButton label="Move to the top" onClick={() => move(n, 0)} className="hidden sm:inline-flex"><ChevronsUp /></IconButton>}
+                {n > 1 && <IconButton label="Move to the top" onClick={() => move(n, 0)} className="hidden @[34rem]:inline-flex"><ChevronsUp /></IconButton>}
                 <IconButton label="Move up" disabled={n === 0 || reorder.isPending} onClick={() => move(n, n - 1)}><ArrowUp /></IconButton>
                 <IconButton label="Move down" disabled={n === items.length - 1 || reorder.isPending} onClick={() => move(n, n + 1)}><ArrowDown /></IconButton>
-                <IconButton label={`Plan ${i.title}`} onClick={() => modal.open({
-                  kind: 'time-block',
-                  defaults: { title: `Watch: ${i.title}`, duration: i.type === 'show' ? 60 : 120, category: 'media', color: 'purple', alsoCreateTask: true },
-                })}><CalendarPlus /></IconButton>
-                <IconButton label={`Remove ${i.title} from the Queue`} onClick={() => remove([i], `Take “${i.title}” out of the Queue?`, `Took “${i.title}” out of the Queue`)}><X /></IconButton>
+                <IconButton label={`Plan ${i.title}`} onClick={() => plan(i)} className="hidden @[34rem]:inline-flex"><CalendarPlus /></IconButton>
+                <IconButton label={`Remove ${i.title} from the Queue`} onClick={() => removeOne(i)} className="hidden @[34rem]:inline-flex"><X /></IconButton>
+                <Menu as="div" className="@[34rem]:hidden">
+                  <MenuButton className="icon-btn" aria-label={`More for ${i.title}`} title={`More for ${i.title}`}>
+                    <MoreHorizontal className="h-4 w-4" aria-hidden />
+                  </MenuButton>
+                  <MenuItems anchor="bottom end" transition className="menu w-48 [--anchor-gap:4px] transition duration-150 data-[closed]:opacity-0">
+                    {n > 0 && (
+                      <MenuItem>
+                        <button type="button" title="Top — move it to the top of the Queue" className="menu-item" onClick={() => move(n, 0)}><ChevronsUp aria-hidden className="h-4 w-4" /> Top</button>
+                      </MenuItem>
+                    )}
+                    <MenuItem>
+                      <button type="button" title={`Plan — put “${i.title}” in your calendar`} className="menu-item" onClick={() => plan(i)}><CalendarPlus aria-hidden className="h-4 w-4" /> Plan</button>
+                    </MenuItem>
+                    <MenuItem>
+                      <button type="button" title={`Remove — take “${i.title}” out of the Queue`} className="menu-item" onClick={() => removeOne(i)}><X aria-hidden className="h-4 w-4" /> Remove</button>
+                    </MenuItem>
+                  </MenuItems>
+                </Menu>
               </div>
             </li>
           )

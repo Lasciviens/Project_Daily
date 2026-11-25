@@ -28,7 +28,7 @@ export function useToggleQueue() {
       const lists = await fetchTraktLists()
       let list = findQueueList(lists)
       if (remove) { if (list) await removeFromTraktList(list.id, [item]); return list?.id ?? null }
-      if (!list) list = await createTraktList(QUEUE_NAME, 'What to watch next, in order — kept by Lasci\'s Board.')
+      if (!list) list = await createTraktList(QUEUE_NAME, 'What to watch next, in order — kept by Lasci\'s Board.', { queue: true })
       await addToTraktList(list.id, [item])
       return list.id
     },

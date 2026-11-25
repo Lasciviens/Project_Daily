@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { ArrowUpDown, LocateFixed, Plus, RefreshCw, Save, X } from 'lucide-react'
 import { quayLabel, type StopResult, type TransitPlace } from '../../api/ruterApi'
 import { useTransitRoutes, type UserTransitRoute } from '../../hooks/useTransitRoutes'
@@ -199,6 +199,8 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
   const [draftFrom,      setDraftFrom]      = useState<TransitPlace | null>(null)
   const [draftTo,        setDraftTo]        = useState<TransitPlace | null>(null)
   const [draftVia,       setDraftVia]       = useState<TransitPlace | null>(null)
+  // The From/Via/To card: the stop lists are as wide as it (StopSearchInput widthFrom).
+  const placesCard = useRef<HTMLDivElement>(null)
   const [showVia,        setShowVia]        = useState(false)
   const [fromLocState,   setFromLocState]   = useState<LocationState>('idle')
   const [toLocState,     setToLocState]     = useState<LocationState>('idle')
@@ -533,7 +535,7 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
         <div className="space-y-3">
 
           {/* FROM + TO — grouped in a single card with a swap divider */}
-          <div className="rounded-row border border-line bg-surface overflow-hidden divide-y divide-line">
+          <div ref={placesCard} className="rounded-row border border-line bg-surface overflow-hidden divide-y divide-line">
 
             {/* FROM field */}
             <div className="px-3 pt-3 pb-3">
@@ -543,7 +545,7 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
                 <div className="space-y-1">
                   <div className="flex items-center gap-1.5">
                     <div className="flex-1 min-w-0">
-                      <StopSearchInput placeholder="From — stop or address…" favorites={favoriteStops}
+                      <StopSearchInput placeholder="From — stop or address…" favorites={favoriteStops} widthFrom={placesCard}
                         onSelect={s => { const p = toTransitPlace(s); if (p) setDraftFrom(p) }} />
                     </div>
                     <button
@@ -589,7 +591,7 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
             ) : showVia && (
               <div className="flex items-center gap-1.5 px-3 py-3">
                 <div className="min-w-0 flex-1">
-                  <StopSearchInput placeholder="Via — pass through this stop…" favorites={favoriteStops}
+                  <StopSearchInput placeholder="Via — pass through this stop…" favorites={favoriteStops} widthFrom={placesCard}
                     onSelect={s => { const p = toTransitPlace(s); if (p) setDraftVia(p) }} />
                 </div>
                 <IconButton label="Remove via stop" onClick={clearVia}><X /></IconButton>
@@ -604,7 +606,7 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
                 <div className="space-y-1">
                   <div className="flex items-center gap-1.5">
                     <div className="flex-1 min-w-0">
-                      <StopSearchInput placeholder="To — stop or address…" favorites={favoriteStops}
+                      <StopSearchInput placeholder="To — stop or address…" favorites={favoriteStops} widthFrom={placesCard}
                         onSelect={s => { const p = toTransitPlace(s); if (p) setDraftTo(p) }} />
                     </div>
                     <button

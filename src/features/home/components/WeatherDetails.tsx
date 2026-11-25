@@ -1,5 +1,6 @@
 import { Droplets, Wind, CloudRain, MapPin } from 'lucide-react'
 import { SectionLabel, Truncate } from '../../../shared/ui'
+import { PagedStrip } from '../../../shared/ui/ScrollPager'
 import { weatherIcon, weatherLabel, type WeatherData } from '../api/weatherApi'
 
 // Weather symbols are content (a forecast glyph), so the emoji from weatherIcon stays.
@@ -26,7 +27,7 @@ export function WeatherHours({ data }: { data: WeatherData }) {
   return (
     <div>
       <SectionLabel className="mb-1.5">Next hours</SectionLabel>
-      <div className="scroll-x -mx-1 flex gap-1 px-1 pb-1">
+      <PagedStrip noun="hours" className="-mx-1 flex gap-1 px-1 pb-1">
         {data.hours.slice(0, 12).map(h => (
           <div key={h.time} className="flex min-w-[44px] flex-col items-center gap-0.5 rounded-control py-1">
             <span className="text-micro tabular-nums text-fg-muted">{h.time}</span>
@@ -35,7 +36,7 @@ export function WeatherHours({ data }: { data: WeatherData }) {
             {h.precip > 0 && <span className="text-micro tabular-nums text-info">{h.precip.toFixed(1)}</span>}
           </div>
         ))}
-      </div>
+      </PagedStrip>
     </div>
   )
 }

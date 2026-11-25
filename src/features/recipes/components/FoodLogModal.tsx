@@ -32,6 +32,7 @@ import { useDayTargets } from '../../daily/hooks/useDayTargets'
 import { toast } from '../../../app/store'
 import type { IngredientLibraryItem, MealSlot, RecipeWithIngredients } from '../types'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
+import { PagedStrip } from '../../../shared/ui/ScrollPager'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  LOG FOOD — full-screen, calm, visual (2026-07-21 redesign, user brief:
@@ -530,7 +531,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
             <section>
               <p className="section-label mb-2">Saved meals</p>
               {/* Full-bleed to the sheet edges, snapping at the body's 16px inset. */}
-              <div className="scroll-x -mx-4 flex snap-x scroll-px-4 gap-2 px-4 pb-1">
+              <PagedStrip noun="saved meals" className="-mx-4 flex snap-x scroll-px-4 gap-2 px-4 pb-1">
                 {savedMeals.map(r => {
                   // Hover (desktop) / the ✎ editor (mobile) reveals the meal's
                   // ingredients — a temp meal is one named unit, not N loose rows.
@@ -564,7 +565,7 @@ export function FoodLogModal({ open = true, onClose, date, defaultSlot, defaultQ
                     </div>
                   )
                 })}
-              </div>
+              </PagedStrip>
             </section>
           )}
 

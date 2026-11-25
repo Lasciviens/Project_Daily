@@ -6,6 +6,7 @@ import { TgScrapeDialog } from './TgScrapeDialog'
 import { isScraped, primaryVariant, scrapedId } from './tgScrapeModel'
 import { romFileName } from '../../../scraper/ssPlan'
 import { Truncate } from '../../../../../shared/ui/Truncate'
+import { PagedStrip } from '../../../../../shared/ui/ScrollPager'
 
 type PickFilter = 'todo' | 'no_cover' | 'no_desc' | 'all'
 const FILTERS: { key: PickFilter; label: string }[] = [
@@ -116,7 +117,7 @@ function TgScrapeGamePicker({ open, onClose, games, currentId, onPick }: {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 tg-muted" aria-hidden />
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Title or platform" className="tg-input pl-9 pr-3" autoComplete="off" />
         </label>
-        <div role="group" aria-label="Show" className="tg-scroll-x -mx-1 mt-2.5 flex gap-1.5 px-1">
+        <PagedStrip look="games" noun="filters" role="group" aria-label="Show" wrapClassName="mt-2.5" className="-mx-1 flex gap-1.5 px-1">
           {FILTERS.map(f => (
             <button
               key={f.key} type="button" aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}
@@ -125,7 +126,7 @@ function TgScrapeGamePicker({ open, onClose, games, currentId, onPick }: {
               {f.label} <span className="tabular-nums opacity-70">{counts[f.key]}</span>
             </button>
           ))}
-        </div>
+        </PagedStrip>
       </div>
       {list.length === 0 && elsewhere.length > 0 && (
         <p className="pb-2 text-[12.5px] tg-muted">Nothing under “{FILTERS.find(f => f.key === filter)?.label}” — found in your whole library:</p>

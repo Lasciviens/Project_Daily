@@ -98,8 +98,8 @@ function sortEvents(events: CalendarEvent[]): CalendarEvent[] {
 
 // The real, still-remaining reason "reconnect + grant the new scope" alone
 // didn't bring subscribed calendars back: `selectedCalendarIds: null` means
-// two DIFFERENT things in two different places. WeekWidget's own filter UI
-// (`isCalSelected`) treats null as "every calendar is selected" — which is
+// two DIFFERENT things in two different places. The calendar filter's own UI
+// (`isSelected`, CalendarFilter.tsx) treats null as "every calendar is selected" — which is
 // why every checkbox shows green/checked with no explicit action taken.
 // But every fetch hook (this file) used to fall back to `selectedCalendarIds
 // ?? ['primary']` — treating the SAME null as "only primary". A user who
@@ -122,7 +122,7 @@ function useSelectedCalendarIds(): string[] {
 
 // Real bug, fixed: this used to fetch ONLY the 'primary' calendar
 // (calendarApi.ts's own default), so a user's SUBSCRIBED/secondary
-// calendars (selected via WeekWidget's "⊞ Filter calendars", persisted as
+// calendars (selected via the Month card's calendar filter, CalendarFilter.tsx, persisted as
 // `selectedCalendarIds`) never appeared in the actual agenda list — only
 // in the week/month grid's dot indicators, which already looped
 // `selectedCalendarIds` via useCalendarEventDatesForRange below. Mirrors

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Keyboar
 import { Link, useNavigate } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 import { Skeleton, Truncate, cx } from '../../../shared/ui'
+import { ScrollPager } from '../../../shared/ui/ScrollPager'
 import { useReducedMotion } from '../../../shared/hooks/useMotion'
 import { readGlanceIndex, saveGlanceIndex } from './glanceIndex'
 import { GlanceArt } from './GlanceArt'
@@ -52,8 +53,8 @@ function notOurPress(target: EventTarget | null, box: Element): boolean {
 
 /**
  * A glance tile with several screens side by side (THEME.md §6.3). Swipe on
- * touch; with a mouse, hold and drag (or a trackpad's sideways scroll); with
- * the keyboard, ←/→ on the tile's header. The dots say which screen is up. A
+ * touch; with a mouse, the ‹ › around the dots (ScrollPager), hold and drag, or
+ * a trackpad's sideways scroll; with the keyboard, ←/→ on the tile's header or a chevron. The dots say which screen is up. A
  * plain tap or click (not a drag) opens the tile's detail, like before — except
  * on a control inside a screen (a field, a menu button), which keeps the press.
  * Screens not showing are inert, so Tab never lands in a hidden field.
@@ -209,16 +210,21 @@ export function GlanceCarousel({ id, label, icon, art, screens, loading, to, onC
       )}
 
       {count > 1 && !loading && (
-        <div aria-hidden className="mt-1.5 flex min-w-0 items-center gap-2">
+        // The chevrons (a mouse or trackpad only) are no taller than the name's line, so the tile keeps its height.
+        <div className="mt-1.5 flex min-w-0 items-center gap-1">
           {/* A screen with its own fact here (the Money tile's day change) shows it in the name's place; the name stays in the tile's label for a screen reader. */}
-          {screen?.nameExtra != null
-            ? <span className="min-w-0 flex-1">{screen.nameExtra}</span>
-            : <Truncate className="min-w-0 flex-1 text-micro font-medium text-fg-faint">{screen?.name}</Truncate>}
-          <span className="flex shrink-0 gap-1">
-            {screens.map((s, i) => (
-              <span key={s.key} className={cx('h-1.5 rounded-full transition-[width,background-color] duration-200', i === current ? 'w-3.5 bg-accent-500' : 'w-1.5 bg-line-strong')} />
-            ))}
+          <span aria-hidden className="flex min-w-0 flex-1">
+            {screen?.nameExtra != null
+              ? <span className="min-w-0 flex-1">{screen.nameExtra}</span>
+              : <Truncate className="min-w-0 flex-1 text-micro font-medium text-fg-faint">{screen?.name}</Truncate>}
           </span>
+          <ScrollPager track={track} noun="screen" paged placement="inline" className="-mr-1.5 [@media(pointer:coarse)]:mr-0">
+            <span aria-hidden className="flex shrink-0 gap-1">
+              {screens.map((s, i) => (
+                <span key={s.key} className={cx('h-1.5 rounded-full transition-[width,background-color] duration-200', i === current ? 'w-3.5 bg-accent-500' : 'w-1.5 bg-line-strong')} />
+              ))}
+            </span>
+          </ScrollPager>
         </div>
       )}
     </div>

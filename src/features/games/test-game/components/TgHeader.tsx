@@ -2,6 +2,7 @@ import { headerNoteText, type TgHeaderConfig } from '../tgTypes'
 import { PlatformWordmark, SectionGlyph } from './platformArt'
 import { TgConsolePhoto } from './TgConsolePhoto'
 import { Truncate } from '../../../../shared/ui/Truncate'
+import { PagedStrip } from '../../../../shared/ui/ScrollPager'
 
 // Idle status tabs: faint pills in dark mode, plain text in light (the
 // design's two variants) — `--tg-tab-idle-bg` from testGame.css when defined.
@@ -49,7 +50,7 @@ export function TgHeader({ config }: { config: TgHeaderConfig }) {
       </div>
 
       {tabs.length > 0 && (
-        <div role="group" aria-label={`${title} filter`} className="tg-scroll-x -m-1 mt-2 flex gap-2.5 p-1">
+        <PagedStrip look="games" noun="filters" role="group" aria-label={`${title} filter`} wrapClassName="mt-2" className="-m-1 flex gap-2.5 p-1">
           {tabs.map(t => {
             const active = activeTabs ? activeTabs.includes(t.key) : t.key === activeTab
             return (
@@ -70,7 +71,7 @@ export function TgHeader({ config }: { config: TgHeaderConfig }) {
               </button>
             )
           })}
-        </div>
+        </PagedStrip>
       )}
     </header>
   )

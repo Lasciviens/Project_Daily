@@ -150,7 +150,7 @@ console.log('\n== 8. Nothing on the day list is lost (NEVER_HIDES) ==')
   eq(shown, ['a', 'b', 'c', 'd', 'e', 'f'], 'every task of the day list is in exactly one row')
 }
 
-console.log('\n== 9. Week strip, week card and month: repeat days count ==')
+console.log('\n== 9. Week strip and month: repeat days count ==')
 {
   const plans = [plan('walk', { days_of_week: [1, 3, 5] }), plan('water', { start_time: null, end_time: null, days_of_week: [0] }), plan('gone', { except_dates: ['2026-10-16'] , days_of_week: [5] })]
   eq(D.repeatDaysOn(plans, '2026-10-16'), 1, 'Friday: the walk (a day already acted on is its own task)')
@@ -158,8 +158,6 @@ console.log('\n== 9. Week strip, week card and month: repeat days count ==')
   eq(D.repeatsToDoOn(plans, TODAY, TODAY), 0, 'Thursday has none')
   eq(D.repeatsToDoOn(plans, '2026-10-18', TODAY), 1, 'Sunday: water the plants')
   eq(D.repeatsToDoBetween(plans, '2026-10-12', '2026-10-18', TODAY), 2, 'this week from today: Friday\'s walk + Sunday\'s plants')
-  eq(D.withRepeats({ open: 2, done: 2 }, 2), { open: 4, done: 2, percent: 33 }, 'the week\'s % counts them as still to do')
-  eq(D.withRepeats({ open: 0, done: 0 }, 0), { open: 0, done: 0, percent: 0 }, 'an empty week is 0 %, not NaN')
   eq(D.dayRowCounts({ open: 3, done: 1 }, 2), { open: 5, done: 1 }, 'the day header: open tasks + repeat days to do')
 }
 

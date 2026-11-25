@@ -45,7 +45,7 @@ mock answers as the database does for the allowed owner.
    ```sh
    node scripts/audit-page-width.mjs --harness scripts/harness               # widths 402, 1469, 2450
    node scripts/audit-text-overflow.mjs --harness scripts/harness
-   node scripts/audit-page-width.mjs --harness scripts/harness --routes daily:week --widths 402 --shots /tmp/shots
+   node scripts/audit-page-width.mjs --harness scripts/harness --routes daily:month --widths 402 --shots /tmp/shots
    node scripts/audit-cls.mjs --harness scripts/harness --slow 800 --tabs     # layout shifts: CLS per page and tab switch
    node scripts/audit-cls.mjs --harness scripts/harness --slow 800 --tabs --data seed,light,empty --revisit
    ```

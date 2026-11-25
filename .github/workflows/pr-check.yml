@@ -499,6 +499,13 @@ jobs:
         run: node scripts/verify-db-drop-gemini-search.mjs
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      # Migration 207 (the Queue is never deleted): nobody — browser, assistant, service role, database owner — deletes,
+      # changes or truncates a Queue mark; deleting an account still works and takes only its own marks; service-role
+      # only, owner lock, not audited. 207 runs twice: the catalogue must not change.
+      - name: Trakt Queue protection database scenarios
+        run: node scripts/verify-db-trakt-queue-protect.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
   # Every scripts/verify-*.cjs|mjs, several at a time, as its own job beside
   # the build above, so it adds no waiting time unless it is slower than the

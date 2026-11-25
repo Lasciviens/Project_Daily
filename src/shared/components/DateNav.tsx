@@ -34,9 +34,12 @@ export function DateNav({
 }) {
   // The hit box always reaches 44px; `sm` keeps a narrower 36px width so
   // compact widget headers still fit their row.
+  // One height for the arrows and Today, so showing Today never makes the row taller (Personal's header grew 8px
+  // on a switch to Month, where Today appears).
+  const height = size === 'md' ? 'min-h-[36px] [@media(pointer:coarse)]:min-h-[44px]' : 'min-h-[44px]'
   const btn = cx(
     'grid place-items-center rounded-control text-fg-muted transition-colors duration-150',
-    size === 'md' ? 'min-h-[36px] [@media(pointer:coarse)]:min-h-[44px]' : 'min-h-[44px]',
+    height,
     'hover:bg-surface-hover hover:text-fg disabled:opacity-30 disabled:hover:bg-transparent',
     size === 'md' ? 'min-w-[44px]' : 'min-w-[36px]',
   )
@@ -57,7 +60,7 @@ export function DateNav({
       {onToday && !isToday && (
         <button
           type="button" onClick={onToday}
-          className="ml-1 min-h-[44px] rounded-control px-2.5 text-meta font-semibold text-accent-600 transition-colors duration-150 hover:bg-accent-50"
+          className={cx('ml-1 rounded-control px-2.5 text-meta font-semibold text-accent-600 transition-colors duration-150 hover:bg-accent-50', height)}
         >Today</button>
       )}
       {/* A 76px box clipped DD.MM.YYYY on phones: the app-wide iOS anti-zoom

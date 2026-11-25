@@ -7,7 +7,7 @@
 // `calendar.calendarlist.readonly` (added — real bug, fixed): without it,
 // `GET /users/me/calendarList` (calendarApi.ts's fetchCalendarList, used by
 // useCalendarList) 403s, so a user's SUBSCRIBED/secondary calendars never
-// populated the calendar picker (WeekWidget's "⊞ Filter calendars") at all —
+// populated the calendar picker (CalendarFilter on the Month card) at all —
 // `calendar.events` only grants read/write on EVENTS, never on calendar
 // list/metadata. This is the narrowest scope that covers it (never the
 // broader `calendar`/`calendar.readonly`, which would also grant read access

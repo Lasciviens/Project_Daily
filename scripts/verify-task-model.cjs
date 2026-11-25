@@ -149,23 +149,6 @@ eq(R.onDay(task({ status: 'done', due_date: TODAY, completed_at: at('2026-10-11'
   eq(R.openOnDay(list, '2026-10-14', TODAY), 2, 'open + waiting due that day')
 }
 
-// ── A week's numbers ──
-{
-  seq = 100
-  const week = [
-    task({ due_date: '2026-10-13' }),                                                  // open, due in week
-    task({ due_date: '2026-10-14', status: 'done', completed_at: at('2026-10-13') }),  // done in week
-    task({ due_date: '2026-10-15', status: 'done', completed_at: at('2026-10-02') }),  // due in week, finished an earlier week
-    task({ section: 'this_week' }),                                                    // undated this week, open
-    task({ section: 'this_week', status: 'done', completed_at: at('2026-08-01') }),    // ancient: no longer inflates
-  ]
-  const todayList = [task({ due_date: '2026-10-01', section: 'inbox' }), task({ section: 'today' })] // overdue + undated Today
-  const w = R.weekCounts({ weekTasks: week, todayTasks: todayList, from: '2026-10-12', to: '2026-10-18', today: TODAY })
-  eq(w, { open: 4, done: 1, percent: 20 }, 'open = on a day of the week (today\'s list too) + undated; done = closed in the week')
-  const next = R.weekCounts({ weekTasks: week, todayTasks: todayList, from: '2026-10-19', to: '2026-10-25', today: TODAY })
-  eq(next.open, 0, 'another week leaves today\'s list and the undated ones out')
-}
-
 // ── Daily's Tasks tab ──
 {
   seq = 200

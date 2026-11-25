@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { usePsnTitleTrophies, usePsnTrophyGroups } from '../hooks/usePlayStation'
 import type { PsnTrophy } from '../api/psnApi'
 import { Truncate } from '../../../shared/ui/Truncate'
+import { PagedStrip } from '../../../shared/ui/ScrollPager'
 import { formatDate } from '../../../shared/utils/dateFormat'
 
 // Trophy list for ONE trophy set, shared by the played-game modal and the
@@ -112,7 +113,7 @@ export function PsnTrophyPanel({ npCommunicationId, npServiceName, hasGroups }: 
   return (
     <div ref={anchor}>
       {groupList.length > 1 && (
-        <div className="flex gap-1.5 overflow-x-auto pb-1 mb-2 scrollbar-none">
+        <PagedStrip noun="trophy groups" className="mb-2 flex gap-1.5 pb-1">
           <button onClick={() => setGroup('all')}
             className={`min-h-[44px] px-3 text-xs rounded-lg border whitespace-nowrap flex-shrink-0 transition-colors ${group === 'all' ? 'bg-accent-500 text-white border-accent-500' : 'bg-cream-50 text-ink-600 border-ink-200'}`}>
             All
@@ -124,7 +125,7 @@ export function PsnTrophyPanel({ npCommunicationId, npServiceName, hasGroups }: 
               <span className="ml-1 opacity-70">{g.progress}%</span>
             </button>
           ))}
-        </div>
+        </PagedStrip>
       )}
 
       <div className="flex items-center gap-3 mb-2 flex-wrap">

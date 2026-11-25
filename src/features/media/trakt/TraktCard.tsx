@@ -59,6 +59,7 @@ export function TraktCard() {
           // Notes Trakt did not take (e.g. a free account's note limit) stay in the app only.
           s?.connected && s.lastResult?.notes?.warning && `Notes: ${s.lastResult.notes.warning}`,
           s?.connected && !!s.lastResult?.notes?.left && `Notes: ${s.lastResult.notes.left} still to send to Trakt — the next sync goes on`,
+          s?.connected && !!s.lastResult?.queue?.removed && `${s.lastResult.queue.removed} watched left the Queue`,
         ]}
         footer={s?.connected ? 'Syncs by itself every 30 minutes and a few seconds after you change something here.' : undefined}
       >

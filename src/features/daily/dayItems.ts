@@ -270,7 +270,7 @@ export function dayRowCounts(taskCounts: { open: number; done: number }, repeats
   return { open: taskCounts.open + repeatsToDo, done: taskCounts.done }
 }
 
-// ── Repeats in the week strip, the week card and the month ──────────────────
+// ── Repeats in the week strip and the month ─────────────────────────────────
 
 /** How many days of repeating plans start on `day` and nobody acted on yet
  *  (a day acted on is its own task and counts as a task). `asTasks`: the
@@ -297,11 +297,4 @@ export function repeatsToDoBetween(templates: readonly RecurringBlockLike[], fro
   const days = dayNumber(to) - dayNumber(from)
   for (let d = 0; d <= days; d++) n += repeatsToDoOn(templates, addDaysIso(from, d), today, asTasks)
   return n
-}
-
-/** A week's open / done / % with its repeat days still to do counted as open. */
-export function withRepeats(counts: { open: number; done: number }, repeatsToDo: number): { open: number; done: number; percent: number } {
-  const open = counts.open + repeatsToDo
-  const total = open + counts.done
-  return { open, done: counts.done, percent: total ? Math.round((counts.done / total) * 100) : 0 }
 }

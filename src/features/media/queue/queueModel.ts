@@ -1,12 +1,22 @@
 // The Queue: one private Trakt list named "Queue", ordered by rank, so Trakt
-// shows the same order the app does. Pure (scripts/verify-media-queue.cjs).
+// shows the same order the app does. It can never be deleted (207,
+// trakt/traktQueue.ts). Pure (scripts/verify-media-queue.cjs).
 
-export const QUEUE_NAME = 'Queue'
+import { QUEUE_LIST_NAME, isQueueName } from '../trakt/traktQueue'
 
-/** The Queue list among your Trakt lists (the name, any case; the oldest if several). */
-export function findQueueList<T extends { id: number; name: string }>(lists: readonly T[] | undefined): T | null {
-  const q = (lists ?? []).filter(l => l.name.trim().toLowerCase() === QUEUE_NAME.toLowerCase())
-  return q.sort((a, b) => a.id - b.id)[0] ?? null
+export const QUEUE_NAME = QUEUE_LIST_NAME
+
+/**
+ * The Queue list among your Trakt lists: the one trakt-api flags (`queue`, by
+ * its id kept in the database); before the function flags any, the oldest
+ * named "Queue" (any case).
+ */
+export function findQueueList<T extends { id: number; name: string; queue?: boolean }>(lists: readonly T[] | undefined): T | null {
+  const all = lists ?? []
+  const flagged = all.find(l => l.queue === true)
+  if (flagged) return flagged
+  if (all.some(l => l.queue === false)) return null
+  return all.filter(l => isQueueName(l.name)).sort((a, b) => a.id - b.id)[0] ?? null
 }
 
 /** `items` with the one at `from` moved to `to` (clamped); a new array. */
