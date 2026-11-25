@@ -6,7 +6,7 @@
  * carry-over. Runs the real block between <icloud-pure> markers of supabase/functions/icloud-calendar/index.ts.
  * Plus static checks: the actions run only for a signed-in app user, never from the timer; the browser names only
  * guests; nothing logs an address; the drain and the read-back never take the test event for an item's; the
- * assistant has no path to it. The daily cap itself: verify-db-icloud-invite-test.mjs (migration 208).
+ * assistant has no path to it. The daily cap itself: verify-db-icloud-invite-test.mjs (migration 209).
  *
  *   Run:  node scripts/verify-icloud-invite-test.cjs
  */

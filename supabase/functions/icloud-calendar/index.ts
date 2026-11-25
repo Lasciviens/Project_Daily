@@ -2527,7 +2527,7 @@ export const INVITE_NOTE = "A one-off test invitation from Lasci's Board. Answer
 /** The area calendar the test event lives in (the owner's everyday calendar). */
 export const INVITE_AREA: AreaKey = 'personal'
 export const INVITE_MAX_GUESTS = 2
-/** Send, Rewrite and Remove guest each count; at most this many a day (Oslo's day), counted by the database (208). */
+/** Send, Rewrite and Remove guest each count; at most this many a day (Oslo's day), counted by the database (209). */
 export const INVITE_DAY_CAP = 5
 export const INVITE_PARTSTATS = ['NEEDS-ACTION', 'ACCEPTED', 'DECLINED', 'TENTATIVE'] as const
 export type InvitePartstat = typeof INVITE_PARTSTATS[number]
@@ -3873,7 +3873,7 @@ async function readInvite(c: Creds, url: string): Promise<{ gone: true } | { gon
 
 async function inviteUsed(db: Db, userId: string): Promise<number> {
   const { data, error } = await db.rpc('icloud_invite_test_used', { p_user: userId })
-  if (error || typeof data !== 'number') throw new InviteRefusal('The invite test needs migration 208 — it runs with the next deploy')
+  if (error || typeof data !== 'number') throw new InviteRefusal('The invite test needs migration 209 — it runs with the next deploy')
   return data
 }
 
@@ -3881,7 +3881,7 @@ async function inviteUsed(db: Db, userId: string): Promise<number> {
  *  when iCloud then fails: it may have sent mail). Fails closed. */
 async function reserveInvite(db: Db, userId: string, action: 'send' | 'rewrite' | 'remove'): Promise<void> {
   const { data, error } = await db.rpc('icloud_invite_test_reserve', { p_user: userId, p_action: action })
-  if (error) throw new InviteRefusal('The invite test needs migration 208 — it runs with the next deploy')
+  if (error) throw new InviteRefusal('The invite test needs migration 209 — it runs with the next deploy')
   if (typeof data !== 'number') throw new InviteRefusal(`${INVITE_DAY_CAP} invite test actions today — the most a day. Try again tomorrow`)
 }
 

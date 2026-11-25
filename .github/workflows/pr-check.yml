@@ -506,9 +506,9 @@ jobs:
         run: node scripts/verify-db-trakt-queue-protect.mjs
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
-      # Migration 208 (the invite test's cap): at most 5 Send / Rewrite / Remove guest a day (Oslo) per account, counted
+      # Migration 209 (the invite test's cap): at most 5 Send / Rewrite / Remove guest a day (Oslo) per account, counted
       # under a per-account lock; the browser and the assistant can't read, add, age or delete a count, nor call the two
-      # functions; service-role only, owner lock, not audited. 208 runs twice: the catalogue must not change.
+      # functions; service-role only, owner lock, not audited. 209 runs twice: the catalogue must not change.
       - name: Invite test cap database scenarios
         run: node scripts/verify-db-icloud-invite-test.mjs
         env:

@@ -1,4 +1,4 @@
--- 208 · icloud_invite_test_actions — the invite test's daily cap (25.11.2026; docs/integrations/icloud-caldav.md →
+-- 209 · icloud_invite_test_actions — the invite test's daily cap (25.11.2026; docs/integrations/icloud-caldav.md →
 -- The invite test).
 --
 -- The invite test (Settings → Subscriptions, the Invite test card) makes one event in the owner's Personal iCloud
@@ -63,6 +63,6 @@ revoke all on function public.icloud_invite_test_used(uuid) from public, anon, a
 grant execute on function public.icloud_invite_test_used(uuid) to service_role;
 
 comment on table public.icloud_invite_test_actions is
-  'The invite test''s counted actions (send, rewrite, remove), written only by icloud-calendar through icloud_invite_test_reserve: at most 5 a day (Oslo) per account (208).';
+  'The invite test''s counted actions (send, rewrite, remove), written only by icloud-calendar through icloud_invite_test_reserve: at most 5 a day (Oslo) per account (209).';
 
 select public.owner_lock_apply('public.icloud_invite_test_actions');
