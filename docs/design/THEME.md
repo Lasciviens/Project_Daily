@@ -281,7 +281,7 @@ Use the React primitive when one exists; the CSS class is for places a component
 | Buttons | `<Button variant="primary|secondary|ghost|danger" size="md|sm" icon loading block tip>` — default `secondary`; `sm` is 36px with a mouse, 44px on touch (`.btn-*`, `.btn-sm`); `tip` is the full description of a short button (its `title` and accessible name); an `icon` with a `tip` and no words is a square button |
 | Icon-only button | `<IconButton label="…" bordered?>` (label is required: it's the accessible name and the hover `title`; `.icon-btn`, `.icon-btn-bordered`) |
 | A short button's description on touch | nothing to add: `app/longPressTips.ts` (one listener, loaded in idle time) shows, while a finger rests on a control (575 ms) — a button, link, label, tab, chip or menu line — its nearest `data-tip` or `title`, else its accessible name, in a bubble; that press does not tap, a quick tap still taps, a key ends a held press, and a text field (input, textarea, select, contenteditable) is never touched. Give a short label its words: `Button tip`, `IconButton label`, a `SegmentedControl` option's `tip`, a chip's `tip`, a plain button's `title` |
-| KPI tile | `<StatTile label value unit hint icon tone onClick />` |
+| KPI tile | `<StatTile label value unit hint change icon tone onClick inset />` — `change` sits on the number's line after the unit (the weekly report's "↗ +55 %", a tone); `inset` is a compact recessed tile inside a card (`bg-surface-2`, no border or shadow, a `text-lead` number), never a card in a card |
 | Page frame | `<PageContainer width="narrow|wide|full">` (caps `max-w-3xl` · `max-w-[135rem]`, the default = the widest board · none; `@container/page`) + `<PageHeader title subtitle actions showTitle>{tabs}</PageHeader>` |
 | Page layout | `<PageBoard sections layout />` (§6.3) |
 | Page header art | `<PageHeader art={<XHeroArt />}>` — the page's drawing behind its header band; Home: `<PageHeroArt>` in its first card (§6.5) |
@@ -505,17 +505,25 @@ actions (right) share the first row — no empty line. Don't add a tagline subti
   (`grid-cols-1`). Items that vary in height (phases, library groups) never use a row grid: deal them
   into column stacks by index (`dealByIndex` in `projectBoard.ts`, `PhaseColumns`) or wrap
   content-sized blocks. Alphabetical multi-column lists use `columns-*` with `break-inside-avoid` rows.
-- **Picture tiles** (Shop's Wishlist; smaller than cards, so they have their own rule): `TILE_GRID` =
-  `repeat(auto-fill,minmax(10rem,1fr))` with one 0.625rem gap at every width — two a row on a 375–402px phone
-  (10rem is the most two columns fit in 343px), more columns as the track widens, never wider tiles. A tile is
-  the 4:3 picture well (`bg-well`, §2.1; with no picture, the category's default picture or the initials, §3)
-  with one belt (§3), a title kept at two lines so a row's prices line up, the price lines, and one action row
-  (the one-tap action + ⋯). The tiles wait for their own reads and the default pictures' chunk, so nothing
-  appears under a drawn tile (§5). Inside a section, sub-groups pack into
-  shared rows when they fit (`wishTile.packGroups`: a group is never split to fill a gap; each is named once,
-  above its own tiles; one grid, so a row's tiles still line up), the column count being auto-fill's own
-  (`tileColumns`, measured before the first paint). A wide list deals its sections into column stacks by its
-  own width (`categoryColumns`: 33rem a stack — one on a phone and at 1469, two at 1920, three at 2450).
+- **Picture tiles** (Shop's Wishlist and Owned's big pictures; smaller than cards, so they have their own rule):
+  **every tile on a page is one size** (owner, 24.11.2026: "Every box should have the same exact size!"). Width: two
+  equal ones a row on a list under 40rem (a phone), else fixed 12rem tracks (`wishTile.TILE_GRID` =
+  `grid-cols-2 @[40rem]/page:grid-cols-[repeat(auto-fill,12rem)]`, measured `tileBlocks`) — never `minmax` or `1fr`,
+  which made tiles of different widths in grids of different widths — with one 0.625rem gap. Height: fixed parts
+  only. A Wishlist tile is the 4:3 picture well (`bg-well`, §2.1; with no picture, the category's default picture or
+  the initials, §3) with one belt (§3), a title two lines tall (`TILE_TITLE`), then `TileLines` — the price with
+  where it was read (one line; a shop link cuts its address inside itself and keeps its ↗), the facts (one line),
+  the price history (its own line), the notes (two lines) — each cut by `Truncate`, an empty one keeping its room,
+  and one action row (`TILE_ACTIONS`: the one-tap action + ⋯). The loading copy has the same parts. The tiles wait
+  for their own reads and the default pictures' chunk, so nothing appears under a drawn tile (§5). **One layout for
+  every picture view** (`tileKit.PictureCategories` around `PictureBlocks`): each sub-group a block named once above
+  its own tiles, the blocks laid in lines from the list's own width (`wishTile.pictureLines`): a block shares a line
+  only when all its tiles fit in what is left (so a line has no hole under a shorter block), each goes on the first
+  line it fits (a small block fills the end of an earlier line; two one-tile groups share a phone's row), and a block
+  of a line's tiles or more has a line of its own. The sections (categories) pack the same way one level up
+  (`categoryLines`): a section whose blocks fit in one row is as wide as that row and shares a line with others that
+  fit, each with its own header, total and fold (the header cuts the total first); a section that needs more rows
+  has the whole width. The gap between blocks and sections is the tiles' gap, so every tile sits on one column grid.
 - **Compact rows** (Shop's Owned): a collection read as a list — one row per thing, the same two lines every
   time (a 40px picture square — `RowPicture`, the tiles' well at a row's size — then the name and the number on
   the first line; the facts, cut at the end, and at most one `TonePill` on the second, which is always as tall as
@@ -609,6 +617,7 @@ Reference screens: phone 402×874 (iPhone 16/17 Pro) and the same phone sideways
 | Route change | 180–220ms slide/crossfade (View Transitions), else the `.page-in` rise (300ms) |
 | Phone content entrance | `.stagger-in` (≤ 639px): children cascade in 35ms steps from 25ms, capped at the 8th |
 | Active tab icon | `animate-tabPop` (300ms overshoot) |
+| A small chart's bars | `motion-safe:animate-barGrow` / `barGrowX` (500ms from the baseline, once, 30–40ms apart; the weekly report) |
 | Drag-to-close release | 220ms settle |
 
 Count-ups (`AnimatedNumber`) keep the number on screen while a new value loads (`ready={false}`) and

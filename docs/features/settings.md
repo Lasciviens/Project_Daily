@@ -34,7 +34,9 @@ was unreachable from the page that owns connections.
 Two kinds of integration sit side by side there and are labelled differently, deliberately:
 - **user-authorized** (Google, Strava, PlayStation, Apple Calendar through iCloud — an
   app-specific password, `docs/integrations/icloud-caldav.md`) — a real per-user credential;
-  connect and revoke from here.
+  connect and revoke from here. While iCloud is connected, the **Invite test** card sits under
+  Apple Calendar (25.11.2026, a one-off live test of invitations, migration 209 — `icloud-caldav.md`
+  → The invite test); it goes once invitations are decided.
 - **server-configured** (Steam, Hevy, Apple Health) — a single-user secret in Supabase Vault
   with no browser consent step at all, so the card is a read-only status readout. **Never render
   a Connect button that can't actually connect anything.** The Hevy card (14.10.2026, migration

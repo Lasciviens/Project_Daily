@@ -2165,6 +2165,326 @@ export function faultFrames(e: unknown): string {
   return e.stack.slice(head.length).split('\n').map(l => l.trim()).filter(l => /^at /.test(l)).slice(0, 6).join(' | ')
 }
 
+// <invite-test>
+// ── The invite test (25.11.2026): a one-off live test of Apple Calendar invitations ──────────────────────────
+// One event, tomorrow 12:00–12:30 on Oslo's clock in the Personal area calendar, called "Invite test", with the
+// owner's own iCloud address as ORGANIZER and 1–2 addresses the owner typed as ATTENDEEs, so iCloud's server-side
+// scheduling (RFC 6638) emails the invitations. Everything here is pure; the requests are in the handler below.
+// Its place and UID are fixed constants the server builds; the calendar comes only from the server-only record of
+// the area calendars; the organizer only from iCloud's own answer for the account (calendar-user-address-set); the
+// guests pass an allow-list, and every line passes a last guard of exact shapes. docs/integrations/icloud-caldav.md
+// → The invite test.
+
+/** The test event's UID and file name: fixed, never input. Neither is an item's (`ownEventOfHref` reads only
+ *  lasci-slot-/lasci-plan-<uuid>.ics), so the drain and the read-back never take it for an item's event. */
+export const INVITE_UID = 'lasci-invite-test@lasciviens.github.io'
+export const INVITE_FILE = 'lasci-invite-test.ics'
+export const INVITE_TITLE = 'Invite test'
+/** What the guests read in the invitation (constant text, no item data). */
+export const INVITE_NOTE = "A one-off test invitation from Lasci's Board. Answer it or ignore it. It will be deleted."
+/** The area calendar the test event lives in (the owner's everyday calendar). */
+export const INVITE_AREA: AreaKey = 'personal'
+export const INVITE_MAX_GUESTS = 2
+/** Send, Rewrite and Remove guest each count; at most this many a day (Oslo's day), counted by the database (209). */
+export const INVITE_DAY_CAP = 5
+/** The test's last day (Oslo): after it every action but Delete is refused, and a removal PR takes the test out once
+ *  the owner has sent the results (guardian review, 25.11.2026). */
+export const INVITE_TEST_LAST_DAY = '2026-12-31'
+export const INVITE_TEST_OVER = 'The invite test ended on 31.12.2026 — only Delete still works'
+/** Whether an action may still run on Oslo's `today` (yyyy-MM-dd): Delete always, so the test can be cleaned up. */
+export const inviteTestOpen = (action: string, today: string) => action === 'inviteDelete' || today <= INVITE_TEST_LAST_DAY
+/** The actions that can email someone (Delete sends cancellations only for an event a Send made): each needs a
+ *  password sign-in in the last 10 minutes, as `connect` does (guardian review, 25.11.2026). */
+export const INVITE_FRESH_ACTIONS: readonly string[] = ['inviteSend', 'inviteRewrite', 'inviteRemoveGuest']
+export const INVITE_SIGN_IN_TEXT = 'Sign in again first: Send, Rewrite and Remove guest need a sign-in in the last 10 minutes (sign out, sign in, then try again)'
+
+/** A yyyy-MM-dd that is a real calendar day (no 31.02). */
+export function isRealDay(day: string): boolean {
+  if (!ISO_DAY.test(day)) return false
+  const d = new Date(`${day}T12:00:00Z`)
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === day
+}
+export const INVITE_PARTSTATS = ['NEEDS-ACTION', 'ACCEPTED', 'DECLINED', 'TENTATIVE'] as const
+export type InvitePartstat = typeof INVITE_PARTSTATS[number]
+
+/** The allow-list of an address (the owner's brief, 25.11.2026): lower-case ASCII, no display name, no parameters. */
+const INVITE_EMAIL_BODY = '[a-z0-9._%+-]{1,64}@[a-z0-9-]+(?:\\.[a-z0-9-]+)+'
+const INVITE_EMAIL = new RegExp(`^${INVITE_EMAIL_BODY}$`)
+const INVITE_EMAIL_MAX = 254
+
+/** An address as the test takes it — trimmed and lower-cased plain ASCII matching the allow-list, ≤ 254 characters —
+ *  else null. ASCII is checked before lower-casing (a Kelvin sign would otherwise turn into a k). */
+export function inviteEmail(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const t = raw.trim()
+  if (!t || t.length > INVITE_EMAIL_MAX || !/^[\x21-\x7E]+$/.test(t)) return null
+  const e = t.toLowerCase()
+  return INVITE_EMAIL.test(e) ? e : null
+}
+
+/** The guests a Send names (browser input): 1–2 distinct allowed addresses, else the reason in the app's own words. */
+export function inviteGuestsOf(raw: unknown): { guests: string[] } | { error: string } {
+  if (!Array.isArray(raw) || raw.length < 1 || raw.length > INVITE_MAX_GUESTS) return { error: 'Write one or two email addresses' }
+  const guests = raw.map(inviteEmail)
+  if (guests.some(g => g === null)) return { error: 'An address is not one the test takes: a plain name@domain, with letters, digits and . _ % + - only' }
+  if (new Set(guests).size !== guests.length) return { error: 'The same address is there twice' }
+  return { guests: guests as string[] }
+}
+
+/** A guest that is one of the account's own addresses: the organizer can't invite themselves. */
+export const inviteOwnGuest = (guests: readonly string[], own: readonly string[]) => guests.some(g => own.includes(g))
+
+/**
+ * The organizer, from iCloud's answer for the account's principal (`calendar-user-address-set`): the `mailto:` entry
+ * iCloud marks preferred, else the first, that passes the allow-list; `own` = every `mailto:` address of the account
+ * (lower-cased), so no guest is one of them. Never input: the browser sends no organizer.
+ */
+export function calendarUserAddresses(props: string): { organizer: string | null; own: string[] } {
+  const set = new RegExp(`<${P}calendar-user-address-set\\b[^>]*>([\\s\\S]*?)</${P}calendar-user-address-set>`).exec(props)?.[1] ?? ''
+  const mail = [...set.matchAll(new RegExp(`<${P}href\\b([^>]*)>([^<]*)</${P}href>`, 'g'))]
+    .map(m => ({ preferred: /\bpreferred\s*=\s*["']1["']/.test(m[1]), value: unescapeXml(m[2]).trim() }))
+    .filter(h => /^mailto:/i.test(h.value))
+    .map(h => ({ preferred: h.preferred, raw: h.value.slice(7), email: inviteEmail(h.value.slice(7)) }))
+  const own = [...new Set(mail.map(h => h.raw.trim().toLowerCase()))]
+  const pick = mail.find(h => h.preferred && h.email) ?? mail.find(h => h.email)
+  return { organizer: pick?.email ?? null, own }
+}
+
+/** Where the test event lives: the fixed file in the Personal area calendar, from the server-only record of the area
+ *  calendars (icloud_credentials.area_calendars, service role) — null when that calendar isn't made. */
+export function inviteEventUrl(areaCals: Record<string, { url?: string }> | null | undefined): string | null {
+  const stored = areaCals?.[INVITE_AREA]?.url
+  if (typeof stored !== 'string' || !isICloudUrl(stored)) return null
+  const cal = new URL(stored).toString()
+  // Exactly as stored: a stored value that only becomes the calendar once normalised is not taken.
+  if (cal !== stored) return null
+  if (!cal.endsWith('/') || /[?#]/.test(cal)) return null
+  const url = new URL(INVITE_FILE, cal).toString()
+  // The exact address built: the calendar's own path plus the fixed file name, nothing else.
+  return url === `${cal}${INVITE_FILE}` && isICloudUrl(url) ? url : null
+}
+
+export interface InviteGuest { email: string; partstat: InvitePartstat }
+export interface InviteEventInput {
+  /** yyyy-MM-dd, Oslo's day of the event. */
+  day: string
+  now: Date
+  organizer: string
+  guests: InviteGuest[]
+  /** As read (Rewrite, Remove guest) or 0 (Send); null = the event read back had none, so none is written. */
+  sequence: number | null
+}
+
+export const INVITE_GUARD = 'An invite test line is not one the app builds — not written'
+
+const ORGANIZER_PREFIX = 'ORGANIZER:mailto:'
+const CHAIR_PREFIX = 'ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=CHAIR;PARTSTAT=ACCEPTED:mailto:'
+const GUEST_LINE = new RegExp(`^ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=(?:NEEDS-ACTION;RSVP=TRUE|ACCEPTED|DECLINED|TENTATIVE):mailto:(${INVITE_EMAIL_BODY})$`)
+
+/** Every line the builder writes as a constant. */
+const INVITE_FIXED_LINES: ReadonlySet<string> = new Set([
+  'BEGIN:VCALENDAR', 'VERSION:2.0', "PRODID:-//Lasci's Board//Invite test//EN", 'CALSCALE:GREGORIAN', ...VTIMEZONE_OSLO,
+  'BEGIN:VEVENT', `UID:${INVITE_UID}`, `SUMMARY:${INVITE_TITLE}`, `DESCRIPTION:${icsEscape(INVITE_NOTE)}`, 'TRANSP:OPAQUE',
+  ...NO_ALERT, 'END:VEVENT', 'END:VCALENDAR',
+])
+/** The lines built from checked values, each in its one exact shape. */
+const INVITE_VALUE_LINES: readonly RegExp[] = [
+  /^DTSTAMP:\d{8}T\d{6}Z$/,
+  /^DTSTART;TZID=Europe\/Oslo:\d{8}T120000$/,
+  /^DTEND;TZID=Europe\/Oslo:\d{8}T123000$/,
+  /^SEQUENCE:\d{1,6}$/,
+  new RegExp(`^ORGANIZER:mailto:${INVITE_EMAIL_BODY}$`),
+  new RegExp(`^ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=CHAIR;PARTSTAT=ACCEPTED:mailto:${INVITE_EMAIL_BODY}$`),
+  GUEST_LINE,
+]
+
+/**
+ * The last guard: every line is one of the builder's constants or matches its one exact shape (an allow-list, never
+ * escaping alone); every address ≤ 254 characters; one event; an organizer (with its own CHAIR line) exactly when
+ * there are 1–2 guests, none of them the organizer, none twice. Throws INVITE_GUARD otherwise.
+ */
+export function inviteGuard(lines: readonly string[]): void {
+  const refuse = () => { throw new Error(INVITE_GUARD) }
+  for (const l of lines) {
+    if (l.length > 400) refuse()
+    if (!INVITE_FIXED_LINES.has(l) && !INVITE_VALUE_LINES.some(re => re.test(l))) refuse()
+  }
+  const count = (pred: (l: string) => boolean) => lines.filter(pred).length
+  if (count(l => l === 'BEGIN:VEVENT') !== 1 || count(l => l === 'END:VEVENT') !== 1 || count(l => l.startsWith('UID:')) !== 1) refuse()
+  for (const name of ['DTSTAMP:', 'DTSTART;', 'DTEND;']) if (count(l => l.startsWith(name)) !== 1) refuse()
+  if (count(l => l.startsWith('SEQUENCE:')) > 1) refuse()
+  const start = lines.find(l => l.startsWith('DTSTART;'))!.slice(-15, -7)
+  const end = lines.find(l => l.startsWith('DTEND;'))!.slice(-15, -7)
+  if (start !== end) refuse()
+  const organizers = lines.filter(l => l.startsWith(ORGANIZER_PREFIX)).map(l => l.slice(ORGANIZER_PREFIX.length))
+  const chairs = lines.filter(l => l.startsWith(CHAIR_PREFIX)).map(l => l.slice(CHAIR_PREFIX.length))
+  const guests = lines.map(l => GUEST_LINE.exec(l)?.[1]).filter((g): g is string => !!g)
+  if (count(l => l.startsWith('ATTENDEE')) !== chairs.length + guests.length) refuse()
+  if (organizers.length > 1 || guests.length > INVITE_MAX_GUESTS) refuse()
+  if (organizers.length === 0 ? chairs.length > 0 || guests.length > 0 : chairs.length !== 1 || chairs[0] !== organizers[0] || guests.length < 1) refuse()
+  if ([...organizers, ...guests].some(e => e.length > INVITE_EMAIL_MAX || inviteEmail(e) !== e)) refuse()
+  if (new Set(guests).size !== guests.length || guests.some(g => organizers.includes(g))) refuse()
+}
+
+/** The test event's lines, unfolded: constants plus the checked day, stamp, sequence and addresses. With no guest
+ *  left (the last one removed) it is a plain event: no ORGANIZER, no ATTENDEE. */
+export function inviteLines(x: InviteEventInput): string[] {
+  const d = compact(x.day)
+  const people = x.guests.length
+    ? [
+        `${ORGANIZER_PREFIX}${x.organizer}`,
+        `${CHAIR_PREFIX}${x.organizer}`,
+        ...x.guests.map(g => `ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=${g.partstat === 'NEEDS-ACTION' ? 'NEEDS-ACTION;RSVP=TRUE' : g.partstat}:mailto:${g.email}`),
+      ]
+    : []
+  return [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', "PRODID:-//Lasci's Board//Invite test//EN", 'CALSCALE:GREGORIAN', ...VTIMEZONE_OSLO,
+    'BEGIN:VEVENT',
+    `UID:${INVITE_UID}`,
+    `DTSTAMP:${stamp(x.now)}`,
+    `DTSTART;TZID=Europe/Oslo:${d}T120000`,
+    `DTEND;TZID=Europe/Oslo:${d}T123000`,
+    ...(x.sequence === null ? [] : [`SEQUENCE:${x.sequence}`]),
+    `SUMMARY:${INVITE_TITLE}`,
+    `DESCRIPTION:${icsEscape(INVITE_NOTE)}`,
+    'TRANSP:OPAQUE',
+    ...people,
+    ...NO_ALERT,
+    'END:VEVENT', 'END:VCALENDAR',
+  ]
+}
+
+/** The object as it is PUT: guarded line by line, then folded at 75 octets, CRLF. */
+export function inviteObject(x: InviteEventInput): string {
+  if (!isRealDay(x.day)) throw new Error(INVITE_GUARD)
+  const lines = inviteLines(x)
+  inviteGuard(lines)
+  return lines.map(foldLine).join('\r\n') + '\r\n'
+}
+
+/** One content line: its name, parameters (quotes taken off) and value; null when it has no value part. */
+function contentLine(line: string): { name: string; params: Map<string, string>; value: string } | null {
+  const parts: string[] = []
+  let cur = ''
+  let quoted = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (ch === '"') quoted = !quoted
+    if (!quoted && (ch === ';' || ch === ':')) {
+      parts.push(cur)
+      cur = ''
+      if (ch === ':') {
+        const params = new Map<string, string>()
+        for (const p of parts.slice(1)) {
+          const at = p.indexOf('=')
+          if (at > 0) params.set(p.slice(0, at).toUpperCase(), p.slice(at + 1).replace(/^"|"$/g, ''))
+        }
+        return { name: parts[0].toUpperCase(), params, value: line.slice(i + 1) }
+      }
+      continue
+    }
+    cur += ch
+  }
+  return null
+}
+
+export interface InviteReadGuest {
+  /** The address as the allow-list takes it; null = one the test doesn't take (added on the iPhone, say). */
+  email: string | null
+  partstat: InvitePartstat | 'OTHER'
+  /** iCloud's delivery code for this guest (RFC 6638 SCHEDULE-STATUS: 1.2 delivered, 3.7 unknown address, 5.x not
+   *  delivered…), when it is one of that shape. */
+  scheduleStatus: string | null
+}
+export interface InviteRead {
+  /** The event at the test's place is the app's own test event (its UID). */
+  ours: boolean
+  /** yyyy-MM-dd when it is still 12:00–12:30 on Oslo's clock; null when it was changed (moved) since. */
+  day: string | null
+  /** SEQUENCE as read; null = none; 'bad' = not a number the app takes. */
+  sequence: number | null | 'bad'
+  organizer: string | null
+  guests: InviteReadGuest[]
+}
+
+/** What the test event says now (iCloud's copy, input): read through the same allow-lists, nothing taken as is.
+ *  Null when it isn't one event. */
+export function inviteEventOf(ics: string): InviteRead | null {
+  const lines = ics.replace(/\r?\n[ \t]/g, '').split(/\r?\n/)
+  const at = lines.indexOf('BEGIN:VEVENT')
+  if (at < 0 || lines.filter(l => l === 'BEGIN:VEVENT').length !== 1) return null
+  const out: InviteRead = { ours: false, day: null, sequence: null, organizer: null, guests: [] }
+  let start: string | null = null
+  let end: string | null = null
+  let depth = 0
+  const people: { email: string | null; partstat: string | null; status: string | null }[] = []
+  for (const raw of lines.slice(at + 1)) {
+    if (raw === 'END:VEVENT' && depth === 0) break
+    if (/^BEGIN:/.test(raw)) { depth++; continue }
+    if (/^END:/.test(raw)) { depth--; continue }
+    if (depth) continue
+    const c = contentLine(raw)
+    if (!c) continue
+    const clock = (re: RegExp) => {
+      const zone = c.params.get('TZID')
+      const others = [...c.params.keys()].filter(k => k !== 'TZID' && !(k === 'VALUE' && c.params.get(k) === 'DATE-TIME'))
+      return zone === 'Europe/Oslo' && !others.length ? re.exec(c.value)?.[1] ?? null : null
+    }
+    switch (c.name) {
+      case 'UID': out.ours = c.value === INVITE_UID; break
+      case 'DTSTART': start = clock(/^(\d{8})T120000$/); break
+      case 'DTEND': end = clock(/^(\d{8})T123000$/); break
+      case 'SEQUENCE': out.sequence = /^\d{1,6}$/.test(c.value) ? Number(c.value) : 'bad'; break
+      case 'ORGANIZER': out.organizer = /^mailto:/i.test(c.value) ? inviteEmail(c.value.slice(7)) : null; break
+      case 'ATTENDEE': people.push({
+        email: /^mailto:/i.test(c.value) ? inviteEmail(c.value.slice(7)) : null,
+        partstat: c.params.get('PARTSTAT')?.toUpperCase() ?? null,
+        status: c.params.get('SCHEDULE-STATUS') ?? null,
+      }); break
+    }
+  }
+  const day = start && start === end ? `${start.slice(0, 4)}-${start.slice(4, 6)}-${start.slice(6, 8)}` : null
+  out.day = day && isRealDay(day) ? day : null
+  // The organizer's own line (ROLE=CHAIR) is not a guest.
+  out.guests = people.filter(p => !(p.email && p.email === out.organizer)).map(p => ({
+    email: p.email,
+    partstat: p.partstat === null ? 'NEEDS-ACTION' : (INVITE_PARTSTATS as readonly string[]).includes(p.partstat) ? p.partstat as InvitePartstat : 'OTHER',
+    scheduleStatus: p.status && /^\d\.\d{1,2}(?:,\d\.\d{1,2})*$/.test(p.status) ? p.status : null,
+  }))
+  return out
+}
+
+/**
+ * Rewrite and Remove guest: the event as read, carried over exactly — each guest's PARTSTAT, the SEQUENCE, the day —
+ * minus the one guest removed. Refused (the reason in the app's own words) for anything the app wouldn't write itself:
+ * not its test event, moved, an organizer that isn't the account's, a guest the allow-list doesn't take, an answer
+ * the app doesn't know, more than two guests.
+ */
+export function inviteRewriteOf(read: InviteRead, organizer: string, now: Date, without: string | null = null): InviteEventInput | { error: string } {
+  if (!read.ours) return { error: "The event at the test's place is not the app's test event — left alone" }
+  if (!read.day) return { error: 'The test event was moved or changed in Apple Calendar — Delete test, then Send again' }
+  if (read.sequence === 'bad') return { error: "The test event's sequence is not one the app takes — not written" }
+  if (read.guests.length && read.organizer !== organizer) return { error: 'The test event is organized by another address — not written' }
+  if (read.guests.some(g => !g.email)) return { error: 'The test event has a guest the test does not take (added on the iPhone?) — not written' }
+  if (read.guests.some(g => g.partstat === 'OTHER')) return { error: 'A guest answered in a way the test does not know — not written' }
+  if (read.guests.length > INVITE_MAX_GUESTS) return { error: 'The test event has more than two guests — not written' }
+  if (without !== null && !read.guests.some(g => g.email === without)) return { error: 'That address is not a guest of the test event' }
+  return {
+    day: read.day,
+    now,
+    organizer,
+    guests: read.guests.filter(g => g.email !== without).map(g => ({ email: g.email!, partstat: g.partstat as InvitePartstat })),
+    // Unchanged on purpose, also for Remove guest: the test asks whether an identical write re-sends.
+    sequence: read.sequence,
+  }
+}
+
+/** A Schedule-Tag header as the card may show it: one quoted (or bare) value of printable characters. */
+export function scheduleTagOf(raw: string | null | undefined): string | null {
+  return typeof raw === 'string' && /^"?[\x21\x23-\x7E]{1,200}"?$/.test(raw) ? raw : null
+}
+// </invite-test>
+
 // </icloud-pure>
 
 interface Creds { email: string; password: string }
@@ -2178,7 +2498,7 @@ function basic(c: Creds): string {
 
 /** One CalDAV request to iCloud. Redirects are followed by hand, iCloud hosts only (fetch drops the
  *  Authorization header across hosts, and an unchecked Location could carry it elsewhere). */
-async function dav(c: Creds, method: string, url: string, body?: string, headers: Record<string, string> = {}): Promise<{ status: number; text: string; url: string; etag: string | null }> {
+async function dav(c: Creds, method: string, url: string, body?: string, headers: Record<string, string> = {}): Promise<{ status: number; text: string; url: string; etag: string | null; scheduleTag: string | null }> {
   let current = url
   for (let hop = 0; hop < 4; hop++) {
     if (!isICloudUrl(current)) throw new ICloudError('not_icloud', 'iCloud pointed to a place outside icloud.com — stopped')
@@ -2217,7 +2537,7 @@ async function dav(c: Creds, method: string, url: string, body?: string, headers
     if (res.status === 401) { await res.body?.cancel().catch(() => {}); throw new ICloudError('auth', 'Apple did not accept the Apple ID or app-specific password') }
     // iCloud's rate limit (503, Retry-After): this run stops; the timer tries again.
     if (res.status === 503) { await res.body?.cancel().catch(() => {}); throw new ICloudError('busy', 'iCloud asked the app to wait (too many requests) — tried again in a few minutes') }
-    return { status: res.status, text: await readCapped(res).catch(noAnswer), url: current, etag: res.headers.get('etag') }
+    return { status: res.status, text: await readCapped(res).catch(noAnswer), url: current, etag: res.headers.get('etag'), scheduleTag: res.headers.get('schedule-tag') }
   }
   throw new ICloudError('redirect', 'iCloud redirected too many times')
 }
@@ -3170,6 +3490,158 @@ function osloTomorrow(now: Date): string {
   return nextDay(today)
 }
 
+// ── The invite test's requests (25.11.2026; the pure rules are in <invite-test> above) ──────────────────────
+// Browser callers only (getUser + isAppUser, checked before any action runs); never the timer, never the assistant.
+
+const INVITE_ACTIONS = ['inviteCheck', 'inviteSend', 'inviteRewrite', 'inviteRemoveGuest', 'inviteDelete'] as const
+type InviteAction = typeof INVITE_ACTIONS[number]
+const isInviteAction = (a: string): a is InviteAction => (INVITE_ACTIONS as readonly string[]).includes(a)
+
+/** What the card shows: the event as iCloud has it now (no address of the calendar, no password). */
+interface InviteState {
+  exists: boolean
+  ours: boolean
+  day: string | null
+  sequence: number | null
+  etag: string | null
+  scheduleTag: string | null
+  organizer: string | null
+  guests: InviteReadGuest[]
+  /** Send / Rewrite / Remove guest used today, of INVITE_DAY_CAP. */
+  used: number
+  cap: number
+}
+
+/** A refusal in the app's own words (400), never iCloud's body. */
+class InviteRefusal extends Error {}
+
+/** The account's own addresses, read now from iCloud: the principal, then its calendar-user-address-set. */
+async function accountAddresses(c: Creds): Promise<{ organizer: string; own: string[] }> {
+  const a = await propfind(c, ICLOUD_ROOT, '<d:current-user-principal/>', '0')
+  const href = xmlText(a.responses[0]?.props ?? '', 'href')
+  if (!href) throw new ICloudError('discovery', 'iCloud did not say where the account is')
+  const principal = new URL(href, a.url).toString()
+  if (!isICloudUrl(principal)) throw new ICloudError('not_icloud', 'iCloud pointed outside icloud.com — stopped')
+  const b = await propfind(c, principal, '<c:calendar-user-address-set/>', '0')
+  const { organizer, own } = calendarUserAddresses(b.responses[0]?.props ?? '')
+  if (!organizer) throw new InviteRefusal('iCloud gave no email address for your account — nothing sent')
+  return { organizer, own }
+}
+
+/** The test event as iCloud has it now: gone, or its text, version and Schedule-Tag. Refused when iCloud answers for
+ *  another place than the one built. */
+async function readInvite(c: Creds, url: string): Promise<{ gone: true } | { gone: false; ics: string; etag: string | null; scheduleTag: string | null }> {
+  const r = await dav(c, 'GET', url)
+  if (new URL(r.url).pathname !== new URL(url).pathname) throw new ICloudError('redirect', 'iCloud answered for another place — stopped')
+  if (r.status === 404 || r.status === 410) return { gone: true }
+  if (r.status !== 200) throw new ICloudError('read', `iCloud answered ${r.status} when the test event was read`)
+  return { gone: false, ics: r.text, etag: validEtag(r.etag), scheduleTag: scheduleTagOf(r.scheduleTag) }
+}
+
+async function inviteUsed(db: Db, userId: string): Promise<number> {
+  const { data, error } = await db.rpc('icloud_invite_test_used', { p_user: userId })
+  if (error || typeof data !== 'number') throw new InviteRefusal('The invite test needs migration 209 — it runs with the next deploy')
+  return data
+}
+
+/** One Send / Rewrite / Remove guest, counted by the database before anything goes to iCloud (an attempt counts even
+ *  when iCloud then fails: it may have sent mail). Fails closed. */
+async function reserveInvite(db: Db, userId: string, action: 'send' | 'rewrite' | 'remove'): Promise<void> {
+  const { data, error } = await db.rpc('icloud_invite_test_reserve', { p_user: userId, p_action: action })
+  if (error) throw new InviteRefusal('The invite test needs migration 209 — it runs with the next deploy')
+  if (typeof data !== 'number') throw new InviteRefusal(`${INVITE_DAY_CAP} invite test actions today — the most a day. Try again tomorrow`)
+}
+
+async function inviteState(db: Db, c: Creds, userId: string, url: string): Promise<InviteState> {
+  const now = await readInvite(c, url)
+  const used = await inviteUsed(db, userId)
+  const empty = { exists: false, ours: false, day: null, sequence: null, etag: null, scheduleTag: null, organizer: null, guests: [], used, cap: INVITE_DAY_CAP }
+  if (now.gone) return empty
+  const read = inviteEventOf(now.ics)
+  if (!read) return { ...empty, exists: true, etag: now.etag, scheduleTag: now.scheduleTag }
+  return {
+    exists: true, ours: read.ours, day: read.day, sequence: read.sequence === 'bad' ? null : read.sequence,
+    etag: now.etag, scheduleTag: now.scheduleTag, organizer: read.organizer ? maskAppleId(read.organizer) : null, guests: read.guests, used, cap: INVITE_DAY_CAP,
+  }
+}
+
+/** PUT of the test event at its fixed place: a new one only where none is (If-None-Match), a rewrite only over the
+ *  version just read (If-Match). */
+async function putInvite(c: Creds, url: string, ics: string, match: { create: true } | { etag: string }): Promise<void> {
+  const r = await dav(c, 'PUT', url, ics, 'create' in match ? { 'If-None-Match': '*' } : { 'If-Match': match.etag })
+  if (r.status === 412) {
+    throw new InviteRefusal('create' in match ? 'A test event is there already — Check it, or Delete test first' : 'The test event changed in Apple Calendar just now — Check, then try again')
+  }
+  if (r.status !== 201 && r.status !== 204) throw new ICloudError('put', `iCloud answered ${r.status} when the test event was written`)
+}
+
+/** Rewrite (without = null) or Remove guest: the event as read, carried over exactly, written over that version. */
+async function rewriteInvite(db: Db, c: Creds, userId: string, url: string, without: string | null, shown: string | null): Promise<void> {
+  if (!shown) throw new InviteRefusal('Tap Check first, so the app knows which version you saw')
+  const { organizer } = await accountAddresses(c)
+  const now = await readInvite(c, url)
+  if (now.gone) throw new InviteRefusal('No test event in Apple Calendar — Send one first')
+  // The version the card showed (its ETag): an answer or change since then is the owner's to see first.
+  if (now.etag !== shown) throw new InviteRefusal('The event changed since you checked — tap Check')
+  const read = inviteEventOf(now.ics)
+  if (!read) throw new InviteRefusal('The test event is not one event — not written')
+  const plan = inviteRewriteOf(read, organizer, new Date(), without)
+  if ('error' in plan) throw new InviteRefusal(plan.error)
+  if (!now.etag) throw new InviteRefusal('iCloud gave no version for the test event — not written')
+  const ics = inviteObject(plan)
+  await reserveInvite(db, userId, without === null ? 'rewrite' : 'remove')
+  await putInvite(c, url, ics, { etag: now.etag })
+}
+
+/** The invite test's actions. Answers the card's state, or a refusal in the app's own words; nothing is logged but
+ *  the error's kind, and the card's "Last problem" is left alone (this is a test of its own). */
+async function inviteTest(db: Db, c: Creds, userId: string, areaCals: Record<string, { url?: string }> | null, action: InviteAction, body: Record<string, unknown>,
+  freshSignIn: boolean): Promise<{ status: number; body: unknown }> {
+  if (!inviteTestOpen(action, osloClock(new Date()).day)) return { status: 400, body: { error: INVITE_TEST_OVER } }
+  if (INVITE_FRESH_ACTIONS.includes(action) && !freshSignIn) return { status: 400, body: { error: INVITE_SIGN_IN_TEXT } }
+  try {
+    const url = inviteEventUrl(areaCals)
+    if (!url) return { status: 400, body: { error: 'Make the Personal calendar first: Settings → Calendar → Create in Apple Calendar' } }
+    if (action === 'inviteSend') {
+      const picked = inviteGuestsOf(body.guests)
+      if ('error' in picked) return { status: 400, body: { error: picked.error } }
+      const { organizer, own } = await accountAddresses(c)
+      if (inviteOwnGuest(picked.guests, [organizer, ...own])) {
+        return { status: 400, body: { error: "An address is one of your own Apple addresses — you can't invite yourself; use another address" } }
+      }
+      if (!(await readInvite(c, url)).gone) return { status: 400, body: { error: 'A test event is there already — Check it, or Delete test first' } }
+      const ics = inviteObject({
+        day: nextDay(osloClock(new Date()).day), now: new Date(), organizer,
+        guests: picked.guests.map(email => ({ email, partstat: 'NEEDS-ACTION' as const })), sequence: 0,
+      })
+      await reserveInvite(db, userId, 'send')
+      await putInvite(c, url, ics, { create: true })
+    } else if (action === 'inviteRewrite') {
+      await rewriteInvite(db, c, userId, url, null, validEtag(typeof body.etag === 'string' ? body.etag : null))
+    } else if (action === 'inviteRemoveGuest') {
+      const guest = inviteEmail(body.guest)
+      if (!guest) return { status: 400, body: { error: 'That address is not one the test takes' } }
+      await rewriteInvite(db, c, userId, url, guest, validEtag(typeof body.etag === 'string' ? body.etag : null))
+    } else if (action === 'inviteDelete') {
+      const now = await readInvite(c, url)
+      if (!now.gone) {
+        if (!inviteEventOf(now.ics)?.ours) return { status: 400, body: { error: "The event at the test's place is not the app's test event — left alone" } }
+        // No If-Match when iCloud gave no usable ETag: on purpose, so the test can always be cleaned up (only the fixed
+        // place, only an event whose UID is the test's).
+        const r = await dav(c, 'DELETE', url, undefined, now.etag ? { 'If-Match': now.etag } : {})
+        if (r.status === 412) return { status: 400, body: { error: 'The test event changed in Apple Calendar just now — Check, then try again' } }
+        if (r.status >= 300 && r.status !== 404 && r.status !== 410) throw new ICloudError('delete', `iCloud answered ${r.status} when the test event was deleted`)
+      }
+    }
+    return { status: 200, body: await inviteState(db, c, userId, url) }
+  } catch (e) {
+    if (e instanceof InviteRefusal) return { status: 400, body: { error: e.message } }
+    if (e instanceof Error && e.message === INVITE_GUARD) return { status: 400, body: { error: INVITE_GUARD } }
+    console.error(`icloud-calendar ${action}: ${e instanceof ICloudError ? e.code : `unexpected ${faultFrames(e)}`}`)
+    return { status: e instanceof ICloudError && e.code === 'auth' ? 400 : 502, body: { error: stepFailureText(e) } }
+  }
+}
+
 function corsHeaders(origin: string | null): Record<string, string> {
   const allowed = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
   return {
@@ -3210,7 +3682,7 @@ Deno.serve(async (req) => {
   const action = String(body.action ?? '')
 
   // The password is read only for the actions that call iCloud.
-  const needsPassword = action === 'check' || action === 'changes' || action === 'read' || action === 'setup' || action === 'drain' || action === 'remove'
+  const needsPassword = action === 'check' || action === 'changes' || action === 'read' || action === 'setup' || action === 'drain' || action === 'remove' || isInviteAction(action)
   const { data: row, error: readError } = await db.from('icloud_credentials')
     .select(`apple_id, ${needsPassword ? 'app_password, ' : ''}calendar_home_url, test_calendar_url, test_sync_token, last_error, last_check, area_calendars, password_sealed, connected_at`)
     .eq('user_id', user.id).maybeSingle() as {
@@ -3314,6 +3786,14 @@ Deno.serve(async (req) => {
 
     if (!row || !row.app_password) return answer({ error: 'Connect iCloud first' }, 400)
     const creds = await openCreds(db, user.id, { apple_id: row.apple_id, app_password: row.app_password })
+    // The invite test (25.11.2026): its own answers and refusals, never the card's "Last problem".
+    if (isInviteAction(action)) {
+      // Send, Rewrite and Remove guest email someone: a password sign-in in the last 10 minutes, as `connect` asks.
+      const signedIn = signedInAt(authHeader.replace('Bearer ', ''))
+      const fresh = signedIn !== null && Date.now() - signedIn <= FRESH_SIGN_IN_MS
+      const r = await inviteTest(db, creds, user.id, row.area_calendars, action, body, fresh)
+      return answer(r.body, r.status)
+    }
     const home = row.calendar_home_url ?? (await discover(creds)).home
 
     if (action === 'check') {

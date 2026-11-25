@@ -86,7 +86,7 @@ export function OwnedView({ items, categories, isLoading }: {
   }
 
   const list = listLoading ? (
-    <OwnedListSkeleton key="loading" />
+    <OwnedListSkeleton key="loading" layout={layout} />
   ) : !anything ? (
     <EmptyState key="empty" bordered className="max-w-md" icon={<PackagePlus />} title="Start with what you use every day"
       description="Your phone, your console, the TV — with what they cost and when. Mark a wish bought and it lands here too."
@@ -101,8 +101,9 @@ export function OwnedView({ items, categories, isLoading }: {
           </p>
         )
         : <p className="text-body text-fg-muted">{filters.show === 'gone' ? 'Nothing sold or gone yet.' : 'Nothing is yours right now.'}</p>)}
-      <OwnedList groups={groups} rows={rows} collapsed={fold.collapsed} onToggle={fold.toggle} onOpen={openThing} layout={layout} />
-      <GoneFold gone={gone} rows={rows} onOpen={openThing} layout={layout} />
+      <OwnedList groups={groups} gone={gone} rows={rows} collapsed={fold.collapsed} onToggle={fold.toggle} onOpen={openThing} layout={layout} />
+      {/* Big pictures pack the Gone fold with the categories (OwnedList). */}
+      {layout !== 'pictures' && <GoneFold gone={gone} rows={rows} onOpen={openThing} layout={layout} />}
     </div>
   )
 

@@ -25,7 +25,7 @@ const { chatAnswer, confirmAnswer, deleteAnswer, CHAT_JOB_ABOUT } = require('./c
 // features of 22.11.2026 answer through the function's own input check (`prepare`: a photo's header and size, the page
 // list, the week's counts) and its own answer check (`read`), so a screen is drawn from what really survives them — the model's
 // text is the one canned part. Built once, on the first run of one of those jobs.
-const REAL_CHECKED = new Set(['quick_list_parse', 'quick_guess_photo', 'receipt_read', 'shop_tidy', 'dev_request_draft', 'error_explain', 'work_week', 'ad_improve', 'place_ideas'])
+const REAL_CHECKED = new Set(['quick_list_parse', 'quick_guess_photo', 'receipt_read', 'shop_tidy', 'product_photo', 'dev_request_draft', 'error_explain', 'work_week', 'ad_improve', 'place_ideas'])
 let realJobs = null
 function realFindJob(name) {
   if (!realJobs) {
@@ -155,7 +155,7 @@ PHASE_2A_JOBS.push(
 // Phase 3: the weekly report, a batch job for the schedule and the app.
 const WEEKLY_REPORT_JOB = {
   ...phase2a('weekly_report', 'The weekly report', "On Monday at 05:00 the function works out the week that just ended with code (training, health, food, tasks and time) and queues one request at half price; the model's short written report is saved, shown as a card on Home during the next week and announced with a push notification at 07:00.", 3000, ['schedule', 'app']),
-  mode: 'batch', version: '2026-11-22.2', answerSchema: null,
+  mode: 'batch', version: '2026-11-25.1', answerSchema: null,
   defaults: { model: 'claude-haiku-5-5', effort: 'medium', maxOutputTokens: 3000 },
   sourceFiles: ['supabase/claude-src/job-weekly-report.ts', 'supabase/claude-src/week-facts.ts', 'supabase/claude-src/week-data.ts', 'supabase/claude-src/batch.ts'],
 }
@@ -167,12 +167,45 @@ PHASE_2A_JOBS.push({
   defaults: { model: 'claude-haiku-5-5', effort: 'low', maxOutputTokens: 2000 },
   sourceFiles: ['supabase/claude-src/job-suggest-weekly.ts', 'supabase/claude-src/suggest-rules.ts', 'supabase/claude-src/suggest-batch.ts', 'supabase/claude-src/suggest-store.ts'],
 })
-const REPORT_TEXT = '**Training**\nThree sessions this week, 3380 kg of volume in all, against about one a week before. Bench press reached a new best: 85 kg for 3.\n\n**Health**\nSleep averaged 6.79 h, with one night under 6 h. Steps averaged 9286 a day, up from 6000.\n\n**Food**\nFood was logged on 3 of 7 days, near the calorie target on 2 of them.\n\n**Tasks & time**\n3 tasks were done and 2 slipped. Work took 3 h of scheduled time.\n\n**Next week**\n1. Log food on every day so the averages mean something.\n2. Aim for 7 hours of sleep on five nights.\n3. Try one more bench session at 85 kg.'
-const REPORT_FACTS = {
-  training: { has_data: true, session_count: 3 }, health: { has_data: true, steps: { avg_per_day: 9286 } },
-  food: { has_data: true, avg_kcal_on_logged_days: 1933, target_kcal: 2200 }, tasks: { has_data: true, done: 3 },
-  sent_text: '<week>09.11.2026 to 15.11.2026</week>\n<training>\nSessions: 3 (the week before: 0.3 a week on average; change: +2.7, +900 %)\nSession 10.11.2026: Push A, 3 working sets, 1 055 kg\n</training>\n<health>\nSleep: 7 nights recorded, average 6 h 47 min, best 8 h, worst 5 h 30 min, 1 under 6 h (the week before: 6 h; change: +47 min, +13 %)\nSteps: average 9 286 a day over 7 days, best day 10 000 (the week before: 6 000 a day; change: +3 286 steps a day, +55 %)\n</health>\n<food>\nNO DATA THIS WEEK\n</food>\n<tasks>\nTasks done: 3 (work 2, personal 1)\n</tasks>',
+const REPORT_TEXT = '**Training**\nA fuller week than your recent average, and the bench is moving up while the row slipped, so the back got less work than the chest. One more pulling session would even it out.\n\n**Health**\nMore walking and a little more sleep than the week before, with one short night midweek. Keeping the evenings calm would protect the gains.\n\n**Food**\nYou logged most days but stayed under the calorie target, and protein held up. Logging every day would make the picture clearer.\n\n**Tasks & time**\nA productive week, though "Renew passport" and "Book dentist" slipped again. Give them a fixed slot early in the week.\n\n**Next week**\n1. Add one back session to balance the chest work.\n2. Log food on every day so the averages mean something.\n3. Book the two slipped tasks into Monday morning.'
+// The figures the function saves with a report (week-facts.ts `WeekFacts`, made-up numbers that match the text above).
+const dmyOf = (day) => `${day.slice(8, 10)}.${day.slice(5, 7)}.${day.slice(0, 4)}`
+function reportFacts(weekStart) {
+  const day = (n) => dmyOf(addDays(weekStart, n))
+  return {
+    week_start: weekStart, week_end: addDays(weekStart, 6), partial: false, unreadable: [],
+    training: {
+      has_data: true, session_count: 3, previous_weeks_avg_sessions: 2.3, working_sets: 39, volume_kg: 13180, previous_weeks_avg_volume_kg: 10940,
+      sessions: [{ date: day(0), title: 'Leg Day', working_sets: 12, volume_kg: 4820 }, { date: day(2), title: 'Push A', working_sets: 14, volume_kg: 3950 }, { date: day(4), title: 'Pull A', working_sets: 13, volume_kg: 4410 }],
+      muscles: [{ muscle: 'chest', sets: 9 }, { muscle: 'quadriceps', sets: 8 }, { muscle: 'triceps', sets: 6.5 }, { muscle: 'lats', sets: 6 }],
+      key_lifts: [
+        { exercise: 'Bench Press (Barbell)', top_set: '85 kg × 3', top_weight_kg: 85, best_before_kg: 80, change: 'new_best' },
+        { exercise: 'Squat (Barbell)', top_set: '100 kg × 5', top_weight_kg: 100, best_before_kg: 100, change: 'same' },
+        { exercise: 'Bent Over Row (Barbell)', top_set: '70 kg × 8', top_weight_kg: 70, best_before_kg: 72.5, change: 'lower' },
+      ],
+    },
+    health: {
+      has_data: true, truncated: false,
+      sleep: { nights: 7, avg_hours: 6.79, best_hours: 8, worst_hours: 5.5, previous_avg_hours: 6, under_6h_nights: 1, per_night: [7, 6.5, 5.5, 8, 7, 7.5, 6] },
+      steps: { days: 7, avg_per_day: 9286, best_day: 12400, previous_avg_per_day: 6000, per_day: [8200, 10400, 7100, 12400, 9600, 8300, 9002] },
+      active_energy: { avg_kcal_per_day: 520, previous_avg_kcal_per_day: 470 },
+      resting_heart_rate: { avg_bpm: 56, previous_avg_bpm: 57.5 },
+      weight: { latest_kg: 81, change_in_week_kg: -0.5, change_since_before_week_kg: -1 },
+    },
+    food: {
+      has_data: true, days_logged: 5, avg_kcal_on_logged_days: 1933, avg_protein_g_on_logged_days: 123, target_kcal: 2200, target_protein_g: 140,
+      days_within_10pct_of_kcal_target: 2, days_protein_target_met: 2, avg_water_ml_on_logged_days: 2300, target_water_ml: 2500,
+      kcal_per_day: [2150, 1780, null, 2240, 1610, 1885, null],
+    },
+    tasks: {
+      has_data: true, done: 11, done_by_area: [{ area: 'work', count: 6 }, { area: 'personal', count: 3 }, { area: 'home', count: 2 }],
+      slipped: 2, slipped_titles: ['Renew passport', 'Book dentist'], carried_over_open: 4, created: 9,
+      scheduled_hours_by_area: [{ area: 'work', hours: 14 }, { area: 'training', hours: 4.5 }, { area: 'personal', hours: 2 }],
+    },
+    sent_text: `<week>${dmyOf(weekStart)} to ${day(6)}</week>\n<training>\nSessions: 3 (the week before: 2.3 a week on average; change: +0.7, +30 %)\nSession ${day(2)}: Push A, 14 working sets, 3 950 kg\n</training>\n<health>\nSleep: 7 nights recorded, average 6 h 47 min, best 8 h, worst 5 h 30 min, 1 under 6 h (the week before: 6 h; change: +47 min, +13 %)\nSteps: average 9 286 a day over 7 days, best day 12 400 (the week before: 6 000 a day; change: +3 286 steps a day, +55 %)\n</health>\n<food>\nDays with food logged: 5 of 7\n</food>\n<tasks>\nTasks done: 11 (work 6, personal 3, home 2)\n</tasks>`,
+  }
 }
+const REPORT_FACTS = reportFacts('2026-11-09')
 // The AI features of 22.11.2026: photos, Dev Requests, Work, Shop, Wishes.
 PHASE_2A_JOBS.push(
   phase2a('quick_guess_photo', 'Guess a meal from a photo', 'In Food → Quick guess, "From a photo" fills in one diary line.', 1500),
@@ -184,6 +217,7 @@ PHASE_2A_JOBS.push(
   phase2a('ad_improve', 'Improve the ad text', 'In Shop, "Improve" rewrites the ad.', 2000),
   phase2a('place_ideas', 'Ideas for a place wish', 'In Wishes, "Ideas for this place".', 3000, ['app'], 70000),
   phase2a('quick_list_parse', 'Sort out a quick list text', 'In Shop → Quick list, ✨ splits a typed or pasted text into separate items.', 1500),
+  phase2a('product_photo', 'A thing from photos', 'In Shop, the add screen\'s camera with a ✨ asks a few questions or fills a draft from one or two photos.', 1500, ['app'], 70000),
 )
 const PHASE_2A_RESULTS = {
   recipe_from_text: { title: 'Pancakes', servings: 4, instructions: 'Mix.\nFry.', ingredients: [{ name: 'flour', quantity: 2, unit: 'cups', note: null }, { name: 'eggs', quantity: 2, unit: null, note: null }], macro_estimate: { calories: 250, protein_g: 8, carbs_g: 38, fat_g: 7, sugar_g: 5 }, usedAi: true },
@@ -201,6 +235,17 @@ const tidyAnswer = (input) => {
   if (/laptop/i.test(name) && !/sleeve/i.test(name)) return { name: 'Demo Laptop 14, silver', brand: 'Demo', model: 'L14', category: 1 }
   if (/robot vacuum/i.test(name)) return { name: 'Demo Robot Vacuum R5', brand: 'Demo', model: 'R5' }
   return {}
+}
+// 📷✨ A thing from photos: the first call asks two questions, the call with the answers drafts (the category by number from the
+// list the app sent: the first one whose path names headphones, else the first). The function's own check then holds it.
+const photoAnswer = (input) => {
+  if (!Array.isArray(input?.answers)) {
+    return { questions: [{ question: 'Which colour is it?', choices: ['Black', 'Silver', 'White'] }, { question: 'Is the box still sealed?', choices: ['Yes', 'No'] }] }
+  }
+  const cats = Array.isArray(input?.categories) ? input.categories : []
+  const at = [/headphone/i, /electronic/i].map(re => cats.findIndex(c => re.test(String(c?.path ?? '')))).find(i => i >= 0) ?? -1
+  const colour = input.answers.find(a => /colour/i.test(String(a?.question ?? '')))?.answer ?? 'black'
+  return { draft: { name: `Demo Headphones X1, ${String(colour).toLowerCase()}`, brand: 'Demo', model: 'X1', ...(cats.length ? { category: at >= 0 ? at + 1 : 1 } : {}), condition: 'used', page: 'https://shop.example.com/demo-headphones-x1' } }
 }
 // ✨ Sort out on the quick list: made-up answers for the typed text (the function's own check then holds them like a model's).
 const quickAnswer = (input) => {
@@ -621,7 +666,7 @@ function claudeMock(opts = {}) {
       calls0.push(call)
       const old = reports.findIndex(r => r.week_start === monday && r.made_by === madeBy)
       if (old >= 0) reports.splice(old, 1)
-      const row = { id: randomUUID(), user_id: store.ownerId, week_start: monday, made_by: madeBy, status: 'queued', failure: null, content: null, facts: { ...REPORT_FACTS, kind }, call_id: call.id, created_at: new Date().toISOString(), ready_at: null, pushed_at: null }
+      const row = { id: randomUUID(), user_id: store.ownerId, week_start: monday, made_by: madeBy, status: 'queued', failure: null, content: null, facts: { ...reportFacts(monday), kind }, call_id: call.id, created_at: new Date().toISOString(), ready_at: null, pushed_at: null }
       reports.push(row)
       return { ok: true, queued: true, report_id: row.id, week_start: monday, kind }
     }
@@ -665,17 +710,22 @@ function claudeMock(opts = {}) {
       const thinkingOff = picked ? body.input?.thinking === 'off' : own.thinking === 'off'
       const row = callRow({ user_id: store.ownerId, job: other.name, instructions_version: other.version, model: useModel, effort: useEffort, served_model: useModel, stop_reason: 'end_turn', request_id: `req_harness_${calls.length + 1}`, input_tokens: 80, cache_read_tokens: 1200, output_tokens: 150, thinking_tokens: thinkingOff ? 0 : 40, duration_ms: thinkingOff ? 700 : 1100 })
       calls.push(row)
-      let result = other.name === 'quick_list_parse' ? quickAnswer(body.input) : other.name === 'shop_tidy' ? tidyAnswer(body.input) : (typeof opts.results?.[other.name] === 'function' ? opts.results[other.name](body.input, calls.length) : opts.results?.[other.name]) ?? (other.name === 'receipt_read' && body.input?.document ? SOLD_RECEIPT : PHASE_2A_RESULTS[other.name])
+      let result = other.name === 'quick_list_parse' ? quickAnswer(body.input) : other.name === 'shop_tidy' ? tidyAnswer(body.input) : other.name === 'product_photo' && !opts.results?.product_photo ? photoAnswer(body.input) : (typeof opts.results?.[other.name] === 'function' ? opts.results[other.name](body.input, calls.length) : opts.results?.[other.name]) ?? (other.name === 'receipt_read' && body.input?.document ? SOLD_RECEIPT : PHASE_2A_RESULTS[other.name])
       if (REAL_CHECKED.has(other.name)) {
         // The function's own check of the answer (the canned text goes through `read` like a model's would); a place's ideas
         // report the searches the canned call ran.
         const job = realFindJob(other.name)
         const prepared = job.prepare(body.input, now)
         if ('problem' in prepared) return stopWith('bad_input', prepared.problem)
-        const checked = prepared.read(typeof result === 'string' ? result : JSON.stringify(result), { thinking: '', servedModel: model, webSearches: other.name === 'place_ideas' ? 2 : other.name === 'receipt_read' || other.name === 'shop_tidy' ? 1 : 0, searchUrls: opts.searchUrls ?? [] })
+        const checked = prepared.read(typeof result === 'string' ? result : JSON.stringify(result), { thinking: '', servedModel: model, webSearches: other.name === 'place_ideas' ? 2 : other.name === 'receipt_read' || other.name === 'shop_tidy' || other.name === 'product_photo' ? 1 : 0, searchUrls: opts.searchUrls ?? (other.name === 'product_photo' ? ['https://shop.example.com/demo-headphones-x1'] : []) })
         if (!checked.ok) return stopWith('invalid', `The model's answer could not be used: ${checked.problem}.`)
         result = checked.result
         if (other.name === 'place_ideas') { row.tools = [{ name: 'web_search', searches: 2 }]; row.cost_usd = Math.round((Number(row.cost_usd || 0) + 0.02) * 1e6) / 1e6 }
+        // A thing from photos: a realistic call — two photos (about 4 200 tokens) and the instructions sent, one search ($0.01).
+        if (other.name === 'product_photo') {
+          Object.assign(row, { input_tokens: 5200, cache_read_tokens: 1400, output_tokens: 320, tools: [{ name: 'web_search', searches: 1 }] })
+          row.cost_usd = Math.round((costOf(row.model, row) + 0.01) * 1e6) / 1e6
+        }
       }
       return { ok: true, job: other.name, result: thinkingOff && picked ? { ...result, thinking: '' } : result, call: summaryOf(row) }
     }
@@ -700,4 +750,4 @@ function claudeMock(opts = {}) {
   }
 }
 
-module.exports = { claudeMock, REPORT_TEXT, REPORT_FACTS, about, callRow, costOf, loggedRequest, STOP_MESSAGE, ITEM_FILL_VERSION }
+module.exports = { claudeMock, REPORT_TEXT, REPORT_FACTS, reportFacts, about, callRow, costOf, loggedRequest, STOP_MESSAGE, ITEM_FILL_VERSION }

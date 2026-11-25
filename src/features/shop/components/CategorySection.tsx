@@ -33,9 +33,16 @@ export function CategorySection({ group, collapsed, onToggle, aside, card, body 
       <button type="button" aria-expanded={!collapsed} aria-controls={id} onClick={onToggle}
         className="-mx-1 flex min-h-[44px] items-center gap-2 rounded-row px-1 text-left hover:bg-surface-hover">
         <ChevronDown aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-muted transition-transform', collapsed && '-rotate-90')} />
-        <h2 className={cx('text-lead font-semibold', group.topId ? 'text-fg' : 'text-fg-muted')}>{group.title}</h2>
-        <span className="count-badge">{group.items.length}</span>
-        {aside != null && <span className="ml-auto text-meta tabular-nums text-fg-muted">{aside}</span>}
+        {/* A category may be one tile wide (picture views pack them side by side): the total is cut first, the name only past the room the chevron and count leave. */}
+        <span className="flex min-w-0 shrink-0" style={{ maxWidth: 'calc(100% - 4.5rem)' }}>
+          <Truncate as="h2" className={cx('min-w-0 text-lead font-semibold', group.topId ? 'text-fg' : 'text-fg-muted')}>{group.title}</Truncate>
+        </span>
+        <span className="count-badge shrink-0">{group.items.length}</span>
+        {aside != null && (
+          <span className="ml-auto flex min-w-0" style={{ flexShrink: 100 }}>
+            <Truncate as="span" className="min-w-0 text-meta tabular-nums text-fg-muted">{aside}</Truncate>
+          </span>
+        )}
       </button>
       {!collapsed && body && body(id)}
       {!collapsed && !body && (

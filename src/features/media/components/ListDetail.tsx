@@ -1,7 +1,8 @@
+import { Suspense } from 'react'
 import { Link } from 'react-router-dom'
 import { CloudUpload, Sparkles, Trash2, Unlink } from 'lucide-react'
 import { confirmDelete } from '../../../shared/modals'
-import { Button } from '../../../shared/ui'
+import { Button, Skeleton } from '../../../shared/ui'
 import { FOLLOW_KIND_LABEL as KIND_LABEL, type MediaFollow } from '../api/followsApi'
 import { useDeleteFollow } from '../hooks/useFollows'
 import { useCreateAutoList, useDeleteAutoList, useStopAutoFill } from '../hooks/useAutoLists'
@@ -9,8 +10,8 @@ import { useDeleteTraktList } from '../trakt/useTraktExtras'
 import type { TraktList } from '../trakt/traktApi'
 import type { OpenMediaDetail } from '../types'
 import { SmartListPanel, TraktListPanel } from './ListPanels'
-import { QueuePanel } from './QueuePanel'
 import { FollowListNotice } from './FollowListNotice'
+import { LazyQueuePanel as QueuePanel } from './queuePart'
 
 type Open = OpenMediaDetail
 
@@ -55,7 +56,10 @@ export function TraktListDetail({ list, follow, onOpen, onGone, isQueue = false 
         </div>
       </header>
       {follow && <FollowListNotice follow={follow} />}
-      {isQueue ? <QueuePanel onOpen={onOpen} /> : <TraktListPanel key={list.id} listId={list.id} onOpen={onOpen} />}
+      {isQueue
+        // The fallback is the panel's own loading copy, so nothing moves when the code lands.
+        ? <Suspense fallback={<Skeleton className="h-40 w-full" />}><QueuePanel onOpen={onOpen} /></Suspense>
+        : <TraktListPanel key={list.id} listId={list.id} onOpen={onOpen} />}
     </>
   )
 }

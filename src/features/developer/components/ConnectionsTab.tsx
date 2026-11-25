@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from 'react'
+import { Suspense, useState, useEffect, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useGoogleLogin } from '@react-oauth/google'
 import { useCalendarStore } from '../../../app/store'
@@ -26,6 +26,9 @@ import { TraktCard } from '../../media/trakt/TraktCard'
 import { useKoboFeedState } from '../../books/hooks/useBooks'
 import { ConvertOldItemsButton } from './ConvertOldItems'
 import { ICloudCard } from '../../calendar/icloud/ICloudCard'
+import { lazyPart } from '../../../shared/utils/lazyPage'
+import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
+import { useICloudStatus } from '../../calendar/icloud/useICloud'
 import { useClaudeDescribe } from '../../ai/claude/hooks/useClaude'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -340,12 +343,19 @@ function AnthropicCard() {
 /** service_subscriptions keys that have a card here; the rest go under "Other subscriptions". */
 const CARD_SERVICES = ['google', 'icloud', 'strava', 'playstation', 'trakt', 'steam', 'igdb', 'hevy', 'apple_health', 'kobo', 'anthropic'] as const
 
+const InviteTestCard = lazyPart('invite-test', () => import('../../calendar/icloud/InviteTestCard').then(m => m.InviteTestCard))
+const LAZY_PARTS = [InviteTestCard]
+
 const ACCOUNTS_LABEL = 'Signed in by you'
 const SERVER_LABEL = 'Set up on the server'
 
 export function ConnectionsTab() {
   const google = <GoogleCard />
   const icloud = <ICloudCard />
+  // The invite test (a one-off) only while iCloud is connected: it writes to the account's Personal calendar. Its code
+  // loads apart (most visits never show it) and in idle time once the page shows, so it is in before the status answers.
+  const icloudConnected = !!useICloudStatus().data?.connected
+  useIdlePreload(LAZY_PARTS)
   const strava = <StravaCard />
   const psn = <PlayStationCard />
   const trakt = <TraktCard />
@@ -368,6 +378,7 @@ export function ConnectionsTab() {
       </div>
     ),
     otherSubs: <OtherSubscriptions cardKeys={CARD_SERVICES} />,
+    inviteTest: icloudConnected ? <Suspense fallback={null}><InviteTestCard /></Suspense> : null,
     google, icloud, strava, psn, trakt, steam, igdb, hevy, health, kobo, anthropic,
     accountsLabel: <h2 className="section-label">{ACCOUNTS_LABEL}</h2>,
     serverLabel: <h2 className="section-label">{SERVER_LABEL}</h2>,

@@ -1100,7 +1100,7 @@ function buildTables(now = new Date()) {
   })
   // The weekly report (migration 196): last week's, finished on Monday morning and announced (Home's card shows it), the
   // week before it, and a Sunday run that failed. Each ready one has its ledger row at the batch price.
-  const { REPORT_TEXT, REPORT_FACTS } = require('./claude.cjs')
+  const { REPORT_TEXT, reportFacts } = require('./claude.cjs')
   const mondayOf = (d) => addDays(d, -((new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7))
   const thisMonday = mondayOf(today)
   const batchCall = (n, over) => callRow({
@@ -1118,12 +1118,12 @@ function buildTables(now = new Date()) {
   tables.ai_calls.push(...batchCalls)
   const reportRow = (n, weekStart, over) => ({
     id: `a1ca5500-0000-4000-8000-${String(n).padStart(12, '0')}`, user_id: owner, week_start: weekStart, made_by: 'schedule', status: 'ready', failure: null,
-    content: REPORT_TEXT, facts: { week_start: weekStart, kind: 'scheduled', ...REPORT_FACTS }, call_id: batchCalls[n - 1].id,
+    content: REPORT_TEXT, facts: { ...reportFacts(weekStart), kind: 'scheduled' }, call_id: batchCalls[n - 1].id,
     created_at: osloInstant(addDays(weekStart, 6), '23:30'), ready_at: osloInstant(addDays(weekStart, 7), '00:41'), pushed_at: osloInstant(addDays(weekStart, 7), '00:41'), ...over,
   })
   tables.ai_reports = [
     reportRow(1, addDays(thisMonday, -7), {}),
-    reportRow(2, addDays(thisMonday, -14), { content: REPORT_TEXT.replace('Three sessions', 'Two sessions').replace('3380', '2410') }),
+    reportRow(2, addDays(thisMonday, -14), { content: REPORT_TEXT.replace('A fuller week', 'A lighter week') }),
     reportRow(3, addDays(thisMonday, -21), { status: 'failed', content: null, failure: 'The batch request expired before it was answered.', ready_at: osloInstant(addDays(thisMonday, -20), '23:35'), pushed_at: osloInstant(addDays(thisMonday, -20), '23:35') }),
   ]
   // The suggestions (migration 199): ideas for needing AI less, in each state, and the weekly look's last run.

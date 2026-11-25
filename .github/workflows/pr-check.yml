@@ -514,6 +514,13 @@ jobs:
         run: node scripts/verify-db-google-calendar-off.mjs
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      # Migration 209 (the invite test's cap): at most 5 Send / Rewrite / Remove guest a day (Oslo) per account, counted
+      # under a per-account lock; the browser and the assistant can't read, add, age or delete a count, nor call the two
+      # functions; service-role only, owner lock, not audited. 209 runs twice: the catalogue must not change.
+      - name: Invite test cap database scenarios
+        run: node scripts/verify-db-icloud-invite-test.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
   # Every scripts/verify-*.cjs|mjs, several at a time, as its own job beside
   # the build above, so it adds no waiting time unless it is slower than the

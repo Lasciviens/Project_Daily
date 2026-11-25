@@ -451,8 +451,8 @@ console.log('\n== A save\'s own item goes first (03.11.2026) ==')
   eq(!/console\.error\([^)]*\$\{[^}]*\.message/.test(drain), true, 'an app fault is logged by its kind and code frames only (never a message that could hold item text)')
   eq([F.stepFailureText(net), F.stepFailureText(new TypeError('x')), F.stepFailureText(undefined), F.APP_FAULT_STEP],
     ['iCloud did not answer', F.APP_FAULT_STEP, F.APP_FAULT_STEP, 'Something went wrong in the app, not in iCloud'], 'any other step that fails says whose fault it is too')
-  eq([(src.match(/'iCloud did not answer'/g) || []).length, /Something went wrong talking to iCloud/.test(src), (src.match(/stepFailureText\(e\)/g) || []).length], [1, false, 6],
-    'only a real network failure says "iCloud did not answer" (noAnswer); the read-back, check, read, setup, the timer and a whole run say stepFailureText')
+  eq([(src.match(/'iCloud did not answer'/g) || []).length, /Something went wrong talking to iCloud/.test(src), (src.match(/stepFailureText\(e\)/g) || []).length], [1, false, 7],
+    'only a real network failure says "iCloud did not answer" (noAnswer); the read-back, check, read, setup, the timer, a whole run and the invite test say stepFailureText')
   const err = new Error('Padel with Ola\nat secret line')
   err.stack = 'Error: Padel with Ola\nat secret line\n    at drainOne (file:///index.ts:2391:9)\n    at async drainAccount (file:///index.ts:2800:20)'
   const odd = new Error('x'); odd.stack = 'Something else\n    at drainOne (file:///index.ts:1:1)'
