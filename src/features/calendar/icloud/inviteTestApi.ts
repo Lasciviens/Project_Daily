@@ -26,6 +26,7 @@ export interface InviteTestState {
   sequence:    number | null
   etag:        string | null
   scheduleTag: string | null
+  /** Masked ("o…@icloud.com"), as the iCloud card shows the Apple ID. */
   organizer:   string | null
   guests:      InviteTestGuest[]
   /** Send, Rewrite and Remove guest used today (Oslo's day), of `cap`. */
@@ -35,6 +36,7 @@ export interface InviteTestState {
 
 export const checkInviteTest = () => call<InviteTestState>('inviteCheck')
 export const sendInviteTest = (guests: string[]) => call<InviteTestState>('inviteSend', { guests })
-export const rewriteInviteTest = () => call<InviteTestState>('inviteRewrite')
-export const removeInviteGuest = (guest: string) => call<InviteTestState>('inviteRemoveGuest', { guest })
+/** `etag`: the version the card showed — the server refuses when the event changed since ("tap Check"). */
+export const rewriteInviteTest = (etag: string) => call<InviteTestState>('inviteRewrite', { etag })
+export const removeInviteGuest = (guest: string, etag: string) => call<InviteTestState>('inviteRemoveGuest', { guest, etag })
 export const deleteInviteTest = () => call<InviteTestState>('inviteDelete')

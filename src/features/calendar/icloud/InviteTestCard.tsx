@@ -4,6 +4,7 @@ import { Button, Card, CardHeader, IconButton, TonePill, Truncate, type Tone } f
 import { entityModal } from '../../../shared/modals/useEntityModal'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import type { InvitePartstat, InviteTestGuest, InviteTestState } from './inviteTestApi'
+import { useSignedInFreshly } from './useICloud'
 import { useCheckInviteTest, useDeleteInviteTest, useInviteTestState, useRemoveInviteGuest, useRewriteInviteTest, useSendInviteTest } from './useInviteTest'
 
 // Settings → Subscriptions → Invite test (25.11.2026): a one-off live test of Apple Calendar invitations before the
@@ -90,6 +91,11 @@ export function InviteTestCard() {
   const busy = check.isPending || send.isPending || rewrite.isPending || remove.isPending || del.isPending
   const addresses = [first, second].map(s => s.trim()).filter(Boolean)
   const known = (state?.guests ?? []).map(g => g.email).filter((e): e is string => !!e)
+  // The version the card shows: Rewrite and Remove guest go only over it (the server refuses a newer one).
+  const shownEtag = state?.exists && state.ours ? state.etag : null
+  // Send, Rewrite and Remove guest email someone: a password sign-in in the last 10 minutes (the server checks the same).
+  const fresh = useSignedInFreshly()
+  const stale = fresh.data === false
 
   async function sendIt() {
     if (!addresses.length || busy) return
@@ -107,7 +113,7 @@ export function InviteTestCard() {
       message: `The same event is written again, with each guest's answer and the sequence as iCloud has them. If iCloud counts it as a change, it emails ${known.length ? listOf(known) : 'the guests'} again in your name. This can't be undone.`,
       confirmLabel: 'Rewrite',
     })
-    if (ok) rewrite.mutate()
+    if (ok && shownEtag) rewrite.mutate(shownEtag)
   }
 
   async function removeGuest(email: string) {
@@ -117,7 +123,7 @@ export function InviteTestCard() {
       confirmLabel: 'Remove',
       destructive: true,
     })
-    if (ok) remove.mutate(email)
+    if (ok && shownEtag) remove.mutate({ guest: email, etag: shownEtag })
   }
 
   async function deleteIt() {
@@ -143,15 +149,20 @@ export function InviteTestCard() {
         <div className="flex items-center gap-2">
           <input className="input min-w-0 flex-1" type="email" inputMode="email" autoComplete="off" spellCheck={false} placeholder="Second guest (optional)" aria-label="Second guest email (optional)"
             value={second} onChange={e => setSecond(e.target.value)} />
-          <Button type="submit" variant="primary" icon={<Send />} loading={send.isPending} disabled={!addresses.length || busy} tip="Send the invitation from your iCloud address">Send</Button>
+          <Button type="submit" variant="primary" icon={<Send />} loading={send.isPending} disabled={!addresses.length || busy || stale} tip="Send the invitation from your iCloud address">Send</Button>
         </div>
       </form>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button size="sm" icon={<ScanSearch />} loading={check.isPending} disabled={busy} onClick={() => check.mutate()} tip="Check each guest's answer in iCloud">Check</Button>
-        <Button size="sm" icon={<Repeat />} loading={rewrite.isPending} disabled={busy} onClick={() => void rewriteIt()} tip="Rewrite the same event again (does a second invitation go out?)">Rewrite</Button>
+        <Button size="sm" icon={<Repeat />} loading={rewrite.isPending} disabled={busy || stale || !shownEtag} onClick={() => void rewriteIt()} tip="Rewrite the same event again (does a second invitation go out?)">Rewrite</Button>
         <Button size="sm" icon={<Trash2 />} loading={del.isPending} disabled={busy} onClick={() => void deleteIt()} tip="Delete the test event">Delete</Button>
       </div>
-      {state && <InviteTestResult state={state} onRemove={email => void removeGuest(email)} busy={busy} />}
+      {stale && (
+        <p role="alert" className="mt-2 text-meta text-warn">
+          Sign in again first: Send, Rewrite and Remove guest need a sign-in in the last 10 minutes (Settings menu → Sign out, then sign in).
+        </p>
+      )}
+      {state && <InviteTestResult state={state} onRemove={email => void removeGuest(email)} busy={busy || stale || !shownEtag} />}
     </Card>
   )
 }

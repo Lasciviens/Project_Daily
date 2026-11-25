@@ -19,7 +19,8 @@ const src = fs.readFileSync(path.join(root, 'supabase/functions/icloud-calendar/
 const block = src.slice(src.indexOf('// <icloud-pure>'), src.indexOf('// </icloud-pure>'))
 const code = transform(block.replace(/^export /gm, ''), { transforms: ['typescript'] }).code
 const I = new Function(`${code}; return { inviteEmail, inviteGuestsOf, inviteOwnGuest, calendarUserAddresses, inviteEventUrl, inviteLines, inviteObject, inviteGuard,
-  inviteEventOf, inviteRewriteOf, scheduleTagOf, ownEventOfHref, INVITE_UID, INVITE_FILE, INVITE_GUARD, INVITE_DAY_CAP, INVITE_MAX_GUESTS }`)()
+  inviteEventOf, inviteRewriteOf, scheduleTagOf, ownEventOfHref, isRealDay, inviteTestOpen, INVITE_UID, INVITE_FILE, INVITE_GUARD, INVITE_DAY_CAP, INVITE_MAX_GUESTS,
+  INVITE_FRESH_ACTIONS, INVITE_TEST_LAST_DAY, INVITE_TEST_OVER, INVITE_SIGN_IN_TEXT }`)()
 
 let passed = 0, failed = 0
 function eq(got, want, name) {
@@ -57,8 +58,12 @@ eq(I.calendarUserAddresses(set('<d:href>urn:uuid:1234</d:href><d:href>/123/princ
 eq(I.calendarUserAddresses('<d:prop><d:displayname>mailto:x@example.com</d:displayname></d:prop>').organizer, null, 'only inside calendar-user-address-set')
 
 console.log('\n== Where the event lives ==')
-const CAL = 'https://p67-caldav.icloud.com:443/123456/calendars/lasci-personal/'
+const CAL = 'https://p67-caldav.icloud.com/123456/calendars/lasci-personal/'
 eq(I.inviteEventUrl({ personal: { url: CAL } }), 'https://p67-caldav.icloud.com/123456/calendars/lasci-personal/lasci-invite-test.ics', 'the Personal area calendar + the fixed file name')
+eq([I.inviteEventUrl({ personal: { url: 'https://p67-caldav.icloud.com:443/123456/calendars/lasci-personal/' } }),
+  I.inviteEventUrl({ personal: { url: 'https://P67-CALDAV.icloud.com/123456/calendars/lasci-personal/' } }),
+  I.inviteEventUrl({ personal: { url: 'https://p67-caldav.icloud.com/123456/calendars/x/../lasci-personal/' } })], [null, null, null],
+  'only a calendar stored exactly in its normal form (new URL(stored).toString() === stored): no :443, no upper case, no ..')
 eq([I.inviteEventUrl({ work: { url: CAL } }), I.inviteEventUrl({}), I.inviteEventUrl(null), I.inviteEventUrl({ personal: { url: 'https://evil.example/cal/' } }),
   I.inviteEventUrl({ personal: { url: 'https://p67-caldav.icloud.com/123/calendars/lasci-personal' } }), I.inviteEventUrl({ personal: { url: 'https://ola:pw@caldav.icloud.com/x/' } }), I.inviteEventUrl({ personal: { url: `${CAL}?a=/` } })],
   [null, null, null, null, null, null, null], 'none: another area\'s calendar, none made, a host that isn\'t iCloud, a path without its closing slash, a user name in the URL, a query')
@@ -188,6 +193,14 @@ eq([
   refusedPlan(I.inviteRewriteOf(read, 'ola@example.org', NOW, 'nobody@example.com')),
 ], [true, true, true, true, true, true, true], 'refused: not the test event, moved, a bad sequence, another organizer, a guest or answer the app doesn\'t take, three guests, removing someone who isn\'t a guest')
 
+console.log('\n== The end date and real days ==')
+eq(I.INVITE_TEST_LAST_DAY, '2026-12-31', 'the test ends on 31.12.2026')
+eq(['inviteSend', 'inviteCheck', 'inviteRewrite', 'inviteRemoveGuest', 'inviteDelete'].map(a => I.inviteTestOpen(a, '2026-12-31')), [true, true, true, true, true], 'every action on its last day')
+eq(['inviteSend', 'inviteCheck', 'inviteRewrite', 'inviteRemoveGuest', 'inviteDelete'].map(a => I.inviteTestOpen(a, '2027-01-01')), [false, false, false, false, true], 'after it only Delete (the test can always be cleaned up)')
+eq(['2026-11-26', '2028-02-29', '2026-02-29', '2026-02-31', '2026-13-01', '2026-11-00', '2026-1-01'].map(I.isRealDay), [true, true, false, false, false, false, false], 'a day is a real calendar day')
+eq(I.inviteEventOf(ICLOUD.replace(/20261126T/g, '20260231T')).day, null, 'a read-back day that isn\'t real (31.02) reads as moved — Rewrite refuses')
+eq(throwsGuard(() => I.inviteObject({ ...send, day: '2026-02-30' })), true, '…and the builder refuses one')
+
 console.log('\n== The function (static) ==')
 const serve = src.slice(src.indexOf('Deno.serve('))
 const cronBranch = serve.slice(0, serve.indexOf("const authHeader = req.headers.get('authorization')"))
@@ -195,16 +208,29 @@ const appUserAt = serve.indexOf('if (!(await isAppUser(user.id))) return answer'
 const inviteAt = serve.indexOf('if (isInviteAction(action))')
 eq(appUserAt > 0 && inviteAt > appUserAt && serve.indexOf('auth.getUser(') < appUserAt, true, 'the invite actions run only after getUser and isAppUser')
 eq(/invite/i.test(cronBranch), false, '…never from the timer\'s branch')
-eq(serve.includes('await inviteTest(db, creds, user.id, row.area_calendars, action, body)'), true, 'the calendar comes from the server-only area calendars (icloud_credentials, service role)')
+eq(serve.includes('await inviteTest(db, creds, user.id, row.area_calendars, action, body, fresh)'), true, 'the calendar comes from the server-only area calendars (icloud_credentials, service role)')
 const inviteFn = src.slice(src.indexOf('async function inviteTest('), src.indexOf('function corsHeaders('))
 const helpers = src.slice(src.indexOf('// ── The invite test\'s requests'), src.indexOf('function corsHeaders('))
-eq([...helpers.matchAll(/body\.(\w+)/g)].map(m => m[1]).sort(), ['guest', 'guests'], 'the browser names only guests — never an organizer, UID, place or calendar')
+eq([...new Set([...helpers.matchAll(/body\.(\w+)/g)].map(m => m[1]))].sort(), ['etag', 'guest', 'guests'], 'the browser names only guests and the version it saw — never an organizer, UID, place or calendar')
 eq((helpers.match(/inviteEventUrl\(/g) || []).length === 1 && inviteFn.includes('inviteEventUrl(areaCals)'), true, 'one place is built, from the area calendars')
 eq(/console\.(log|error|warn|info)\([^)]*(guest|organizer|email|own|ics|body)/i.test(helpers), false, 'nothing logged with an address or the event (the error\'s kind only)')
 eq(/\.text\b/.test(helpers.replace(/now\.ics|r\.text, etag/g, '')), false, 'iCloud\'s answer body never goes into an error')
 eq(/'If-None-Match': '\*'/.test(helpers) && /'If-Match': match\.etag/.test(helpers), true, 'a Send only where none is; a Rewrite only over the version just read')
 const reserveAt = (fnName) => { const t = helpers.slice(helpers.indexOf(fnName)); return t.indexOf('await reserveInvite(') < t.indexOf('await putInvite(') }
 eq([reserveAt("if (action === 'inviteSend')"), reserveAt('async function rewriteInvite(')], [true, true], 'the cap is reserved before every PUT')
+eq(I.INVITE_FRESH_ACTIONS, ['inviteSend', 'inviteRewrite', 'inviteRemoveGuest'], 'Send, Rewrite and Remove guest need a fresh sign-in; Check and Delete don\'t')
+const inviteCall = serve.slice(serve.indexOf('if (isInviteAction(action))'), serve.indexOf('const home = row.calendar_home_url'))
+eq(/const signedIn = signedInAt\(authHeader\.replace\('Bearer ', ''\)\)\s+const fresh = signedIn !== null && Date\.now\(\) - signedIn <= FRESH_SIGN_IN_MS\s+const r = await inviteTest\(db, creds, user\.id, row\.area_calendars, action, body, fresh\)/.test(inviteCall), true,
+  'the sign-in time is connect\'s own check (signedInAt: the password entry of the token\'s amr, FRESH_SIGN_IN_MS)')
+const gate = inviteFn.slice(0, inviteFn.indexOf('try {'))
+eq(/if \(!inviteTestOpen\(action, osloClock\(new Date\(\)\)\.day\)\) return \{ status: 400, body: \{ error: INVITE_TEST_OVER \} \}/.test(gate)
+  && /if \(INVITE_FRESH_ACTIONS\.includes\(action\) && !freshSignIn\) return \{ status: 400, body: \{ error: INVITE_SIGN_IN_TEXT \} \}/.test(gate) && !/dav\(|reserve|readInvite|accountAddresses/.test(gate), true,
+  'the end date and the sign-in are checked first, before iCloud or the cap is touched')
+eq([I.INVITE_SIGN_IN_TEXT.startsWith('Sign in again first'), I.INVITE_TEST_OVER], [true, 'The invite test ended on 31.12.2026 — only Delete still works'], 'both refusals are plain sentences')
+const rewriteFn = helpers.slice(helpers.indexOf('async function rewriteInvite('), helpers.indexOf('async function inviteTest('))
+eq(rewriteFn.indexOf('if (now.etag !== shown) throw') > 0 && rewriteFn.indexOf('if (now.etag !== shown) throw') < rewriteFn.indexOf('await reserveInvite(')
+  && /if \(!shown\) throw/.test(rewriteFn), true, 'Rewrite and Remove guest go only over the version the card showed ("tap Check"), checked before the cap')
+eq(/organizer: read\.organizer \? maskAppleId\(read\.organizer\) : null/.test(helpers), true, 'the organizer is answered masked, as status does')
 eq(/function eventNow[\s\S]*?\/\^\(ATTENDEE\|ORGANIZER\)\[;:\]\/im\.test\(r\.text\)/.test(src), true, 'the drain\'s INVITED guard is still there (never rewrites or removes an event with invitees)')
 
 console.log('\n== No path from the assistant or ✨ ==')

@@ -44,7 +44,7 @@ export function useRewriteInviteTest() {
   const keep = useKeepState()
   return useMutationWithFeedback({
     action: 'icloud_invite_rewrite',
-    mutationFn: () => rewriteInviteTest(),
+    mutationFn: (etag: string) => rewriteInviteTest(etag),
     successMessage: 'Test event rewritten · see whether a second invitation arrives',
     onSuccess: keep,
   })
@@ -54,7 +54,7 @@ export function useRemoveInviteGuest() {
   const keep = useKeepState()
   return useMutationWithFeedback({
     action: 'icloud_invite_remove_guest',
-    mutationFn: (guest: string) => removeInviteGuest(guest),
+    mutationFn: ({ guest, etag }: { guest: string; etag: string }) => removeInviteGuest(guest, etag),
     successMessage: 'Guest removed · a cancellation should arrive',
     onSuccess: keep,
     logPayload: false,
