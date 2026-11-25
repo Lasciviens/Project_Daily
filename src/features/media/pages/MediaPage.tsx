@@ -11,6 +11,7 @@ import { WhatToWatchButton } from '../components/TonightPicker'
 import { ReleaseCalendar } from '../components/ReleaseCalendar'
 import { LibraryView } from '../components/LibraryView'
 import { ListsView } from '../components/ListsView'
+import { QUEUE_PART } from '../components/queuePart'
 import { MediaStatsView } from '../components/stats/MediaStatsView'
 import { ContinueWatching } from '../components/ContinueWatching'
 import { BUCKET_ORDER, libraryItems, type LibraryBucket } from '../libraryModel'
@@ -21,6 +22,7 @@ import { useCinemaMovieIds } from '../hooks/useLibraryIndex'
 import { useEntityModal } from '../../../shared/modals'
 import { PageBoard, PageContainer, PageHeader, SegmentedControl } from '../../../shared/ui'
 import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
+import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
 import { MEDIA_BOARD, type MediaSection } from '../mediaBoard'
 import type { MediaType, OpenMediaDetail } from '../types'
 
@@ -42,6 +44,7 @@ export function MediaPage() {
   const statusParam = params.get('status')
   const bucket: LibraryBucket | 'all' = isBucket(statusParam) ? statusParam : 'all'
   const modal = useEntityModal()
+  useIdlePreload(QUEUE_PART)
 
   const search = useMediaSearchSession()
   const searching = view === 'overview' && search.inSearch
