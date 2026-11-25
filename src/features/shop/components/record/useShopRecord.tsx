@@ -1,5 +1,5 @@
 import type { RecordFact } from '../../shopSuggestions'
-import { useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { ArrowRight, Ban, CalendarPlus, Check, HandCoins, ListPlus, ListX, Plus, Sparkles, TriangleAlert, Undo2 } from 'lucide-react'
 import { useEntityModal } from '../../../../shared/modals'
 import type { Tone } from '../../../../shared/ui'
@@ -85,16 +85,23 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
   const path = categoryPath(item.category_id, categories)
   const subtitle = [path.topId ? [path.topName, path.subName].filter(Boolean).join(' › ') : null, item.disposal ? DISPOSAL_LABEL[item.disposal] : null].filter(Boolean).join(' · ') || undefined
 
+  /** The parts of the body that hear of the record's own Save (the saved row): OpenAutofill's 📷✨ learning report. */
+  const [afterSave, setAfterSave] = useState<((row: ShopItem) => void) | null>(null)
+  /** Listens to the record's own Save; answers the function that stops listening. */
+  const onSaved = useCallback((fn: (row: ShopItem) => void) => { setAfterSave(() => fn); return () => setAfterSave(null) }, [])
   async function save(): Promise<boolean> {
     if (!d.dirty) return true
     // A new category waits for its name, as the add sheet's Save does.
     if (newCategoryMissing(d.draft)) { d.setEditing('category'); return false }
     const patch = patchOf(item, d.draft)
+    let saved: ShopItem
     try {
       // A suggested or new category picked in the record is made now, with the save.
       if (patch.category_id !== undefined) patch.category_id = await saveCategory.resolve(patch.category_id, d.draft, categories)
-      await update.mutateAsync({ id: item.id, patch, quiet: true })
+      saved = await update.mutateAsync({ id: item.id, patch, quiet: true })
     } catch { return false }
+    // What a part of the body learns from this Save (📷✨ reports what was kept): only the record's own Save, never another write.
+    afterSave?.(saved)
     // A changed link is checked once, like a new wish's (the check reuses the last hour's read).
     if (patch.url && listOf(item) !== 'quick') check([item.id])
     toast.success('Saved')
@@ -162,7 +169,7 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
 
   return {
     item, today, items, categories, ctx, costs, links, watches, d, state, owned, chain, accessories, models, parents, parent,
-    pill, subtitle, actions, save, close, del, saving: update.isPending, buy: () => buy(item),
+    pill, subtitle, actions, save, onSaved, close, del, saving: update.isPending, buy: () => buy(item),
     purchaseEditing, setPurchaseEditing, purchaseDirty, setPurchaseDirty,
     /**
      * A model of this general wish bought, the record's own way (critic, 24.11.2026): the wish's draft is saved first, as Bought

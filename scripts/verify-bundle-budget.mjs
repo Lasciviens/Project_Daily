@@ -44,8 +44,8 @@ const PAGE_KB = {                                          // the shell plus the
                                                            // Needs-a-look rows' hooks — are part of the Shop now; their models, writes and the
                                                            // autofill still load in their own chunks
   'src/features/projects/pages/ProjectPage.tsx': 375,      // [354]
-  'src/features/work/pages/WorkPage.tsx': 378,             // [355] 376 on 24.11.2026: main measured 375.01 (over by 0.01); +0.06 for the Add sheet's place kinds;
-                                                           // 378 the same day: the Focus strip is a PagedStrip (‹ › with a mouse), +1.0 for ScrollPager
+  'src/features/work/pages/WorkPage.tsx': 378,             // [355] at its edge on 24.11.2026 (375.0 kB): the chunk names the shell lists move it by tens of bytes per build;
+                                                           // +0.06 for the Add sheet's place kinds; 378 the same day: the Focus strip is a PagedStrip (‹ › with a mouse), +1.0 for ScrollPager
   'src/features/books/pages/BooksPage.tsx': 370,           // [350]
   'src/features/wishes/pages/WishesPage.tsx': 355,         // [337]
   'src/features/football/pages/FootballPage.tsx': 350,     // [331]

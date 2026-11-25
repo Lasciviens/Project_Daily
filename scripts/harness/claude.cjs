@@ -25,7 +25,7 @@ const { chatAnswer, confirmAnswer, deleteAnswer, CHAT_JOB_ABOUT } = require('./c
 // features of 22.11.2026 answer through the function's own input check (`prepare`: a photo's header and size, the page
 // list, the week's counts) and its own answer check (`read`), so a screen is drawn from what really survives them — the model's
 // text is the one canned part. Built once, on the first run of one of those jobs.
-const REAL_CHECKED = new Set(['quick_list_parse', 'quick_guess_photo', 'receipt_read', 'shop_tidy', 'dev_request_draft', 'error_explain', 'work_week', 'ad_improve', 'place_ideas'])
+const REAL_CHECKED = new Set(['quick_list_parse', 'quick_guess_photo', 'receipt_read', 'shop_tidy', 'product_photo', 'dev_request_draft', 'error_explain', 'work_week', 'ad_improve', 'place_ideas'])
 let realJobs = null
 function realFindJob(name) {
   if (!realJobs) {
@@ -217,6 +217,7 @@ PHASE_2A_JOBS.push(
   phase2a('ad_improve', 'Improve the ad text', 'In Shop, "Improve" rewrites the ad.', 2000),
   phase2a('place_ideas', 'Ideas for a place wish', 'In Wishes, "Ideas for this place".', 3000, ['app'], 70000),
   phase2a('quick_list_parse', 'Sort out a quick list text', 'In Shop → Quick list, ✨ splits a typed or pasted text into separate items.', 1500),
+  phase2a('product_photo', 'A thing from photos', 'In Shop, the add screen\'s camera with a ✨ asks a few questions or fills a draft from one or two photos.', 1500, ['app'], 70000),
 )
 const PHASE_2A_RESULTS = {
   recipe_from_text: { title: 'Pancakes', servings: 4, instructions: 'Mix.\nFry.', ingredients: [{ name: 'flour', quantity: 2, unit: 'cups', note: null }, { name: 'eggs', quantity: 2, unit: null, note: null }], macro_estimate: { calories: 250, protein_g: 8, carbs_g: 38, fat_g: 7, sugar_g: 5 }, usedAi: true },
@@ -234,6 +235,17 @@ const tidyAnswer = (input) => {
   if (/laptop/i.test(name) && !/sleeve/i.test(name)) return { name: 'Demo Laptop 14, silver', brand: 'Demo', model: 'L14', category: 1 }
   if (/robot vacuum/i.test(name)) return { name: 'Demo Robot Vacuum R5', brand: 'Demo', model: 'R5' }
   return {}
+}
+// 📷✨ A thing from photos: the first call asks two questions, the call with the answers drafts (the category by number from the
+// list the app sent: the first one whose path names headphones, else the first). The function's own check then holds it.
+const photoAnswer = (input) => {
+  if (!Array.isArray(input?.answers)) {
+    return { questions: [{ question: 'Which colour is it?', choices: ['Black', 'Silver', 'White'] }, { question: 'Is the box still sealed?', choices: ['Yes', 'No'] }] }
+  }
+  const cats = Array.isArray(input?.categories) ? input.categories : []
+  const at = [/headphone/i, /electronic/i].map(re => cats.findIndex(c => re.test(String(c?.path ?? '')))).find(i => i >= 0) ?? -1
+  const colour = input.answers.find(a => /colour/i.test(String(a?.question ?? '')))?.answer ?? 'black'
+  return { draft: { name: `Demo Headphones X1, ${String(colour).toLowerCase()}`, brand: 'Demo', model: 'X1', ...(cats.length ? { category: at >= 0 ? at + 1 : 1 } : {}), condition: 'used', page: 'https://shop.example.com/demo-headphones-x1' } }
 }
 // ✨ Sort out on the quick list: made-up answers for the typed text (the function's own check then holds them like a model's).
 const quickAnswer = (input) => {
@@ -698,17 +710,22 @@ function claudeMock(opts = {}) {
       const thinkingOff = picked ? body.input?.thinking === 'off' : own.thinking === 'off'
       const row = callRow({ user_id: store.ownerId, job: other.name, instructions_version: other.version, model: useModel, effort: useEffort, served_model: useModel, stop_reason: 'end_turn', request_id: `req_harness_${calls.length + 1}`, input_tokens: 80, cache_read_tokens: 1200, output_tokens: 150, thinking_tokens: thinkingOff ? 0 : 40, duration_ms: thinkingOff ? 700 : 1100 })
       calls.push(row)
-      let result = other.name === 'quick_list_parse' ? quickAnswer(body.input) : other.name === 'shop_tidy' ? tidyAnswer(body.input) : (typeof opts.results?.[other.name] === 'function' ? opts.results[other.name](body.input, calls.length) : opts.results?.[other.name]) ?? (other.name === 'receipt_read' && body.input?.document ? SOLD_RECEIPT : PHASE_2A_RESULTS[other.name])
+      let result = other.name === 'quick_list_parse' ? quickAnswer(body.input) : other.name === 'shop_tidy' ? tidyAnswer(body.input) : other.name === 'product_photo' && !opts.results?.product_photo ? photoAnswer(body.input) : (typeof opts.results?.[other.name] === 'function' ? opts.results[other.name](body.input, calls.length) : opts.results?.[other.name]) ?? (other.name === 'receipt_read' && body.input?.document ? SOLD_RECEIPT : PHASE_2A_RESULTS[other.name])
       if (REAL_CHECKED.has(other.name)) {
         // The function's own check of the answer (the canned text goes through `read` like a model's would); a place's ideas
         // report the searches the canned call ran.
         const job = realFindJob(other.name)
         const prepared = job.prepare(body.input, now)
         if ('problem' in prepared) return stopWith('bad_input', prepared.problem)
-        const checked = prepared.read(typeof result === 'string' ? result : JSON.stringify(result), { thinking: '', servedModel: model, webSearches: other.name === 'place_ideas' ? 2 : other.name === 'receipt_read' || other.name === 'shop_tidy' ? 1 : 0, searchUrls: opts.searchUrls ?? [] })
+        const checked = prepared.read(typeof result === 'string' ? result : JSON.stringify(result), { thinking: '', servedModel: model, webSearches: other.name === 'place_ideas' ? 2 : other.name === 'receipt_read' || other.name === 'shop_tidy' || other.name === 'product_photo' ? 1 : 0, searchUrls: opts.searchUrls ?? (other.name === 'product_photo' ? ['https://shop.example.com/demo-headphones-x1'] : []) })
         if (!checked.ok) return stopWith('invalid', `The model's answer could not be used: ${checked.problem}.`)
         result = checked.result
         if (other.name === 'place_ideas') { row.tools = [{ name: 'web_search', searches: 2 }]; row.cost_usd = Math.round((Number(row.cost_usd || 0) + 0.02) * 1e6) / 1e6 }
+        // A thing from photos: a realistic call — two photos (about 4 200 tokens) and the instructions sent, one search ($0.01).
+        if (other.name === 'product_photo') {
+          Object.assign(row, { input_tokens: 5200, cache_read_tokens: 1400, output_tokens: 320, tools: [{ name: 'web_search', searches: 1 }] })
+          row.cost_usd = Math.round((costOf(row.model, row) + 0.01) * 1e6) / 1e6
+        }
       }
       return { ok: true, job: other.name, result: thinkingOff && picked ? { ...result, thinking: '' } : result, call: summaryOf(row) }
     }
