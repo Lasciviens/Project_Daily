@@ -44,6 +44,8 @@ export const qk = {
     all: ['schedule'] as const,
     day: (date: string) => ['schedule', 'day', date] as const,
     trainingRange: (from: string, to: string) => ['schedule', 'training-range', from, to] as const,
+    /** Every slot in a range, narrow columns (the month calendar's plans line). */
+    range: (from: string, to: string) => ['schedule', 'range', from, to] as const,
     /** A training repeat's days that are tasks on their day (156), in a range. */
     trainingDays: (from: string, to: string) => ['schedule', 'training-days', from, to] as const,
     templates: () => ['schedule', 'blocks'] as const,

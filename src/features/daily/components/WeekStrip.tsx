@@ -4,7 +4,7 @@ import { cx } from '../../../shared/ui'
 import { addDays, addWeeks, format, startOfWeek, isToday, isSameDay, getISOWeek } from 'date-fns'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { useOpenOnDay, useTasksByWeek } from '../../todo/hooks/useTodos'
-import { useCalendarEventDatesForRange } from '../../calendar/hooks/useCalendar'
+import { useCalendarEventDatesForRange } from '../../calendar/hooks/useCalendarRange'
 import { useRepeatDays } from '../hooks/useSchedule'
 
 // ─────────────────────────────────────────────────────────────────────────────

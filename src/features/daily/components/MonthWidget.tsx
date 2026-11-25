@@ -5,22 +5,31 @@ import {
   addMonths, subMonths, isSameMonth, isToday, isSameDay,
 } from 'date-fns'
 import { formatMonthYear, formatWeekdayDate } from '../../../shared/utils/dateFormat'
-import { useDayTasks, useTasksByMonth } from '../../todo/hooks/useTodos'
-import { closedOn, isOpenTask, onDay } from '../../todo/taskRules'
+import { useDayTasks, useOpenOnDay, useTasksByMonth } from '../../todo/hooks/useTodos'
+import { countTasks, isOpenTask, onDay } from '../../todo/taskRules'
 import { todayStr } from '../../../shared/utils/dateUtils'
-import { useCalendarEventDatesForRange } from '../../calendar/hooks/useCalendar'
 import { DateNav } from '../../../shared/components/DateNav'
-import { Card, TonePill, cx } from '../../../shared/ui'
+import { Button, Card, Checkbox, TonePill, Truncate, cx } from '../../../shared/ui'
+import { useBreakpoint } from '../../../shared/hooks/useBreakpoint'
+import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
 import { useRepeatDays } from '../hooks/useSchedule'
+import { useMonthKinds } from '../hooks/useMonthKinds'
+import { useMonthLines } from '../hooks/useMonthLines'
+import { MONTH_KIND, MONTH_KINDS, dayAccessibleName, dayTexts, shownSlots, type MonthKind, type MonthSlotLine } from '../monthLines'
 import { CalendarFilter } from '../../calendar/components/CalendarFilter'
 
 interface Props {
   onDayClick?:    (date: Date) => void
   highlightDate?: Date
-  /** Larger day cells + type — used by the Month tab's two-pane view. */
+  /** Larger day numbers — used by the Month tab. */
   big?:           boolean
 }
 
+// Personal → Month (owner, 25.11.2026: "Bigger calendar. Text under dates
+// about the insight. I want to see overview on my month. It should be well
+// visible." + "some checkbox to hide or show categories"): under each date one
+// short line per kind (monthLines.ts) where the grid is wide enough, a row of
+// tinted dots on a phone (upright or sideways) or a narrow grid.
 export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
   const [viewDate, setViewDate] = useState(new Date())
 
@@ -39,9 +48,13 @@ export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
   const monthEnd   = endOfMonth(viewDate)
   const calStart   = startOfWeek(monthStart, { weekStartsOn: 1 })
   const calEnd     = endOfWeek(monthEnd,     { weekStartsOn: 1 })
+  const fromStr    = format(monthStart, 'yyyy-MM-dd')
+  const toStr      = format(monthEnd, 'yyyy-MM-dd')
 
-  const { data: tasks    = [] } = useTasksByMonth(monthStart, monthEnd)
-  const { data: calDates     } = useCalendarEventDatesForRange(monthStart, monthEnd)
+  const tasksQ = useTasksByMonth(monthStart, monthEnd)
+  const tasks = tasksQ.data ?? []
+  const { hidden, toggle } = useMonthKinds()
+  const lines = useMonthLines(fromStr, toStr, hidden)
 
   const days: Date[] = []
   let d = calStart
@@ -50,27 +63,34 @@ export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
     d = addDays(d, 1)
   }
 
-  // A dot when the day's list would show something (taskRules): open on that
-  // day, or finished on it — today's from the day list — or a repeat day
-  // (a missed one too: it stays on its day).
+  // The day's task line counts as the day's list does (taskRules): open on the
+  // day — today's from the day list, with its overdue and undated Today rows —
+  // plus the repeat days still to do; done = closed as done on that day.
   const today = todayStr()
   const todayList = useDayTasks(today)
   const repeats = useRepeatDays(tasks)
-  function hasTasksOnDay(date: Date): boolean {
-    const dateStr = format(date, 'yyyy-MM-dd')
-    if (repeats.on(dateStr) > 0) return true
-    if (dateStr === today) return todayList.open.length + todayList.done.length > 0
-    return tasks.some(t => onDay(t, dateStr, today) && (isOpenTask(t) || closedOn(t, dateStr)))
+  const openOn = useOpenOnDay(tasks)
+  function taskFacts(dateStr: string) {
+    const done = dateStr === today ? todayList.counts.done : countTasks(tasks.filter(t => onDay(t, dateStr, today)), dateStr, today).done
+    return { open: openOn(dateStr) + repeats.toDoOn(dateStr), done }
   }
 
-  const openCount = tasks.filter(isOpenTask).length
-    + repeats.toDoBetween(format(monthStart, 'yyyy-MM-dd'), format(monthEnd, 'yyyy-MM-dd'))
+  const openCount = tasks.filter(isOpenTask).length + repeats.toDoBetween(fromStr, toStr)
+  const failed = [...(tasksQ.isError ? ['tasks' as const] : []), ...lines.failed]
+
+  // Lines where they fit (a grid of 34rem: a day about 4.6rem wide), never on a phone — sideways, its
+  // lines made the month several screens tall. Measured before the first paint, so nothing jumps.
+  const phone = useBreakpoint() === 'phone'
+  const { ref: gridRef, width: gridWidth } = useElementWidthRem()
+  const withLines = !phone && (gridWidth ?? 0) >= 34
+  const roomy = withLines && (gridWidth ?? 0) >= 52
+  const linesReady = lines.ready && (hidden.includes('tasks') || (!tasksQ.isLoading && !todayList.isLoading))
 
   return (
     <Card>
       {/* One line at every width: under 23rem of card (a 402px phone) the month is cut to three letters
           ("Dec 2026"), the gaps tighten and the right side never shrinks. */}
-      <div className="@container/monthhead mb-3">
+      <div className="@container/monthhead mb-2">
       <div className="flex min-w-0 items-center justify-between gap-1 @[23rem]/monthhead:gap-2">
         <DateNav
           label={<MonthLabel date={viewDate} />}
@@ -87,51 +107,102 @@ export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
       </div>
       </div>
 
-      <div className="mb-1 grid grid-cols-7">
-        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((label, i) => (
-          <div key={i} className="py-1 text-center text-micro font-semibold text-fg-faint">{label}</div>
-        ))}
-      </div>
+      <KindPicker hidden={hidden} onToggle={toggle} />
+      {failed.length > 0 && (
+        <p role="alert" className="mb-1 flex items-center gap-2 text-meta text-fg-muted">
+          <span className="min-w-0 flex-1">Couldn&apos;t load: {failed.map(k => MONTH_KIND[k].label).join(', ')}</span>
+          <Button size="sm" variant="ghost" tip="Retry — read the month again" onClick={() => { lines.retry(); if (tasksQ.isError) void tasksQ.refetch() }}>Retry</Button>
+        </p>
+      )}
 
-      <div className="grid grid-cols-7 gap-0.5">
-        {days.map(day => {
-          const inMonth     = isSameMonth(day, viewDate)
-          const current     = isToday(day)
-          const selected    = highlightDate ? isSameDay(day, highlightDate) : false
-          const hasTasks    = hasTasksOnDay(day) && inMonth
-          const hasCalEvent = inMonth && (calDates?.has(format(day, 'yyyy-MM-dd')) ?? false)
-          const clickable   = !!onDayClick && inMonth
+      <div ref={gridRef}>
+        <div className="mb-1 grid grid-cols-7">
+          {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((label, i) => (
+            <div key={i} className={cx('py-1 text-micro font-semibold text-fg-faint', withLines ? 'pl-1.5 text-left' : 'text-center')}>{label}</div>
+          ))}
+        </div>
 
-          return (
-            <button
-              key={day.toISOString()}
-              type="button"
-              onClick={() => clickable && onDayClick?.(day)}
-              disabled={!clickable}
-              aria-pressed={selected}
-              aria-label={formatWeekdayDate(day, 'long')}
-              className={cx(
-                'relative flex aspect-square min-h-[40px] flex-col items-center justify-center rounded-control font-medium tabular-nums transition-colors duration-150',
-                big ? 'text-ui' : 'text-body',
-                current ? 'bg-accent-500 text-on-accent'
-                  : selected ? 'bg-accent-50 text-accent-700 ring-2 ring-inset ring-accent-500'
-                  : inMonth && clickable ? 'text-fg-2 hover:bg-surface-hover'
-                  : inMonth ? 'text-fg-2'
-                  : 'cursor-default text-fg-faint opacity-50',
-              )}
-            >
-              {format(day, 'd')}
-              {(hasTasks || hasCalEvent) && (
-                <span className="absolute bottom-1 left-1/2 flex -translate-x-1/2 gap-0.5">
-                  {hasTasks && <span className={cx('h-1 w-1 rounded-full', current ? 'bg-on-accent/80' : 'bg-accent-500')} />}
-                  {hasCalEvent && <span data-tone="info" className={cx('tone-dot !h-1 !w-1', current && 'opacity-80')} />}
+        <div className={cx('grid grid-cols-7', withLines ? 'gap-1' : 'gap-0.5')}>
+          {days.map(day => {
+            const inMonth   = isSameMonth(day, viewDate)
+            const current   = isToday(day)
+            const selected  = highlightDate ? isSameDay(day, highlightDate) : false
+            const clickable = !!onDayClick && inMonth
+            const dateStr   = format(day, 'yyyy-MM-dd')
+            const slots     = inMonth ? shownSlots(dayTexts({ tasks: taskFacts(dateStr), ...lines.factsOf(dateStr) }), hidden) : []
+
+            return (
+              <button
+                key={day.toISOString()}
+                type="button"
+                onClick={() => clickable && onDayClick?.(day)}
+                disabled={!clickable}
+                aria-pressed={selected}
+                aria-label={dayAccessibleName(formatWeekdayDate(day, 'long'), slots)}
+                className={cx(
+                  'flex min-h-[44px] min-w-0 flex-col rounded-control tabular-nums transition-colors duration-150',
+                  withLines ? 'items-stretch border px-1.5 pb-1.5 pt-1' : 'items-center py-1',
+                  selected ? 'border-transparent bg-accent-50 ring-2 ring-inset ring-accent-500'
+                    : clickable ? 'border-line hover:bg-surface-hover'
+                    : inMonth ? 'border-line'
+                    : 'cursor-default border-transparent opacity-50',
+                )}
+              >
+                <span className={cx(
+                  'grid h-7 min-w-[1.75rem] place-items-center rounded-full px-1 font-semibold',
+                  withLines ? 'self-start' : 'self-center',
+                  big ? 'text-ui' : 'text-body',
+                  current ? 'bg-accent-500 text-on-accent' : selected ? 'text-accent-700' : inMonth ? 'text-fg' : 'text-fg-faint',
+                )}>
+                  {format(day, 'd')}
                 </span>
-              )}
-            </button>
-          )
-        })}
+                {inMonth && (withLines ? <DayLines slots={slots} roomy={roomy} ready={linesReady} /> : <DayDots slots={slots} />)}
+              </button>
+            )
+          })}
+        </div>
       </div>
     </Card>
+  )
+}
+
+/** One checkbox per kind, the box in the kind's tint: the key to the dots and lines below. */
+function KindPicker({ hidden, onToggle }: { hidden: readonly MonthKind[]; onToggle: (k: MonthKind) => void }) {
+  return (
+    <div className="mb-1 flex flex-wrap items-center gap-x-2.5 gap-y-0 sm:gap-x-4">
+      {MONTH_KINDS.map(k => (
+        <Checkbox key={k} checked={!hidden.includes(k)} onChange={() => onToggle(k)} label={MONTH_KIND[k].label} tip={MONTH_KIND[k].tip} tint={MONTH_KIND[k].tint} />
+      ))}
+    </div>
+  )
+}
+
+/** A phone or a narrow grid: one dot per kind with something that day, each kind in its fixed slot. */
+function DayDots({ slots }: { slots: readonly MonthSlotLine[] }) {
+  if (!slots.length) return null
+  return (
+    <span aria-hidden className="mt-0.5 flex h-1.5 items-center gap-0.5">
+      {slots.map(s => (
+        <span key={s.kind} data-tint={MONTH_KIND[s.kind].tint} className={cx('tint-dot h-1.5 w-1.5 rounded-full', !s.text && 'invisible')} />
+      ))}
+    </span>
+  )
+}
+
+/** A wide grid: the day's lines, one per kind with something, in the kinds' order. The room
+ *  for every shown kind is kept (1rem a line) and the lines show once every shown kind has
+ *  answered (`ready`), so no line moves down when a later read lands. */
+function DayLines({ slots, roomy, ready }: { slots: readonly MonthSlotLine[]; roomy: boolean; ready: boolean }) {
+  if (!slots.length) return null
+  return (
+    <span aria-hidden className={cx('mt-0.5 flex min-w-0 flex-col text-left text-fg-2', roomy ? 'text-meta' : 'text-micro')} style={{ minHeight: `${slots.length}rem` }}>
+      {ready && slots.filter(s => s.text).map(s => (
+        <span key={s.kind} className="flex h-4 min-w-0 items-center gap-1">
+          <span data-tint={MONTH_KIND[s.kind].tint} className="tint-dot h-1.5 w-1.5 shrink-0 rounded-full" />
+          <Truncate className="min-w-0">{s.text}</Truncate>
+        </span>
+      ))}
+    </span>
   )
 }
 

@@ -1,11 +1,10 @@
-import { useState, useEffect, type ReactNode } from 'react'
+import { Suspense, useState, useEffect, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { addDays, format, startOfMonth, endOfMonth, isToday, isYesterday, isTomorrow, isSameDay, differenceInCalendarDays } from 'date-fns'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { DayAgenda } from '../components/DayAgenda'
 import { WeekStrip } from '../components/WeekStrip'
 import { DayQuickRail } from '../components/DayQuickRail'
-import { MonthWidget } from '../components/MonthWidget'
 import { TodaySummary } from '../components/TodaySummary'
 import { DayLine } from '../components/summary/DayLine'
 import { TasksPanel } from '../components/TasksPanel'
@@ -20,6 +19,8 @@ import { useFollowToday } from '../../../shared/hooks/useToday'
 import { usePrefetchWeek } from '../../home/hooks/usePrefetchWeek'
 import { DAY_BOARD, MONTH_BOARD, glanceInColumn, type DaySection, type PickerSection } from '../dailyBoards'
 import { DiaryView } from '../../diary/components/DiaryView'
+import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
+import { lazyPart } from '../../../shared/utils/lazyPage'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  DailyPage — one header: ‹ date › + context on the left, the period switcher
@@ -29,6 +30,12 @@ import { DiaryView } from '../../diary/components/DiaryView'
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Mode = 'day' | 'month' | 'tasks' | 'diary'
+
+// The month calendar reads a month of every kind (its lines under the dates: Training's,
+// Shop's and the year review's rules), so it loads on its own, read ahead once the page
+// has settled (the view always opens on Today) — Daily's first download stays in budget.
+const MonthWidget = lazyPart('daily-month', () => import('../components/MonthWidget').then(m => m.MonthWidget))
+const LATER_PARTS = [MonthWidget]
 /** The switcher's cell: Today lights only on today's day view; another day lights none. */
 type Period = 'today' | 'month' | 'tasks' | 'diary' | 'other'
 
@@ -50,6 +57,7 @@ export function DailyPage() {
   const [searchParams] = useSearchParams()
   const dateParam = searchParams.get('date')
   const [mode,     setMode]     = useState<Mode>('day')
+  useIdlePreload(LATER_PARTS)
   const [viewDate, setViewDate] = useState<Date>(() => dateFromParam(dateParam) ?? new Date())
   // A new ?date= while Daily is already open (render-time adjustment).
   const [seenParam, setSeenParam] = useState(dateParam)
@@ -180,7 +188,12 @@ function MonthSection({ onDayClick, selectedDate }: { onDayClick: (d: Date) => v
   const [picked, setPicked] = useState<Date | null>(!isToday(selectedDate) ? selectedDate : null)
   const focus = picked ?? new Date()
 
-  const picker = <MonthWidget big onDayClick={setPicked} highlightDate={picked ?? undefined} />
+  // Until its code is in (only before the idle read-ahead): a card of the calendar's place.
+  const picker = (
+    <Suspense fallback={<Card aria-busy="true" className="min-h-[24rem]" />}>
+      <MonthWidget big onDayClick={setPicked} highlightDate={picked ?? undefined} />
+    </Suspense>
+  )
   const pickedOrUpcoming = picked
     ? <PickedDay date={picked} onOpenDay={() => onDayClick(picked)} onShowUpcoming={() => setPicked(null)} />
     : <UpcomingActivities onPick={setPicked} />

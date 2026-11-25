@@ -34,21 +34,24 @@ export function glanceInColumn(step: PageStep): boolean {
 // that shared these layouts went on 23.11.2026):
 //   1  calendar and the picked day / upcoming side by side once the page is
 //      56rem wide (`pair`).
-//   2  picker + one pane: the picked day, else Upcoming.
-//   3  picker + the picked day (its one list) + Upcoming.
-//   4  the same, the picked day two tracks wide (its list is ONE list since
-//      15.10.2026 — no separate "Tasks · day" card).
-// The picker track stops at 40rem: a month grid stretched to 56rem is all
-// empty squares. It stops at four columns (four sections).
+//   2  the calendar takes the page's width, one 24rem pane beside it: the
+//      picked day, else Upcoming.
+//   3+ the calendar, the picked day (its one list) and Upcoming, 24rem each —
+//      at 2450 the calendar grows instead of a fourth track.
+// The calendar's track has no cap (owner, 25.11.2026: "i want Bigger
+// calendar. Text under dates about the insight. … It should be well
+// visible."): every day carries a line per kind, so the width is used, never
+// empty squares. Until then it stopped at 40rem and the picked day took two
+// tracks at 2450.
 export const PICKER_SECTIONS = ['pair', 'picker', 'pickedOrUpcoming', 'picked', 'upcoming'] as const
 export type PickerSection = typeof PICKER_SECTIONS[number]
 
-const PICKER_MAIN = '40rem'
+/** No cap: the calendar takes what the side panes leave (as Shop's Owned board does). */
+export const PICKER_MAIN = '200rem'
 export const MONTH_BOARD: BoardLayouts<PickerSection> = {
   1: ['pair'],
   2: { main: PICKER_MAIN, columns: [['picker'], ['pickedOrUpcoming']] },
   3: { main: PICKER_MAIN, columns: [['picker'], ['picked'], ['upcoming']] },
-  4: { main: PICKER_MAIN, columns: [['picker'], { stack: ['picked'], span: 2 }, ['upcoming']] },
 }
 
 // ── Diary ───────────────────────────────────────────────────────────────────

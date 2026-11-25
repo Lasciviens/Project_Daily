@@ -220,6 +220,29 @@ export async function fetchTrainingBlocksRange(from: string, to: string): Promis
   return ((data ?? []) as unknown as (TimeBlock & TaskEmbed)[]).map(withTaskState)
 }
 
+/** A slot as the month calendar counts it: its day, its kind and the Google event it made (if any). */
+export type MonthSlot = Pick<TimeBlock, 'id' | 'date' | 'category' | 'google_calendar_event_id'>
+
+/** Every slot from `from` to `to` (inclusive), narrow columns, read in pages
+ *  (PostgREST answers at most 1 000 rows a request). One read for a month. */
+export async function fetchTimeBlocksRange(from: string, to: string): Promise<MonthSlot[]> {
+  const PAGE = 1000
+  const out: MonthSlot[] = []
+  for (let start = 0; ; start += PAGE) {
+    const { data, error } = await supabase
+      .from('time_blocks')
+      .select('id, date, category, google_calendar_event_id')
+      .gte('date', from)
+      .lte('date', to)
+      .order('date', { ascending: true })
+      .order('id', { ascending: true })
+      .range(start, start + PAGE - 1)
+    if (error) throw error
+    out.push(...((data ?? []) as MonthSlot[]))
+    if (!data || data.length < PAGE) return out
+  }
+}
+
 /** A training repeat's day that is a task on its day with no slot (156): what
  *  the Training views pair with that day's projection, so it reads as the
  *  task says (done, skipped, missed) — never from the date alone. */

@@ -1,12 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { format } from 'date-fns'
 import { useCalendarStore } from '../../../app/store'
 import { supabase } from '../../../integrations/supabase/client'
 import type { CalendarEvent } from '../types'
 import {
   fetchEventsForDay,
-  fetchEventsForRange,
   fetchCalendarList,
   refreshCalendarToken,
   updateCalendarEvent,
@@ -14,14 +12,13 @@ import {
 } from '../api/calendarApi'
 import { qk, STALE } from '../../../shared/query'
 import { ensureValidCalendarToken } from '../api/calendarTokenSync'
-import { useScheduleBlocks } from '../../daily/hooks/useSchedule'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 
 const REFRESH_THRESHOLD_MS = 5 * 60_000  // refresh when ≤5 min remaining
 
 // Returns a valid access token or null.  Does NOT trigger a refresh — that is
 // handled by useAutoRefreshCalendarToken which runs in CalendarConnect.
-function useValidToken(): string | null {
+export function useValidToken(): string | null {
   const { accessToken, expiresAt } = useCalendarStore()
   if (!accessToken) return null
   // Reading the clock here is deliberate: an expired token must disable the
@@ -34,7 +31,7 @@ function useValidToken(): string | null {
 // Query-time fallback: if the token expired between render and the query
 // actually firing, refresh it inline and persist the fresh one to the store.
 // Was duplicated identically across 3 query hooks below.
-async function ensureToken(token: string | null, setAccessToken: (t: string, e: number) => void): Promise<string> {
+export async function ensureToken(token: string | null, setAccessToken: (t: string, e: number) => void): Promise<string> {
   if (token) return token
   const fresh = await refreshCalendarToken(supabase)
   setAccessToken(fresh.access_token, fresh.expires_in)
@@ -113,7 +110,7 @@ function sortEvents(events: CalendarEvent[]): CalendarEvent[] {
 // query every fetch hook already needs for the picker), falling back to
 // `['primary']` only while that list hasn't loaded yet (e.g. Calendar not
 // connected, or the very first render before the query resolves).
-function useSelectedCalendarIds(): string[] {
+export function useSelectedCalendarIds(): string[] {
   const { selectedCalendarIds } = useCalendarStore()
   const { data: calList = [] } = useCalendarList()
   if (selectedCalendarIds) return selectedCalendarIds
@@ -206,53 +203,3 @@ export function useDeleteCalendarEvent() {
   })
 }
 
-/** One event's day in a range, and the series it belongs to (an instance). */
-interface EventDay { date: string; series: string | null }
-
-// Returns a Set<'yyyy-MM-dd'> of dates that have at least one calendar event
-// in the given date range, across all selected calendars. A repeating plan's
-// own series (147) is not "something on Google": its instances are left out,
-// or every day the plan repeats on would get a dot.
-export function useCalendarEventDatesForRange(startDate: Date, endDate: Date) {
-  const token                = useValidToken()
-  const { setAccessToken }   = useCalendarStore()
-  const startStr             = format(startDate, 'yyyy-MM-dd')
-  const endStr               = format(endDate,   'yyyy-MM-dd')
-  const calIds               = useSelectedCalendarIds()
-  const { data: plans }      = useScheduleBlocks()
-  const linkedSeries = useMemo(
-    () => (plans ?? []).map(p => p.google_calendar_event_id).filter(Boolean).sort().join(','), [plans])
-  const select = useCallback((days: EventDay[]) => {
-    const linked = new Set(linkedSeries ? linkedSeries.split(',') : [])
-    return new Set(days.filter(d => !(d.series && linked.has(d.series))).map(d => d.date))
-  }, [linkedSeries])
-
-  return useQuery({
-    queryKey: qk.calendar.dates(startStr, endStr, calIds.join(',')),
-    queryFn:  async () => {
-      const activeToken = await ensureToken(token, setAccessToken)
-      const timeMin = new Date(startStr + 'T00:00:00').toISOString()
-      // Exclusive upper bound (see calendarApi.ts's fetchEventsForDay) —
-      // next-day midnight after endStr, not endStr's own 23:59:59.
-      const timeMaxDate = new Date(endStr + 'T00:00:00')
-      timeMaxDate.setDate(timeMaxDate.getDate() + 1)
-      const timeMax = timeMaxDate.toISOString()
-
-      const results = await Promise.all(
-        calIds.map(id => fetchEventsForRange(activeToken, timeMin, timeMax, id))
-      )
-      const days: EventDay[] = []
-      for (const events of results) {
-        for (const e of events) {
-          const d = e.start.dateTime?.slice(0, 10) ?? e.start.date
-          if (d) days.push({ date: d, series: e.recurringEventId ?? null })
-        }
-      }
-      return days
-    },
-    select,
-    enabled:   !!token,
-    staleTime: STALE.default,
-    retry:     false,
-  })
-}

@@ -758,6 +758,10 @@ select:focus-visible,
    stronger at the top left, like Apple's placeholders. */
 .tint-well { background: linear-gradient(155deg, rgb(var(--tint, var(--chart-6)) / 0.26), rgb(var(--tint, var(--chart-6)) / 0.10) 85%); }
 .tint-ink { color: color-mix(in srgb, rgb(var(--tint, var(--chart-6))) 70%, rgb(var(--ink-900))); }
+/* The tint itself, solid: a small identity mark (the month calendar's kind dots). */
+.tint-dot { background: rgb(var(--tint, var(--chart-6))); }
+/* A checkbox that is also the key to its tint (the month calendar's kinds). */
+.tint-check { accent-color: rgb(var(--tint, var(--chart-6))); }
 /* The poster status belt sits on artwork in both themes, so its colours are
    fixed and dark enough for white 11px text (≥ 4.5:1), not the theme tones. */
 .poster-belt { color: #fff; background: #475569; }

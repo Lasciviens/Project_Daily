@@ -19,6 +19,8 @@ const AUTO_SYNC_PREFIX = 'lasci.games.autoSync.'
 const SHOP_HANDOVER_TICKS_KEY = 'lasci.shop.handover'
 // Kept here as text too (useOwnedLayout's OWNED_LAYOUT_KEY): the shell never loads the Shop's code.
 const SHOP_OWNED_VIEW_KEY = 'lasci.shop.ownedView'
+// The same for Personal → Month's hidden kinds (useMonthKinds' MONTH_KINDS_KEY).
+const MONTH_HIDDEN_KEY = 'lasci.daily.monthHidden'
 
 const PUSH_LOOKUP_MS = 3000
 
@@ -80,6 +82,8 @@ export async function clearAccountState(): Promise<void> {
   try { localStorage.removeItem(SHOP_HANDOVER_TICKS_KEY) } catch { /* */ }
   // Shop: how Owned shows its things (rows, list, big pictures).
   try { localStorage.removeItem(SHOP_OWNED_VIEW_KEY) } catch { /* */ }
+  // Personal → Month: which kinds of lines under the dates are hidden.
+  try { localStorage.removeItem(MONTH_HIDDEN_KEY) } catch { /* */ }
   // Games: the IGDB review list (this account's games) and the daily auto-sync marks.
   try { localStorage.removeItem(IGDB_BATCH_KEY) } catch { /* */ }
   try {

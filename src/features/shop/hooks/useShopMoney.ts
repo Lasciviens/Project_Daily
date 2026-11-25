@@ -22,8 +22,8 @@ export function useShopLinks() {
   return useQuery({ queryKey: qk.shop.links(), queryFn: fetchShopLinks, staleTime: STALE.short })
 }
 
-export function useShopCosts() {
-  return useQuery({ queryKey: qk.shop.costs(), queryFn: fetchShopCosts, staleTime: STALE.short })
+export function useShopCosts({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({ queryKey: qk.shop.costs(), queryFn: fetchShopCosts, staleTime: STALE.short, enabled })
 }
 
 /** Extra costs by item and today's rates — what every money sum needs beside the rows. */

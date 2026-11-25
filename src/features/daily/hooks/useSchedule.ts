@@ -5,6 +5,7 @@ import {
   fetchTimeBlocks,
   fetchTimeBlock,
   fetchTimeBlockByTaskId,
+  fetchTimeBlocksRange,
   fetchTrainingBlocksRange,
   fetchTrainingDayTasks,
   updateTimeBlock,
@@ -122,6 +123,16 @@ export const trainingBlocksQuery = (from: string, to: string) => queryOptions({
 
 export function useTrainingBlocks(from: string, to: string) {
   return useQuery(trainingBlocksQuery(from, to))
+}
+
+/** Every slot in a range (the month calendar's plans line): one read for the month, never one per day. */
+export function useTimeBlocksRange(from: string, to: string, { enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: qk.schedule.range(from, to),
+    queryFn:  () => fetchTimeBlocksRange(from, to),
+    staleTime: STALE.default,
+    enabled,
+  })
 }
 
 export function useTrainingDayTasks(from: string, to: string) {
