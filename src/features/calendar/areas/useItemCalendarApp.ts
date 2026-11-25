@@ -2,9 +2,9 @@ import { onApple } from './calendarAreas'
 import { itemArea, type AreaInput } from './icloudEvents'
 import { useCalendarPrefs } from './useCalendarPrefs'
 
-/** Where an item's calendar event lives — its area's choice in Settings → Calendar (2b-2). Google until the saved
- *  settings are loaded (the defaults are all Google). */
-export function useItemCalendarApp(input: AreaInput): 'google' | 'apple' {
+/** Where an item's calendar event lives: Apple Calendar when its area is in use (Settings → Calendar), else nowhere
+ *  ('none' — only in the app). Apple Calendar is the only calendar since Google Calendar went (25.11.2026). */
+export function useItemCalendarApp(input: AreaInput): 'apple' | 'none' {
   const { prefs } = useCalendarPrefs()
-  return onApple(prefs.areas[itemArea(input)]) ? 'apple' : 'google'
+  return onApple(prefs.areas[itemArea(input)]) ? 'apple' : 'none'
 }

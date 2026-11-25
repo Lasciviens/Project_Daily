@@ -64,12 +64,12 @@ console.log('\n== End Repeat: the rule (recurrence.ts) ==')
   eq(big, null, 'a count the rule never reaches within 20 years has no end day (the database answers the same)')
 }
 
-console.log('\n== End Repeat, Show As and reminders on a series (calendarSeries.ts — Google and Apple) ==')
+console.log('\n== End Repeat and Show As on a series (calendarSeries.ts — Apple Calendar\'s series) ==')
 {
   const plan = (x = {}) => ({ title: 'Run', days_of_week: [2, 4], repeat_kind: 'weekly', effective_from: '2026-11-03', start_time: '07:00:00', end_time: '07:45:00', busy: true, time_zone: 'Europe/Oslo', ...x })
-  const ser = (x, from = null) => S.seriesEventFor({ ...plan(x), google_calendar_from: from }, { today: '2026-11-02', timeZone: 'Europe/Oslo' })
+  const ser = (x, from = null) => S.seriesEventFor({ ...plan(x), series_from: from }, { today: '2026-11-02', timeZone: 'Europe/Oslo' })
   eq(ser({ repeat_count: 4, repeat_until: '2026-11-12' }).body.recurrence, ['RRULE:FREQ=WEEKLY;WKST=MO;BYDAY=TU,TH;COUNT=4'],
-    '"after 4 times" from the plan\'s own first day: COUNT=4 (Apple and Google count the same 4)')
+    '"after 4 times" from the plan\'s own first day: COUNT=4')
   eq(ser({ repeat_count: 4, repeat_until: '2026-11-12' }, '2026-11-06').body.recurrence, ['RRULE:FREQ=WEEKLY;WKST=MO;BYDAY=TU,TH;UNTIL=20261112T225959Z'],
     '…a series that starts later (added to the calendar on 06.11): UNTIL its last day, never COUNT=4 from there')
   eq(ser({ repeat_until: '2026-12-01' }).body.recurrence, ['RRULE:FREQ=WEEKLY;WKST=MO;BYDAY=TU,TH;UNTIL=20261201T225959Z'],
@@ -84,17 +84,14 @@ console.log('\n== End Repeat, Show As and reminders on a series (calendarSeries.
   const monthly = S.seriesEventFor({ title: 'Rent', days_of_week: [], repeat_kind: 'monthly', effective_from: '2026-11-15', start_time: '09:00', end_time: '09:15', repeat_until: '2027-02-20' },
     { today: '2026-11-02', timeZone: 'Europe/Oslo' })
   eq([monthly.body.recurrence, monthly.horizon], [['RDATE;TZID=Europe/Oslo:20261215T090000,20270115T090000,20270215T090000'], '2027-02-20'],
-    'the RDATE kinds list no day after the end; the horizon is the end, so…')
-  eq(S.needsHorizonTopUp({ ...monthly.body, title: 'Rent', days_of_week: [], repeat_kind: 'monthly', effective_from: '2026-11-15', start_time: '09:00', end_time: '09:15',
-    repeat_until: '2027-02-20', google_calendar_event_id: 'e1', google_calendar_horizon: '2027-02-20' }, '2027-01-30'), false, '…it is never topped up again')
+    'the RDATE kinds list no day after the end; the horizon is the end (it is never topped up again)')
   eq(ser({ except_dates: ['2026-11-19'], repeat_until: '2026-11-17' }).body.recurrence, ['RRULE:FREQ=WEEKLY;WKST=MO;BYDAY=TU,TH;UNTIL=20261117T225959Z'],
-    'an EXDATE after the end is not sent (Google wants an EXDATE to name a real occurrence)')
+    'an EXDATE after the end is not sent (an EXDATE must name a real occurrence)')
   eq([ser({ show_as: 'free' }).body.transparency, ser({ busy: false, show_as: 'busy' }).body.transparency, ser({ start_time: null, end_time: null, show_as: 'busy' }).body.transparency,
       ser({}).body.transparency, ser({ busy: false }).body.transparency],
     ['transparent', 'opaque', 'opaque', 'opaque', 'transparent'], 'Show As sets Busy / Free on a series; none of its own: by its length, as before')
-  eq([ser({ alerts: [60, 10] }).body.reminders, 'reminders' in ser({}), ser({ start_time: null, end_time: null, alerts: [1440] }).body.reminders.overrides],
-    [{ useDefault: false, overrides: [{ method: 'popup', minutes: 60 }, { method: 'popup', minutes: 10 }] }, false, [{ method: 'popup', minutes: 900 }]],
-    "a plan's own alerts are Google's reminders (none of its own: Google's default); all day: 09:00 the day before = 900")
+  eq(['reminders' in ser({ alerts: [60, 10] }).body, 'location' in ser({ place: { name: 'Jernbanetorget' } }).body], [false, false],
+    "a series carries no Google-only field (Google Calendar went, 25.11.2026): Apple's alerts and place are its own lines")
 }
 
 console.log('\n== Apple: the event (icloudEvents.ts) ==')
@@ -165,15 +162,6 @@ console.log('\n== The golden files: a slot and a series with every field ==')
     start_time: '07:00', end_time: '07:45', busy: true, except_dates: ['2026-11-05'], repeat_count: 10, repeat_until: '2026-12-03', alerts: [15], show_as: 'busy',
     url: 'https://example.com/route', travel_minutes: 0, notes: null, icloud_from: '2026-11-02' },
     { area: { ...DEFAULT_AREAS.training, alertMinutes: 60 }, look, today: '2026-11-02', timeZone: 'Europe/Oslo', appUrl, now }).ics)
-}
-
-console.log('\n== Google: what a slot sends (calendarEventRules.ts) ==')
-{
-  const body = R.blockEventBody({ date: '2026-11-12', start_time: '17:00', duration_minutes: 60, title: 'Dentist', busy: true, alerts: [60, 10], show_as: 'free',
-    url: 'https://example.com/booking', travel_minutes: 30 }, { done: false, timeZone: 'Europe/Oslo' })
-  eq([body.transparency, body.reminders, 'url' in body || 'description' in body || 'source' in body],
-    ['transparent', { useDefault: false, overrides: [{ method: 'popup', minutes: 60 }, { method: 'popup', minutes: 10 }] }, false],
-    'Google gets Show As and the reminders; no link (Google has no URL field and the app writes no description for its items) and no travel time')
 }
 
 console.log('\n== The read-back from the iPhone (icloud-calendar) ==')

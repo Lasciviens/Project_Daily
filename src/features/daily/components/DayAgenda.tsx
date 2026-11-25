@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { endOfWeek, format, isToday, startOfWeek, subDays } from 'date-fns'
-import { useQueryClient } from '@tanstack/react-query'
-import { Plus, RefreshCw } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useScheduleBlocks, useTimeBlocks } from '../hooks/useSchedule'
 import { useDayTasks, useTasksByIds, useTasksByWeek } from '../../todo/hooks/useTodos'
 import { ToDoItem } from '../../todo/components/ToDoItem'
-import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
-import { EditCalendarEventModal } from '../../calendar/components/EditCalendarEventModal'
 import { useDayPlanContext } from '../../training/hooks/usePlanContext'
 import { useOpenWishes } from '../../wishes/hooks/useWishes'
 import { useEntityModal } from '../../../shared/modals'
@@ -14,29 +11,27 @@ import { useNewIds } from '../../../shared/hooks/useNewIds'
 import { useElementWidthRem } from '../../../shared/hooks/useElementWidth'
 import { rememberLayout, rememberedLayout, useRememberedFlag } from '../../../shared/hooks/useLayoutMemory'
 import { isOpenTask } from '../../todo/taskRules'
-import { useCalendarStore, toast } from '../../../app/store'
-import { qk } from '../../../shared/query'
-import { Button, IconButton, KeepRoom, Skeleton, ToneDot, TonePill, Truncate, cx } from '../../../shared/ui'
+import { Button, KeepRoom, Skeleton, ToneDot, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatDurationMinutes } from '../../../shared/utils/formatDuration'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { aheadOnDay, buildDaySchedule, plannedMinutes } from '../daySchedule'
 import { buildDayRows, dayRowCounts, hourLabel, repeatDayKeys, repeatDayRequest, repeatsToDoOn, rowTimeZone, untilLabel, type DayRow } from '../dayItems'
 import { zoneTag } from '../../../shared/utils/timeZone'
 import {
-  ContinuationRow, EventRow, LinkedTaskRow, NowMarker, RepeatRow, SlotRow, TimeGutter, TrainingRow,
+  ContinuationRow, LinkedTaskRow, NowMarker, RepeatRow, SlotRow, TimeGutter, TrainingRow,
 } from './DayAgendaRows'
 import { OpenWishesRow, OpenWishesRowSkeleton, UndatedThisWeek, UndatedThisWeekSkeleton } from './DayAgendaExtras'
-import type { CalendarEvent } from '../../calendar/types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  DayAgenda — Daily's day as ONE list (owner, 15.10.2026: "one item"). It
-//  replaced two panes side by side — Schedule (slots, repeating plans, Google
-//  events; "Add") and Tasks (the day's tasks; "Add task") — where a task with
+//  replaced two panes side by side — Schedule (slots, repeating plans, then
+//  Google events; "Add") and Tasks (the day's tasks; "Add task") — where a task with
 //  its slot showed twice and a repeat could not be ticked. The rows come from
 //  dayItems.ts (pure), built over the reads the day already had: the day list
 //  (useDayTasks — never filtered, NEVER_HIDES), the one day schedule
-//  (daySchedule.ts: slots, yesterday's tails, repeating plans, Google events
-//  the app didn't make) and the tasks of the day's slots.
+//  (daySchedule.ts: slots, yesterday's tails, repeating plans) and the tasks
+//  of the day's slots. Google Calendar's own events went with Google Calendar
+//  (25.11.2026); no task row went with them (NEVER_HIDES).
 //
 //  Split by TIME, never by table:
 //   - phone / narrow card: Anytime first, then the timed rows in time order
@@ -45,8 +40,7 @@ import type { CalendarEvent } from '../../calendar/types'
 //     Done, Cancelled) in the other.
 //  A ticked timed row stays dimmed in its slot; a repeat day that passed with
 //  no tick stays on its day as Missed. ONE Add (the one sheet, this day as its
-//  date). Every editor opens through useEntityModal by id; Google events open
-//  EditCalendarEventModal (edit only, on ModalShell).
+//  date). Every editor opens through useEntityModal by id.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // `bare` — a pane inside a parent surface (Daily's hero card, the picked-day
@@ -60,17 +54,13 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
   const now = new Date()
   const nowHour = now.getHours() + now.getMinutes() / 60
 
-  const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null)
   const modal = useEntityModal()
-  const qc = useQueryClient()
-  const calToken = useCalendarStore(s => s.accessToken)
 
   // The reads the day always had.
   const list = useDayTasks(day)
   const { data: templates = [], isLoading: templatesLoading, isError: templatesError, refetch: refetchTemplates } = useScheduleBlocks()
   const { data: blocks = [], isLoading: blocksLoading, isError: blocksError, refetch: refetchBlocks } = useTimeBlocks(day)
   const { data: prevBlocks = [], isLoading: prevLoading, isError: prevError, refetch: refetchPrev } = useTimeBlocks(prevDay)
-  const { data: events, isFetching: calFetching, isLoading: eventsLoading } = useCalendarEventsForDay(day)
   // The two extras' reads (open wishes, this week's undated tasks) start with the day's. They are bands of their
   // own, never part of the list's order: the list doesn't wait for them, and each keeps its room while it loads
   // where it showed last time (THEME.md §5).
@@ -88,8 +78,8 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
   const dayList = useMemo(() => [...list.open, ...list.done, ...list.cancelled], [list.open, list.done, list.cancelled])
   const withRepeatDays = useMemo(() => [...list.repeatDays, ...dayList], [list.repeatDays, dayList])
   const items = useMemo(
-    () => buildDaySchedule({ date: day, blocks, prevBlocks, templates, events: events ?? [], dayTasks: withRepeatDays }),
-    [day, blocks, prevBlocks, templates, events, withRepeatDays],
+    () => buildDaySchedule({ date: day, blocks, prevBlocks, templates, dayTasks: withRepeatDays }),
+    [day, blocks, prevBlocks, templates, withRepeatDays],
   )
   // A slot whose task is not on this day's list (its date is another day) still ticks: its task by id.
   const onList = new Set(dayList.map(t => t.id))
@@ -98,8 +88,7 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
   const linkedTasks = linked.data ?? []
   const rows = buildDayRows({ day, today, tasks: list, items, linkedTasks, repeatDays: list.repeatDays })
   // The list is one order across its reads (tasks, slots, repeats, the slots' tasks): it shows once they have all
-  // answered, so a row never lands between rows already drawn. Google's events (an outside service) fill in where
-  // they are; the list keeps its room until they have answered too.
+  // answered, so a row never lands between rows already drawn.
   const firstAnswer = !list.isLoading && !templatesLoading && !blocksLoading && !prevLoading
     && !(linkedIds.length > 0 && (linked.isLoading || linked.isPlaceholderData))
   // The loading copy is the day's first answer only. Once the list is drawn, a later read keeps the rows on screen:
@@ -108,7 +97,7 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
   const [drawnDay, setDrawnDay] = useState<string | null>(null)
   if (firstAnswer && drawnDay !== day) setDrawnDay(day)
   const listReady = firstAnswer || drawnDay === day
-  const settled = listReady && !eventsLoading
+  const settled = listReady
   // A failed read is one line, never this day's room for the next visit — the slots' and plans' reads too: without
   // them the list silently dropped the day's slots and its Next line named the wrong one (owner-critic, 07.11.2026).
   const failed = list.isError || templatesError || blocksError || prevError
@@ -145,20 +134,9 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
     modal.open({ kind: 'task', defaults: { date: day, dueDate: day, section: list.section, ...(time ? { startTime: time, scheduled: true } : {}) } })
   }
 
-  async function refreshCalendar() {
-    const tid = toast.loading('Syncing calendar…')
-    try {
-      await qc.refetchQueries({ queryKey: qk.calendar.dayAll(day) })
-      toast.dismiss(tid); toast.success('Calendar synced')
-    } catch (err) {
-      toast.dismiss(tid); toast.error((err as Error).message ?? 'Sync failed')
-    }
-  }
-
   // The editor of whatever the row is, by id (a continuation opens yesterday's thing).
   function openRow(r: DayRow) {
     const i = r.item
-    if (r.kind === 'event' && i?.event) return setEditEvent(i.event)
     if (r.kind === 'training' && i) return modal.open({ kind: 'training-session', plan: { kind: i.kind === 'recurring' ? 'recurring' : 'block', id: i.canonicalId, date: i.planDate } })
     if (i?.kind === 'recurring') return modal.open(repeatDayRequest(i.canonicalId, i.planDate))
     if (i?.taskId) return modal.open({ kind: 'task', id: i.taskId })
@@ -172,7 +150,6 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
   function renderRow(r: DayRow): ReactNode {
     if (r.spillover) return <ContinuationRow row={r} past={isPast(r)} onOpen={() => openRow(r)} />
     switch (r.kind) {
-      case 'event':    return <EventRow row={r} past={isPast(r)} active={isActive(r)} onOpen={() => openRow(r)} />
       case 'training': return <TrainingRow row={r} planCtx={planCtx} nowHour={nowHour} active={isActive(r)} />
       case 'repeat':   return <RepeatRow row={r} active={isActive(r)} />
       case 'slot':     return <SlotRow row={r} past={isPast(r)} active={isActive(r)} />
@@ -190,7 +167,7 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
   const nowAt = viewingToday ? rows.timed.findIndex(r => r.startHour! > nowHour) : -2
   // Times on another clock than the phone's (183): said once in the heading when every timed row shares it ("Oslo time"),
   // else under each row that differs.
-  const rowZones = rows.timed.map(r => (r.kind === 'event' ? null : zoneTag(rowTimeZone(r))))
+  const rowZones = rows.timed.map(r => zoneTag(rowTimeZone(r)))
   const sharedZone = rowZones.length > 0 && rowZones.every(z => z !== null && z === rowZones[0]) ? rowZones[0] : null
   const timedList = (
     <div className="flex flex-col gap-1">
@@ -237,11 +214,6 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
           ))}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {calToken && (
-            <IconButton label="Sync Google Calendar" onClick={refreshCalendar} disabled={calFetching}>
-              <RefreshCw className={cx(calFetching && 'animate-spin')} />
-            </IconButton>
-          )}
           {addButton && <Button variant="primary" size="sm" icon={<Plus />} onClick={() => openAdd()}>Add</Button>}
         </div>
       </div>
@@ -305,8 +277,6 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
         </div>
       )}
       </KeepRoom>
-
-      {editEvent && <EditCalendarEventModal event={editEvent} onClose={() => setEditEvent(null)} />}
     </div>
     </div>
   )

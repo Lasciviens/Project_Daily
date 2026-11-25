@@ -3,11 +3,11 @@
  * Verification — an item's place (migration 186), against the REAL modules via sucrase:
  *   1. src/features/items/itemPlace.ts: a place from EnTur, typed or saved; cleaned to what the database stores;
  *      isStorablePlace = place_ok's rule (the same cases as scripts/db-tests/item-places, P1);
- *   2. calendarEventRules: a row's place as the writers read it (eventPlace), Google's `location` on a slot and a
- *      series — and none sent when there is no place (a place typed in Google Calendar stays);
+ *   2. calendarEventRules: a row's place as the writers read it (eventPlace); since Google Calendar went (25.11.2026)
+ *      no event body carries Google's `location` — Apple's lines are built from the place itself;
  *   3. icloudEvents: LOCATION, Apple's map pin in the form the owner's Apple check kept (29.10.2026) and the travel
  *      advisory for Time to Leave; a quote, a line break or a stray coordinate never reaches a line;
- *   4. the functions read the place (icloud-calendar's drain, google-tasks-sync's push).
+ *   4. icloud-calendar's drain reads the place.
  *
  *   Run:  node scripts/verify-item-places.cjs
  */
@@ -76,7 +76,7 @@ check('whatever cleanPlace gives back is storable — the longest place too', od
   && P.isStorablePlace(P.cleanPlace({ name: 'n'.repeat(130), locality: 'l'.repeat(90), lat: -89.123456, lon: -179.123456, id: 'ABCDEFGHIJ:' + 'S'.repeat(40) + ':' + '9'.repeat(80) })))
 check('the id shape is the database\'s (186)', read('supabase/migrations/186_item_places.sql').includes(`(p ->> 'id') !~ '${P.PLACE_ID.source}'`))
 
-console.log('\n2. Google')
+console.log('\n2. The place as the writers read it')
 check('eventPlace reads a row\'s place; a town equal to the name is dropped; odd values are no place or no pin',
   eq(R.eventPlace({ name: 'Jernbanetorget', locality: 'Oslo', lat: 59.91, lon: 10.75, id: 'NSR:StopPlace:58366' }), { name: 'Jernbanetorget', locality: 'Oslo', lat: 59.91, lon: 10.75 })
   && eq(R.eventPlace({ name: 'Oslo', locality: 'Oslo' }), { name: 'Oslo' }) && R.eventPlace({ name: '' }) === null && R.eventPlace('x') === null
@@ -84,16 +84,11 @@ check('eventPlace reads a row\'s place; a town equal to the name is dropped; odd
 const slot = { date: '2026-11-12', start_time: '17:00', duration_minutes: 60, title: 'Gym', busy: true }
 const withPlace = R.blockEventBody({ ...slot, place: { name: 'Jernbanetorget', locality: 'Oslo', lat: 59.91, lon: 10.75 } }, { done: false, timeZone: 'Europe/Oslo' })
 const noPlace = R.blockEventBody(slot, { done: false, timeZone: 'Europe/Oslo' })
-check('a slot with a place: Google\'s location is "name, town"', withPlace.location === 'Jernbanetorget, Oslo')
-check('a new event with no place carries no location', !('location' in noPlace))
-check('a PATCH of the whole event carries the location; a title push never does',
-  R.eventPatchFor(withPlace, 'all').location === 'Jernbanetorget, Oslo' && eq(Object.keys(R.eventPatchFor(withPlace, 'title')), ['summary']))
-check('an all-day slot carries it too', R.blockEventBody({ ...slot, start_time: null, place: { name: 'Hytta' } }, { done: false, timeZone: 'Europe/Oslo' }).location === 'Hytta')
 const plan = { title: 'Run', start_time: '07:00:00', end_time: '08:00:00', busy: true, days_of_week: [2, 4], effective_from: '2026-11-03',
   repeat_kind: 'weekly', place: { name: 'Frognerparken', locality: 'Oslo', lat: 59.927, lon: 10.702 } }
-const series = S.seriesEventFor(plan, { today: '2026-11-02', timeZone: 'Europe/Oslo' })
-check('a repeating plan\'s series carries its place; none without one', series.body.location === 'Frognerparken, Oslo'
-  && !('location' in S.seriesEventFor({ ...plan, place: null }, { today: '2026-11-02', timeZone: 'Europe/Oslo' }).body))
+check('no event body carries a Google `location` any more (a slot\'s or a series\')', !('location' in withPlace) && !('location' in noPlace)
+  && !('location' in S.seriesEventFor(plan, { today: '2026-11-02', timeZone: 'Europe/Oslo' }).body))
+check('placeText: "name, town" as one line', R.placeText({ name: 'Jernbanetorget', locality: 'Oslo' }) === 'Jernbanetorget, Oslo' && R.placeText({ name: 'Hytta' }) === 'Hytta')
 
 console.log('\n3. Apple')
 check('the map pin in the form the Apple check kept: LOCATION on two lines, X-APPLE-STRUCTURED-LOCATION, the travel advisory',
@@ -133,20 +128,12 @@ check('an item with no place: no LOCATION line', !bare.ics.includes('LOCATION'))
 check('a stored place with a line break still writes the event (cleaned on read)', !!I.slotEvent({ id: '00000000-0000-0000-0000-0000000000dd', ...slot, place: { name: 'Gym\nX-INJECTED:1' } },
   { done: false, area, look, timeZone: 'Europe/Oslo', appUrl: 'https://example.com/app/', now }).ics.match(/\r\nLOCATION:Gym X-INJECTED:1\r\n/))
 
-check('a whole-event PATCH takes a place off Google (location null); a title PATCH never touches it',
-  R.eventPatchFor(noPlace, 'all').location === null && R.eventPatchFor(withPlace, 'all').location === 'Jernbanetorget, Oslo'
-  && !('location' in R.eventPatchFor(noPlace, 'title')) && !('location' in noPlace))
-check('a series update does the same', R.fullEventPatch(S.seriesEventFor({ ...plan, place: null }, { today: '2026-11-02', timeZone: 'Europe/Oslo' }).body).location === null)
-const linkSrc = read('src/features/calendar/api/linkBlockCalendarEvent.ts')
-check('a new Google event (the browser\'s create) carries the slot\'s place', /busy: block\.busy,\s*place: block\.place,/.test(linkSrc))
-check('a series update goes through fullEventPatch', (read('src/features/calendar/api/scheduleSeriesCalendar.ts').match(/fullEventPatch\(plan\.body\)/g) || []).length === 2)
-
 console.log('\n4. The functions read the place')
 const icloud = read('supabase/functions/icloud-calendar/index.ts')
 // (193 reads its calendar fields after the place.)
 check('icloud-calendar\'s drain reads a slot\'s and a plan\'s place', (icloud.match(/icloud_etag, time_zone, place(, alerts, show_as, url, travel_minutes)?'\)/g) || []).length === 1
   && (icloud.match(/icloud_horizon, time_zone, place(, alerts, show_as, url, travel_minutes, repeat_until, repeat_count)?'\)/g) || []).length === 1)
-check('google-tasks-sync\'s push reads a slot\'s place', read('supabase/functions/google-tasks-sync/index.ts').includes(".select('id, date, start_time, duration_minutes, title, busy, time_zone, place, show_as, alerts, task:tasks(status)')"))
+check('google-tasks-sync no longer pushes any slot (Google Calendar went)', !read('supabase/functions/google-tasks-sync/index.ts').includes('time_zone, place'))
 
 console.log(`\nverify-item-places: ${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

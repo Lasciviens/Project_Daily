@@ -18,7 +18,7 @@ export type MonthKind = typeof MONTH_KINDS[number]
 export const MONTH_KIND: Record<MonthKind, { label: string; tip: string; tint: 1 | 2 | 3 | 4 | 5 }> = {
   tasks:    { label: 'Tasks',    tip: 'Tasks — open and done on each day', tint: 1 },
   training: { label: 'Training', tip: 'Training — trained, planned or missed', tint: 2 },
-  plans:    { label: 'Plans',    tip: 'Plans — slots and calendar events', tint: 3 },
+  plans:    { label: 'Plans',    tip: 'Plans — the day\'s slots', tint: 3 },
   media:    { label: 'Media',    tip: 'Media — films and episodes watched', tint: 4 },
   money:    { label: 'Money',    tip: 'Money — spent in Shop (purchases and costs, less refunds)', tint: 5 },
 }
@@ -37,10 +37,9 @@ export function trainingText(sessions: number, mark: DayMark | null): string | n
   return mark ? DAY_MARK_LABEL[mark] : null
 }
 
-/** "2 plans · 1 event". */
-export function plansText(slots: number, events: number): string | null {
-  const parts = [slots > 0 && plural(slots, 'plan'), events > 0 && plural(events, 'event')].filter(Boolean)
-  return parts.length ? parts.join(' · ') : null
+/** "2 plans" — the app's own slots (Google Calendar's events went with it, 25.11.2026). */
+export function plansText(slots: number): string | null {
+  return slots > 0 ? plural(slots, 'plan') : null
 }
 
 /** "1 film · 3 episodes". */
@@ -55,19 +54,10 @@ export function moneyText(spent: Amount | null | undefined): string | null {
   return amountWords(spent) ?? 'Amount unknown'
 }
 
-/** Slots and calendar events per day. A Google event a slot made is the slot (counted once); a training slot is the training line's. */
-export function plansByDay(
-  slots: readonly { date: string; category: string; google_calendar_event_id?: string | null }[],
-  eventIds: ReadonlyMap<string, readonly (string | null)[]> | undefined,
-): Map<string, { slots: number; events: number }> {
-  const out = new Map<string, { slots: number; events: number }>()
-  const at = (day: string) => out.get(day) ?? out.set(day, { slots: 0, events: 0 }).get(day)!
-  const slotEvents = new Set(slots.map(s => s.google_calendar_event_id).filter((id): id is string => !!id))
-  for (const s of slots) if (s.category !== 'training') at(s.date).slots++
-  for (const [day, ids] of eventIds ?? []) {
-    const own = ids.filter(id => !id || !slotEvents.has(id)).length
-    if (own > 0) at(day).events += own
-  }
+/** The app's own slots per day (a training slot is the training line's). */
+export function plansByDay(slots: readonly { date: string; category: string }[]): Map<string, { slots: number }> {
+  const out = new Map<string, { slots: number }>()
+  for (const s of slots) if (s.category !== 'training') out.set(s.date, { slots: (out.get(s.date)?.slots ?? 0) + 1 })
   return out
 }
 
@@ -98,7 +88,7 @@ export function moneyByDay(events: readonly { day: string; kind: 'bought' | 'cos
 export interface MonthDayFacts {
   tasks?:    { open: number; done: number }
   training?: { sessions: number; mark: DayMark | null }
-  plans?:    { slots: number; events: number }
+  plans?:    { slots: number }
   media?:    { films: number; episodes: number }
   money?:    Amount
 }
@@ -108,7 +98,7 @@ export function dayTexts(f: MonthDayFacts): Record<MonthKind, string | null> {
   return {
     tasks:    f.tasks ? tasksText(f.tasks.open, f.tasks.done) : null,
     training: f.training ? trainingText(f.training.sessions, f.training.mark) : null,
-    plans:    f.plans ? plansText(f.plans.slots, f.plans.events) : null,
+    plans:    f.plans ? plansText(f.plans.slots) : null,
     media:    f.media ? mediaText(f.media.films, f.media.episodes) : null,
     money:    moneyText(f.money),
   }

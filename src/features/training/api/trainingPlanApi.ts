@@ -2,12 +2,8 @@ import { supabase } from '../../../integrations/supabase/client'
 import { requireUser } from '../../../shared/utils/requireUser'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { createTask, updateTask, toggleTaskDone } from '../../todo/api/tasksApi'
-import { createTimeBlock, fetchScheduleBlock, fetchScheduleBlocks, fetchTimeBlockWithTask, fetchTimeBlocks, fetchTrainingBlocksRange, updateTimeBlock } from '../../daily/api/scheduleApi'
-import { linkBlockCalendarEvent } from '../../calendar/api/linkBlockCalendarEvent'
-import {
-  carryOccurrenceToCalendar, putSkippedDayBackOnCalendar, takeSkippedDayOffCalendar,
-} from '../../calendar/api/scheduleSeriesCalendar'
-import { refreshTaskEventSoon } from '../../calendar/api/itemCalendar'
+import { createTimeBlock, fetchScheduleBlocks, fetchTimeBlocks, updateTimeBlock } from '../../daily/api/scheduleApi'
+import { drainICloudSoon } from '../../calendar/areas/appleAreas'
 import { findPlanTwin, type PlanTwin } from '../plan/planTwins'
 import { sectionForDate } from '../../../shared/components/plan-modal/planModal.config'
 import { createTrainingSkip } from './trainingSkipsApi'
@@ -122,13 +118,10 @@ export async function ensurePlanTask(target: PlanTarget, info: PlanInfo): Promis
     if (!day) return { taskId: target.taskId, blockId: null }
     const rows = await splitRepeatDay(day.scheduleBlockId, day.date)
     await keepRoutine(rows.taskId, info.routineId)
-    if (rows.created && rows.blockId) carryOccurrenceToCalendar(day.scheduleBlockId, rows.blockId)
     return { taskId: rows.taskId, blockId: rows.blockId }
   }
 
   let blockId: string
-  // A day of a plan that has no Google event of its own yet (147).
-  let carry = false
   if (target.kind === 'block') {
     const { data, error } = await supabase.from('time_blocks').select('task_id').eq('id', target.blockId).maybeSingle()
     if (error) throw error
@@ -139,20 +132,18 @@ export async function ensurePlanTask(target: PlanTarget, info: PlanInfo): Promis
     try {
       const rows = await splitRepeatDay(target.templateId, target.date)
       await keepRoutine(rows.taskId, info.routineId)
-      if (rows.created && rows.blockId) carryOccurrenceToCalendar(target.templateId, rows.blockId)
       return { taskId: rows.taskId, blockId: rows.blockId }
     } catch (err) {
       if (!isMissingRpc(err)) throw err
       // Before 155 (no item_occurrence): the browser's own split, below.
     }
     // Already turned into a plan of its own (a second tap, another tab).
-    const found = await supabase.from('time_blocks').select('id, task_id, google_calendar_event_id')
+    const found = await supabase.from('time_blocks').select('id, task_id')
       .eq('schedule_block_id', target.templateId).eq('occurrence_date', target.date).maybeSingle()
     if (found.error) throw isMissingColumn(found.error) ? new Error(NOT_MIGRATED_142) : found.error
     if (found.data?.task_id) return { taskId: found.data.task_id, blockId: found.data.id }
     if (found.data) {
       blockId = found.data.id
-      carry = !found.data.google_calendar_event_id
     } else {
       const user = await requireUser()
       const { data, error } = await supabase.from('time_blocks').insert({
@@ -169,16 +160,12 @@ export async function ensurePlanTask(target: PlanTarget, info: PlanInfo): Promis
         throw error
       }
       blockId = data.id
-      carry = true
     }
   }
   const task = await createTask(planTaskInput(info))
   await updateTimeBlock(blockId, { task_id: task.id })
-  // A day of a plan on Google Calendar (147): the series leaves the day out
-  // and the block gets its own event — in the background, after the plan's
-  // own writes, so Done / Move / Skip never wait on Google; it reads the
-  // block fresh, so a move or skip that ran meanwhile wins.
-  if (carry && target.kind === 'weekly') carryOccurrenceToCalendar(target.templateId, blockId)
+  // A day of a plan in Apple Calendar: the triggers queued the series' new EXDATE and the day's own event.
+  drainICloudSoon()
   return { taskId: task.id, blockId }
 }
 
@@ -214,17 +201,17 @@ export async function fetchRepeatDayOf(taskId: string): Promise<{ scheduleBlockI
 
 export async function markPlanDone(taskId: string): Promise<void> {
   await toggleTaskDone(taskId, true)
-  // Its event on Google Calendar gets "✓ " (155), in the background.
-  refreshTaskEventSoon(taskId)
+  // Its Apple Calendar event gets "✓ " (155): queued by the triggers, sent shortly.
+  drainICloudSoon()
 }
 
 export async function reopenPlan(taskId: string): Promise<void> {
   await toggleTaskDone(taskId, false)
-  refreshTaskEventSoon(taskId)
+  drainICloudSoon()
 }
 
-/** Moves the session: its block when it has one (that also moves the
- *  Google Calendar event; the database moves the task, 142). A plan with no
+/** Moves the session: its block when it has one (that also moves its
+ *  Apple Calendar event; the database moves the task, 142). A plan with no
  *  block gets one on that day and time — "set a time" and "move" are the same
  *  thing: the session on the calendar. */
 export async function movePlan(rows: PlanRows, info: PlanInfo, to: { date: string; startHHMM: string | null }): Promise<void> {
@@ -241,27 +228,11 @@ export async function movePlan(rows: PlanRows, info: PlanInfo, to: { date: strin
   })
 }
 
-/** After a move 7 or more days past the session's first day (167): the
- *  database skipped the session on its first day and moved that week's
- *  session of the same plan onto `date` (splitting a repeat's day). Google
- *  follows as for a skip and a split made here: the skipped day comes off the
- *  calendar, the day moved onto `date` gets its own event (the series its
- *  EXDATE). Background — the move is done and reported first. */
-export function carryPastWeekMoveToCalendar(rows: PlanRows, date: string): void {
-  void (async () => {
-    // Was the moved session on Google Calendar (its own event, or its repeat's series)?
-    const own = rows.blockId ? await fetchTimeBlockWithTask(rows.blockId) : null
-    const onCalendar = !!own?.google_calendar_event_id
-      || (!!own?.schedule_block_id && !!(await fetchScheduleBlock(own.schedule_block_id).catch(() => null))?.google_calendar_event_id)
-    if (rows.blockId) takeSkippedDayOffCalendar(rows.blockId)
-    const blocks = await fetchTrainingBlocksRange(date, date)
-    for (const b of blocks) {
-      if (b.id === rows.blockId || b.google_calendar_event_id) continue
-      if (b.schedule_block_id && b.occurrence_date && b.occurrence_date !== date) carryOccurrenceToCalendar(b.schedule_block_id, b.id)
-      // A session made there by the move (169's new one): on Calendar as the moved one was.
-      else if (!b.schedule_block_id && b.task_id && b.task_id !== rows.taskId && onCalendar) void linkBlockCalendarEvent(b.id)
-    }
-  })().catch(() => { /* a failed read leaves Google as it was; the next app open pushes what is pending */ })
+/** After a move 7 or more days past the session's first day (167): the database skipped the session on its first
+ *  day and moved that week's session of the same plan onto `date` (splitting a repeat's day). Apple Calendar follows
+ *  through its queue (the triggers filled it): sent shortly. Background — the move is done and reported first. */
+export function sendPastWeekMoveSoon(): void {
+  drainICloudSoon()
 }
 
 /** What a move out of the week did (167/169), read back for its result line:
@@ -338,8 +309,8 @@ export async function skipPlan(rows: PlanRows, s: { routineId: string | null; pl
     if (s.routineId) await createTrainingSkip({ routine_id: s.routineId, week_start: row.week_start, reason: row.reason })
     await updateTask(rows.taskId, { status: 'cancelled' })
   }
-  // A skipped day of a plan comes off Google Calendar (147); in the background.
-  if (rows.blockId) takeSkippedDayOffCalendar(rows.blockId)
+  // A skipped day of a plan comes off Apple Calendar (its queue); sent shortly.
+  drainICloudSoon()
 }
 
 /** Undoes a skip: the task's skip row goes and the database reopens the task
@@ -351,8 +322,8 @@ export async function undoPlanSkip(s: { taskId?: string | null; skipId?: string 
     if (error && !isMissingColumn(error)) throw error
     // Before 142 (no task_id) — and harmless after: reopen it ourselves.
     await updateTask(s.taskId, { status: 'open' })
-    // A day of a plan on Google Calendar gets its own event back (147); in the background.
-    putSkippedDayBackOnCalendar(s.taskId)
+    // A day of a plan in Apple Calendar gets its own event back (its queue); sent shortly.
+    drainICloudSoon()
     return
   }
   if (!s.skipId) throw new Error('No skip found to undo for this session.')

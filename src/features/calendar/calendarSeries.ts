@@ -1,19 +1,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  A repeating plan (schedule_blocks) as ONE repeating Google Calendar event
-//  (migration 147) — the pure mapping. Pure and import-free apart from the
-//  repeat rule itself (daily/recurrence.ts) and the zone rule every event
-//  shares (calendarEventRules.itemTimeZone, 183), so scripts/verify-calendar-
-//  recurrence.cjs runs it as is. The calls that send it live in
-//  api/scheduleSeriesCalendar.ts.
+//  A repeating plan (schedule_blocks) as ONE repeating calendar event — the
+//  pure mapping (written for Google Calendar in 147; since Google Calendar
+//  went, 25.11.2026, Apple Calendar's series is built from it:
+//  areas/icloudEvents.planEvent). Pure and import-free apart from the repeat
+//  rule itself (daily/recurrence.ts) and the zone rule every event shares
+//  (calendarEventRules.itemTimeZone, 183), so scripts/verify-calendar-
+//  recurrence.cjs runs it as is.
 //
-//  Google's event (docs/integrations/google-calendar.md, checked 13.10.2026):
-//    start / end  the FIRST occurrence: a wall-clock dateTime with no offset
-//                 plus `timeZone` — required for a repeating event, it is the
-//                 zone the repeat is expanded in, so every occurrence keeps
-//                 its clock time across a daylight-saving change.
-//    recurrence   RFC 5545 lines: RRULE, RDATE, EXDATE (DTSTART is not
-//                 allowed there; start is DTSTART). The occurrences are the
-//                 RRULE's and the RDATEs', plus start itself, minus EXDATEs.
+//  The event (RFC 5545):
+//    start / end  the FIRST occurrence: a wall-clock date-time plus its zone
+//                 (TZID) — the zone the repeat is expanded in, so every
+//                 occurrence keeps its clock time across a daylight-saving change.
+//    recurrence   RRULE, RDATE, EXDATE lines. The occurrences are the RRULE's
+//                 and the RDATEs', plus start itself, minus EXDATEs.
 //
 //  The kinds (recurrence.ts):
 //    weekly            RRULE:FREQ=WEEKLY;WKST=MO;BYDAY=… (all seven days:
@@ -25,55 +24,47 @@
 //                      no RRULE can say "the Saturday nearest the 13th", so an
 //                      RDATE list from occurrencesBetween: picked dates all of
 //                      them; the monthly kinds up to a horizon a year ahead
-//                      (`horizon`, kept on the row), pushed again when the
-//                      app opens and less than 90 days of it remain.
-//    except_dates      EXDATE (only days the rule really has — Google wants
-//                      an EXDATE to name a real occurrence).
+//                      (`horizon`, kept on the row as icloud_horizon), written
+//                      again when less than 90 days of it remain.
+//    except_dates      EXDATE (only days the rule really has — an EXDATE must
+//                      name a real occurrence).
 //
 //  Start = the rule's FIRST day on or after the later of effective_from and
-//  the day the plan was added to Google (google_calendar_from, migration 148:
-//  owner, 14.10.2026 — a plan added today must not fill Google with its past
-//  weeks; the app's own projection still starts at effective_from). Never the
-//  day itself: RFC 5545 counts the start as an occurrence and leaves a start
-//  that doesn't fit the rule undefined (a Tuesday start for a Mon/Wed plan
-//  would put an extra Tuesday in Google). A first day that was taken out
-//  stays the start and gets an EXDATE, so skipping a day never moves the
-//  series.
+//  the day the series starts from (`series_from`: the day the plan reached
+//  Apple Calendar, icloud_from — owner, 14.10.2026: a plan added today must
+//  not fill the calendar with its past weeks; the app's own projection still
+//  starts at effective_from). Never the day itself: RFC 5545 counts the start
+//  as an occurrence and leaves a start that doesn't fit the rule undefined. A
+//  first day that was taken out stays the start and gets an EXDATE, so
+//  skipping a day never moves the series.
 //
 //  A plan that crosses midnight (end before start, or equal = 24 h) ends on
 //  the next day — the same reading as dayAgendaProjection.ts.
 //
 //  Since 155 (one item): a repeat with no time (start_time and end_time NULL)
 //  is an ALL-DAY series — start/end are dates (the first day, the day after:
-//  Google's end is exclusive) and every RDATE / EXDATE is a date
-//  (`RDATE;VALUE=DATE:20261018,…` — Google: "must be dates (not date-times)
-//  for all-day events"). Every series says whether it blocks time
+//  DTEND is exclusive) and every RDATE / EXDATE is a date
+//  (`RDATE;VALUE=DATE:20261018,…`). Every series says whether it blocks time
 //  (`transparency`): Busy for a time with a length, Free for a time without
-//  one (busy false) and for all-day. A day held by a moved instance of the
-//  series (the read-back, 155: that slot stores `<seriesId>_…`) gets no
-//  EXDATE (`keepDays`) — an EXDATE would cancel that instance on Google.
+//  one (busy false) and for all-day.
 //
 //  Since 193: End Repeat ends the RRULE — `COUNT=N` when the series starts on
-//  the plan's own first day (its N times are Google's and Apple's N), else
-//  `UNTIL` its last day (recurrence.repeatLastDay): a date for an all-day
-//  series, the last day's 23:59:59 in the plan's zone as UTC for a timed one
-//  (RFC 5545: with a TZID start, UNTIL is UTC). The RDATE kinds simply list no
-//  day after it (the horizon stops there). Show As sets Busy / Free when the
-//  owner picked it (calendarEventRules.eventTransparency), and the plan's own
-//  alerts are its reminders (googleReminders).
+//  the plan's own first day, else `UNTIL` its last day (recurrence.repeatLastDay):
+//  a date for an all-day series, the last day's 23:59:59 in the plan's zone as
+//  UTC for a timed one (RFC 5545: with a TZID start, UNTIL is UTC). The RDATE
+//  kinds simply list no day after it (the horizon stops there). Show As sets
+//  Busy / Free when the owner picked it (calendarEventRules.eventTransparency).
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { eventTransparency, itemTimeZone, SERVER_EVENT_TIME_ZONE } from './calendarEventRules'
 import {
-  eventPlace, eventTransparency, googleReminders, itemTimeZone, placeText, SERVER_EVENT_TIME_ZONE, type EventReminders,
-} from './calendarEventRules'
-import {
-  addDaysIso, dayNumber, isIsoDay, nextOccurrences, occurrencesBetween, occursOn, repeatCountOf, repeatKindOf, repeatLastDay,
+  addDaysIso, isIsoDay, nextOccurrences, occurrencesBetween, occursOn, repeatCountOf, repeatKindOf, repeatLastDay,
   weeklyDaysOf, type RepeatRule,
 } from '../daily/recurrence'
 
 /** The RDATE list of a monthly kind covers this many days past today. */
 export const SERIES_HORIZON_DAYS = 365
-/** …and is pushed again once fewer than this many days of it remain. */
+/** …and is written again once fewer than this many days of it remain. */
 export const SERIES_TOPUP_DAYS = 90
 /** The zone of a plan that names none — the home zone (the owner lives in Oslo). */
 export const SERIES_FALLBACK_TIME_ZONE = SERVER_EVENT_TIME_ZONE
@@ -87,12 +78,10 @@ export interface SeriesTemplate extends RepeatRule {
   /** 'HH:MM' or 'HH:MM:SS'; null (with end_time) = a repeat with no time — an all-day series (155). */
   start_time:   string | null
   end_time:     string | null
-  /** false: a time with no length — Free on Google (155). Missing = busy. */
+  /** false: a time with no length — Free (155). Missing = busy. */
   busy?:        boolean | null
-  google_calendar_event_id?: string | null
-  /** The last day the event's RDATE list covers (147); null = it lists them all. */
-  google_calendar_horizon?:  string | null
-  /** The zone Google's series was made in (147) — the plan's zone when it names none of its own. */
+  /** The zone its Google series was made in (147, before Google Calendar went) — the plan's zone when it names none
+   *  of its own (a plan saved before 183). */
   google_calendar_time_zone?: string | null
   /** The zone the plan's times are in (183): the phone's when it was made. */
   time_zone?: string | null
@@ -100,15 +89,13 @@ export interface SeriesTemplate extends RepeatRule {
   place?: unknown
   /** Show As (193): 'busy' | 'free'; none = by its length, as before. */
   show_as?: unknown
-  /** Alert and Second Alert (193), read through calendarEventRules.eventAlerts; none = the area's (Google's default). */
+  /** Alert and Second Alert (193), read through calendarEventRules.eventAlerts; none = the area's own. */
   alerts?: unknown
-  /** The day the plan was added to Google Calendar (148): its series starts
-   *  on the first real day on or after this. Missing before 148. */
-  google_calendar_from?: string | null
+  /** The day its series starts from (the day it reached Apple Calendar): its first real day on or after this. */
+  series_from?: string | null
 }
 
-/** What events.insert / events.patch get. A timed series: wall-clock
- *  dateTime + zone; an all-day one (155): dates. */
+/** The series event. A timed series: wall-clock dateTime + zone; an all-day one (155): dates. */
 export interface SeriesEventBody {
   summary:    string
   start:      { dateTime: string; timeZone: string } | { date: string }
@@ -116,14 +103,9 @@ export interface SeriesEventBody {
   recurrence: string[]
   /** opaque = Busy, transparent = Free (155). */
   transparency: 'opaque' | 'transparent'
-  /** The plan's place (186), when it has one. An update sends none as null (calendarEventRules.fullEventPatch). */
-  location?: string
-  /** The plan's own alerts (193), when it has them. An update sends none as the default (fullEventPatch). */
-  reminders?: EventReminders
 }
 
-/** Push options: `keepDays` — days held by a moved instance of the series (155), never EXDATEd. */
-export interface SeriesPushOptions { today: string; timeZone: string; keepDays?: readonly string[] }
+export interface SeriesPushOptions { today: string; timeZone: string }
 
 export interface SeriesPlan {
   body:    SeriesEventBody
@@ -132,8 +114,8 @@ export interface SeriesPlan {
   /** Store on the row: the RDATE list's last day, or null when the event
    *  carries every occurrence (an RRULE, or all picked dates). */
   horizon: string | null
-  /** Store on the row: the day the series starts from (148), or null when
-   *  it starts at effective_from (no google_calendar_from given). */
+  /** Store on the row: the day the series starts from, or null when it
+   *  starts at effective_from (no series_from given). */
   from:    string | null
 }
 
@@ -147,10 +129,9 @@ export function seriesTimeZone(tz: string | null | undefined): string {
   return itemTimeZone(tz)
 }
 
-/** The zone a plan's series is expanded in, by Google and Apple alike (183): the plan's own (`time_zone` — the
- *  phone's when it was made, changed only by the owner in the sheet), else the zone its Google series was made in,
- *  else the home zone. Never the device's at push time: a push from abroad (a save, a day carried over, the horizon
- *  top-up, Undo, a retry) never re-zones a plan. */
+/** The zone a plan's series is expanded in (183): the plan's own (`time_zone` — the phone's when it was made, changed
+ *  only by the owner in the sheet), else the zone its Google series was made in (before 183), else the home zone.
+ *  Never the device's at write time: a write from abroad never re-zones a plan. */
 export function planTimeZone(plan: Pick<SeriesTemplate, 'time_zone' | 'google_calendar_time_zone'>): string {
   const own = typeof plan.time_zone === 'string' ? plan.time_zone.trim() : ''
   return itemTimeZone(own || plan.google_calendar_time_zone)
@@ -174,7 +155,7 @@ const everyOf = (rule: RepeatRule) => {
   return Number.isFinite(n) && n >= 1 ? n : 1
 }
 
-/** True for the kinds Google gets as an RDATE list kept up to a horizon. */
+/** True for the kinds written as an RDATE list kept up to a horizon. */
 export function isHorizonKind(rule: RepeatRule): boolean {
   const kind = repeatKindOf(rule)
   return kind === 'monthly' || (kind === 'interval' && rule.repeat_unit === 'month')
@@ -219,7 +200,7 @@ export function endOfDayUtcStamp(day: string, zone: string): string {
 
 /**
  * End Repeat's part of the RRULE (193), '' for a repeat that never ends: `;COUNT=N` when the series starts on the
- * plan's own first day — Google and Apple then count the same N times — else `;UNTIL=` its last day (a date for an
+ * plan's own first day — the calendar then counts the same N times — else `;UNTIL=` its last day (a date for an
  * all-day series; the day's end in `tz` as UTC for a timed one).
  */
 export function rruleEndPart(t: RepeatRule, first: string, allDay: boolean, tz: string): string {
@@ -232,76 +213,16 @@ export function rruleEndPart(t: RepeatRule, first: string, allDay: boolean, tz: 
 }
 
 /** The first day the rule's pattern has on or after its start — the later of
- *  effective_from and the day it was added to Google (taken-out days count). */
-export function firstSeriesDay(rule: RepeatRule & Pick<SeriesTemplate, 'google_calendar_from'>, today: string): string | null {
+ *  effective_from and the day its series starts from (taken-out days count). */
+export function firstSeriesDay(rule: RepeatRule & Pick<SeriesTemplate, 'series_from'>, today: string): string | null {
   const start = isIsoDay(rule.effective_from) ? rule.effective_from : today
-  const added = rule.google_calendar_from
+  const added = rule.series_from
   const from = isIsoDay(added) && added > start ? added : start
   return nextOccurrences(patternOf(rule), from, 1, FIRST_DAY_SEARCH_DAYS)[0] ?? null
 }
 
-/** Whether the row comes from a database with 148's column (a `*` read carries it, null or not). */
-export function hasSeriesFromColumn(row: object): boolean {
-  return 'google_calendar_from' in row
-}
-
 /**
- * The day a push starts the series from (148): the one stored with the link;
- * else today — a new link, or a series linked before 148, which starts over
- * from the day of this push. null without 148's column: the series then
- * starts at effective_from, as before it.
- */
-export function seriesFromDay(row: Pick<SeriesTemplate, 'google_calendar_from'>, today: string): string | null {
-  if (!hasSeriesFromColumn(row)) return null
-  return isIsoDay(row.google_calendar_from) ? row.google_calendar_from : today
-}
-
-/** A series linked before 148: no start day stored yet — the app pushes it
- *  once when it opens, so Google drops the past weeks it was given. */
-export function needsSeriesFromDay(t: SeriesTemplate): boolean {
-  return !!t.google_calendar_event_id && hasSeriesFromColumn(t) && !isIsoDay(t.google_calendar_from)
-}
-
-/** The event a push sends today: seriesEventFor from the series' start day
- *  (seriesFromDay) — what the plan's link stores as `from`. */
-export function seriesEventForPush(row: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan | null {
-  return seriesEventFor({ ...row, google_calendar_from: seriesFromDay(row, opts.today) }, opts)
-}
-
-/** A day of the plan before its series starts on Google (148: the day it was
- *  added) was never there, so a change to it (done, moved, skipped, put
- *  back) stays off Google too. */
-export function isBeforeSeriesStart(row: SeriesTemplate, day: string | null | undefined, today: string): boolean {
-  if (!isIsoDay(day)) return false
-  const first = firstSeriesDay({ ...row, google_calendar_from: seriesFromDay(row, today) }, today)
-  return !!first && day < first
-}
-
-/** The repeating plans one tap adds to Google Calendar (148): not on it yet,
- *  with a day left to show from the day they would start there. */
-export function plansToAddToCalendar<T extends SeriesTemplate>(rows: readonly T[], today: string): T[] {
-  return rows.filter(r => !r.google_calendar_event_id
-    && seriesEventForPush(r, { today, timeZone: SERIES_FALLBACK_TIME_ZONE }) !== null)
-}
-
-const plans = (n: number) => `${n} repeating plan${n === 1 ? '' : 's'}`
-
-/** "Adding 6 repeating plans to Google Calendar…" */
-export function addPlansProgressText(count: number): string {
-  return `Adding ${plans(count)} to Google Calendar…`
-}
-
-/** The one result line of "Add plans to Calendar" ("Added 6 repeating plans
- *  to Google Calendar · 1 failed — …"); a failed one waits on the retry list. */
-export function addPlansResultText(r: { added: number; failed: number }): string {
-  const retry = 'the app tries again the next time it opens'
-  if (!r.added && !r.failed) return 'Every repeating plan is already on Google Calendar'
-  if (!r.added) return `Couldn't add ${plans(r.failed)} to Google Calendar — ${retry}`
-  return `Added ${plans(r.added)} to Google Calendar${r.failed ? ` · ${r.failed} failed — ${retry}` : ''}`
-}
-
-/**
- * The Google event for a repeating plan, or null when it has no occurrence
+ * The series event for a repeating plan, or null when it has no occurrence
  * left to show (no day picked, every day taken out). `today` sets the
  * horizon of the monthly kinds; `timeZone` is the zone the times mean.
  */
@@ -314,7 +235,6 @@ export function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): Seri
   if (!first) return null
 
   const tz = seriesTimeZone(opts.timeZone)
-  const keep = new Set((opts.keepDays ?? []).filter(isIsoDay))
   const except = new Set((t.except_dates ?? []).filter(isIsoDay))
   const pattern = patternOf(t)
   // All-day: dates (VALUE=DATE, no zone); timed: local date-times with TZID.
@@ -340,18 +260,13 @@ export function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): Seri
     if (repeatKindOf(t) !== 'dates') horizon = last
     const days = occurrencesBetween(pattern, first, last)
     const extra = days.filter(d => d !== first && !except.has(d))
-    if (!extra.length && except.has(first) && !keep.has(first)) return null // nothing left to show
+    if (!extra.length && except.has(first)) return null // nothing left to show
     if (extra.length) recurrence.push(`${prefix('RDATE')}${stamps(extra)}`)
     exdates = except.has(first) ? [first] : []
   }
-  exdates = exdates.filter(d => !keep.has(d))
   if (exdates.length) recurrence.push(`${prefix('EXDATE')}${stamps(exdates)}`)
 
-  const from = isIsoDay(t.google_calendar_from) ? t.google_calendar_from : null
-  const place = eventPlace(t.place)
-  const location = place ? { location: placeText(place) } : {}
-  const reminders = googleReminders(t.alerts, !startClock || !endClock)
-  const own = reminders ? { reminders } : {}
+  const from = isIsoDay(t.series_from) ? t.series_from : null
   if (!startClock || !endClock) {
     return {
       first, horizon, from,
@@ -361,8 +276,6 @@ export function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): Seri
         end: { date: addDaysIso(first, 1) },
         recurrence,
         transparency: eventTransparency(t.show_as, false),
-        ...location,
-        ...own,
       },
     }
   }
@@ -377,64 +290,6 @@ export function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): Seri
       end:   { dateTime: `${endDay}T${endClock}`, timeZone: tz },
       recurrence,
       transparency: eventTransparency(t.show_as, t.busy !== false),
-      ...location,
-      ...own,
     },
   }
-}
-
-/** A linked monthly-kind plan whose RDATE list runs out within 90 days (or
- *  never had one) — the app pushes it again when it opens. */
-export function needsHorizonTopUp(t: SeriesTemplate, today: string): boolean {
-  if (!t.google_calendar_event_id || !isHorizonKind(t) || !isIsoDay(today)) return false
-  const h = t.google_calendar_horizon
-  // A repeat that ends (193): once the list reaches its last day there is nothing more to add.
-  const end = repeatLastDay(t)
-  if (end && isIsoDay(h) && h >= end) return false
-  return !isIsoDay(h) || dayNumber(h) - dayNumber(today) < SERIES_TOPUP_DAYS
-}
-
-// ── Retries (pushes Google didn't take) ──────────────────────────────────────
-//  A day carried over (142) or an Undo whose push answered 'unknown' (no
-//  connection, a network or 5xx failure) is remembered on this device and
-//  pushed again the next time the app opens (useCalendarSeriesTopUp). The
-//  list lives in localStorage under SERIES_PENDING_KEY and is cleared on
-//  sign-out (security/accountState.ts).
-
-export const SERIES_PENDING_KEY = 'lasci.calendarSeries.pending'
-
-export interface PendingSeries {
-  planId:   string
-  /** Days of the plan (one-off blocks, 142) that get their own event once the series took their EXDATE. */
-  blockIds: string[]
-  /** Put back by Undo with its link reset: link it again. */
-  relink?:  boolean
-}
-
-/** The stored list, or [] for anything that isn't one. */
-export function parsePendingSeries(raw: string | null | undefined): PendingSeries[] {
-  try {
-    const list: unknown = JSON.parse(raw ?? '[]')
-    if (!Array.isArray(list)) return []
-    return list.flatMap((p): PendingSeries[] => {
-      const x = p as Partial<PendingSeries> | null
-      if (!x || typeof x.planId !== 'string' || !x.planId) return []
-      const blockIds = Array.isArray(x.blockIds) ? x.blockIds.filter((b): b is string => typeof b === 'string' && !!b) : []
-      return [{ planId: x.planId, blockIds: [...new Set(blockIds)], ...(x.relink ? { relink: true } : {}) }]
-    })
-  } catch {
-    return []
-  }
-}
-
-/** Adds a plan (and a day of it) to the list: one entry per plan, days merged. */
-export function addPendingSeries(list: readonly PendingSeries[], planId: string, blockId: string | null, relink = false): PendingSeries[] {
-  const at = list.findIndex(p => p.planId === planId)
-  const prev: PendingSeries = at >= 0 ? list[at] : { planId, blockIds: [] }
-  const next: PendingSeries = {
-    planId,
-    blockIds: blockId && !prev.blockIds.includes(blockId) ? [...prev.blockIds, blockId] : [...prev.blockIds],
-    ...(relink || prev.relink ? { relink: true } : {}),
-  }
-  return at >= 0 ? list.map((p, i) => (i === at ? next : p)) : [...list, next]
 }

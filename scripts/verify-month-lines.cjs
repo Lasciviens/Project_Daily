@@ -40,9 +40,9 @@ eq(M.trainingText(2, 'done'), 'Trained ×2', 'training: two workouts')
 eq(M.trainingText(0, 'upcoming'), 'Planned', "training: a future plan in Training's own words")
 eq(M.trainingText(0, 'missed'), 'Missed plan', 'training: a missed plan')
 eq(M.trainingText(0, null), null, 'training: nothing → no line')
-eq(M.plansText(1, 0), '1 plan', 'plans: one')
-eq(M.plansText(2, 1), '2 plans · 1 event', 'plans: slots and events')
-eq(M.plansText(0, 0), null, 'plans: nothing → no line')
+eq(M.plansText(1), '1 plan', 'plans: one')
+eq(M.plansText(2), '2 plans', 'plans: the app\'s own slots only (Google Calendar went, 25.11.2026)')
+eq(M.plansText(0), null, 'plans: nothing → no line')
 eq(M.mediaText(1, 3), '1 film · 3 episodes', 'media: films and episodes')
 eq(M.mediaText(0, 1), '1 episode', 'media: one episode')
 eq(M.moneyText(known(3290)), '3 290 NOK', "money: Shop's wording")
@@ -52,18 +52,16 @@ eq(M.moneyText(undefined), null, 'money: nothing spent → no line')
 console.log('Counts per day')
 {
   const p = M.plansByDay([
-    { date: '2026-11-03', category: 'personal', google_calendar_event_id: 'ev-slot' },
+    { date: '2026-11-03', category: 'personal' },
     { date: '2026-11-03', category: 'work' },
-    { date: '2026-11-03', category: 'training', google_calendar_event_id: 'ev-train' },
+    { date: '2026-11-03', category: 'training' },
     { date: '2026-11-04', category: 'personal' },
-  ], new Map([
-    ['2026-11-03', ['ev-slot', 'ev-train', 'ev-google', null]],
-    ['2026-11-05', ['ev-other']],
-  ]))
-  eq(p.get('2026-11-03'), { slots: 2, events: 2 }, "a slot's own Google event counts once (as the slot); a training slot is the training line's")
-  eq(p.get('2026-11-04'), { slots: 1, events: 0 }, 'a day with a slot only')
-  eq(p.get('2026-11-05'), { slots: 0, events: 1 }, 'a day with a Google event only')
+  ])
+  eq(p.get('2026-11-03'), { slots: 2 }, "the day's slots; a training slot is the training line's")
+  eq(p.get('2026-11-04'), { slots: 1 }, 'a day with one slot')
   eq(p.has('2026-11-06'), false, 'a day with nothing has no entry')
+  const hook = require('fs').readFileSync(require('path').join(__dirname, '../src/features/daily/hooks/useMonthLines.ts'), 'utf8')
+  eq(/useCalendar|calendar\/hooks/.test(hook), false, 'the month reads no Google Calendar events')
 }
 {
   const w = M.mediaByDay([
@@ -110,7 +108,7 @@ console.log('Reads: once per month, never per day; the choice is per device and 
   const src = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
   const hook = src('src/features/daily/hooks/useMonthLines.ts')
   const widget = src('src/features/daily/components/MonthWidget.tsx')
-  const reads = ['useHevyWorkoutsRange(from, to', 'useStravaActivities({ from: bounds.fromISO', 'useTrainingPlansByDate(from, to)', 'useTimeBlocksRange(from, to', 'useCalendarEventIdsByDay(', 'useWatchesBetween(from, to)', 'useShopItems(', 'useShopCosts(']
+  const reads = ['useHevyWorkoutsRange(from, to', 'useStravaActivities({ from: bounds.fromISO', 'useTrainingPlansByDate(from, to)', 'useTimeBlocksRange(from, to', 'useWatchesBetween(from, to)', 'useShopItems(', 'useShopCosts(']
   ok(reads.every(r => hook.includes(r)), 'each kind is one ranged (or shared) read in useMonthLines')
   ok(!/days\.(map|forEach)\([^)]*use[A-Z]/.test(widget) && !/factsOf[\s\S]{0,200}useQuery/.test(hook), 'no hook is called per day')
   ok(/useTasksByMonth\(monthStart, monthEnd\)/.test(widget) && /countTasks\(/.test(widget) && /useOpenOnDay\(tasks\)/.test(widget), "the task line counts through taskRules over the month's one task read")
@@ -119,7 +117,7 @@ console.log('Reads: once per month, never per day; the choice is per device and 
   const key = /MONTH_KINDS_KEY = '([^']+)'/.exec(keyHook)?.[1]
   ok(key && src('src/security/accountState.ts').includes(`'${key}'`), `the stored choice (${key}) is cleared at sign-out`)
   ok(/<Checkbox\b/.test(widget) && /from '\.\.\/\.\.\/\.\.\/shared\/ui'/.test(widget), 'the checkboxes are the shared primitive')
-  ok(/<CalendarFilter\s*\/>/.test(widget), "the Google calendar filter stays in the Month card's header")
+  ok(!/CalendarFilter/.test(widget), "the Month card's header has no Google calendar filter (Google Calendar went, 25.11.2026)")
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

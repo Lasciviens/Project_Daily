@@ -38,11 +38,9 @@ export interface ScheduleBlock extends ItemCalendarColumns {
   repeat_unit?:     RepeatUnit | null
   /** 'dates' only: the hand-picked days ('yyyy-MM-dd'). */
   repeat_dates?:    string[] | null
-  /** Its ONE repeating Google Calendar event, in 'primary' (migration 147;
-   *  missing before it). The mapping is calendar/calendarSeries.ts. */
+  /** Retired with Google Calendar (147 → 208): always null since 25.11.2026. Kept until the owner agrees to drop it. */
   google_calendar_event_id?: string | null
-  /** The last day the event's RDATE list covers (the monthly kinds); null
-   *  when the event carries every occurrence. */
+  /** Retired with Google Calendar (147 → 208): always null. */
   google_calendar_horizon?:  string | null
   /** The zone Google's series was made in (147) — the plan's zone when it
    *  names none of its own (calendarSeries.planTimeZone). */
@@ -56,11 +54,10 @@ export interface ScheduleBlock extends ItemCalendarColumns {
   repeat_until?: string | null
   /** End Repeat "after N times" (193): 1–999; null = no count. */
   repeat_count?: number | null
-  /** The day it was added to Google Calendar (148): the series starts on its
-   *  first day on or after this, not at effective_from. Missing before 148. */
+  /** Retired with Google Calendar (148 → 208): always null. */
   google_calendar_from?: string | null
   /** One item (155; missing before it): false = a time with no length —
-   *  blocks no time, Free on Google; end_time is then start + 15 min, nominal.
+   *  blocks no time, Free on the calendar; end_time is then start + 15 min, nominal.
    *  NOTE: since 155 start_time and end_time may BOTH be null — a repeat with
    *  no time (an all-day series). Readers must guard (`start_time == null`). */
   busy?:          boolean

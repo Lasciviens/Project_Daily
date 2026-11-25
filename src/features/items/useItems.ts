@@ -1,9 +1,8 @@
 // The item hooks every screen uses (contract: itemTypes.ts; rules:
-// itemRules.ts; calls: itemApi.ts; Google after a save:
-// calendar/api/itemCalendar.ts). Every write is one RPC — one transaction,
-// one entry in Developer → Activity — and says its result. Google follows in
-// the background: a save never waits for Google and a Google failure never
-// undoes it (it is said once).
+// itemRules.ts; calls: itemApi.ts; Apple Calendar and Google Tasks after a
+// save: calendar/api/itemCalendar.ts). Every write is one RPC — one
+// transaction, one entry in Developer → Activity — and says its result. The
+// outside copies follow: a failure there never undoes the save (it is said once).
 import { useEffect } from 'react'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast, useCalendarStore } from '../../app/store'
@@ -14,14 +13,15 @@ import { formatDate } from '../../shared/utils/dateFormat'
 import { todayStr } from '../../shared/utils/dateUtils'
 import { logError } from '../../shared/utils/logError'
 import { ensureValidCalendarToken } from '../calendar/api/calendarTokenSync'
-import { settleItemGoogle, settleRepeatDayGoogle } from '../calendar/api/itemCalendar'
+import { settleItemGoogle } from '../calendar/api/itemCalendar'
+import { drainICloudSoon } from '../calendar/areas/appleAreas'
 import { useDeleteScheduleBlock, useDeleteTimeBlock } from '../daily/hooks/useSchedule'
 import { resolveOrCreateGoogleTaskListId } from '../todo/api/googleTaskListsApi'
 import { sectionForDay } from '../todo/taskRules'
 import { syncGoogleTasksSoon, useDeleteTask } from '../todo/hooks/useTodos'
 import { CALENDAR_FIELDS_NOT_MIGRATED, sendsCalendarFields } from './itemCalendarFields'
 import {
-  convertOldItems, fetchCalendarReadbackState, fetchConvertPreview, fetchRepeatDayTaskId, repeatDay, runRepeatDaysToday, saveItem,
+  convertOldItems, fetchConvertPreview, fetchRepeatDayTaskId, repeatDay, runRepeatDaysToday, saveItem,
   undoConversion,
   type RepeatDayAnswer, type SaveItemAnswer, type SaveItemContext,
 } from './itemApi'
@@ -29,7 +29,7 @@ import {
   describeConverted, describeConvertUndone, describeRepeatDay, describeSaved, itemInputProblem,
 } from './itemRules'
 import type {
-  CalendarReadbackState, ConvertPreview, ConvertResult, DeleteItemScope, DeleteItemTarget, ItemInput, RepeatDayInput, SavedItem,
+  ConvertPreview, ConvertResult, DeleteItemScope, DeleteItemTarget, ItemInput, RepeatDayInput, SavedItem,
 } from './itemTypes'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -92,8 +92,8 @@ export async function saveItemVia<A extends SaveItemAnswer>(
 export function useSaveItem(own?: {
   after?: (input: ItemInput, saved: SavedItem) => Promise<unknown>
   describe?: (input: ItemInput, after: unknown) => string | undefined
-  /** Where the item's area shows its calendar copy (useItemCalendarApp); Google when not said. */
-  calendarApp?: 'google' | 'apple'
+  /** Whether the item's area has a calendar (useItemCalendarApp); Apple Calendar when not said. */
+  calendarApp?: 'apple' | 'none'
 }) {
   const qc = useQueryClient()
   return useMutationWithFeedback<SavedItem, ItemInput>({
@@ -119,7 +119,8 @@ export function useSaveItem(own?: {
 export function useRepeatDay() {
   const run = async (v: RepeatDayInput): Promise<RepeatDayAnswer> => {
     const answer = await repeatDay(v.scheduleBlockId, v.date, v.action, todayStr())
-    settleRepeatDayGoogle(answer)
+    // The day's change in Apple Calendar (its EXDATE, its own event) was queued by the triggers: sent shortly.
+    drainICloudSoon()
     // A day on Google Tasks (the iPhone widget) follows now, not at the next sync.
     if (answer.changed && answer.taskId) syncGoogleTasksSoon({ taskId: answer.taskId })
     return answer
@@ -176,7 +177,7 @@ export function useDeleteItem() {
     silent: 'the delete flow reports the result',
     mutationFn: async v => {
       const answer = await repeatDay(v.scheduleBlockId, v.date, v.action, todayStr())
-      settleRepeatDayGoogle(answer)
+      drainICloudSoon()
       return answer
     },
     invalidates: ['taskGraph', qk.items.all],
@@ -276,16 +277,6 @@ export function useConvertOldItems() {
     },
     invalidates: ['taskGraph', qk.items.all],
     onSettled: () => { void qc.invalidateQueries({ queryKey: qk.items.convertPreview() }) },
-  })
-}
-
-/** The Google card's line for the Google Calendar read-back (itemRules.readbackStateText words it). */
-export function useCalendarReadbackState(enabled = true) {
-  return useQuery<CalendarReadbackState>({
-    queryKey: qk.items.calendarReadback(),
-    queryFn: fetchCalendarReadbackState,
-    staleTime: STALE.default,
-    enabled,
   })
 }
 

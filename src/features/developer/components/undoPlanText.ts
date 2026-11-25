@@ -209,19 +209,19 @@ function sideLines(rows: readonly UndoSideEffect[], hidden: number): UndoLine[] 
 
 /**
  * The table → outside service map: an undo of a change to one of these goes
- * there too. Kept in step with app_undo_synced (migration 151) —
+ * there too. Kept in step with app_undo_synced (migration 151; slots and repeats → Apple Calendar since 208) —
  * verify-undo-plan-text compares the two.
  */
 export const SYNCED: Record<string, UndoService> = {
-  tasks: 'google_tasks', time_blocks: 'google_calendar', schedule_blocks: 'google_calendar',
+  tasks: 'google_tasks', time_blocks: 'apple_calendar', schedule_blocks: 'apple_calendar',
   user_movie_entries: 'trakt', user_tv_entries: 'trakt', user_tv_episodes: 'trakt', media_watches: 'trakt',
 }
 
 export const SERVICE_NAME: Record<UndoService, string> = {
-  trakt: 'Trakt', google_tasks: 'Google Tasks', google_calendar: 'Google Calendar', apple_calendar: 'Apple Calendar',
+  trakt: 'Trakt', google_tasks: 'Google Tasks', apple_calendar: 'Apple Calendar',
 }
 
-const SERVICE_ORDER: UndoService[] = ['trakt', 'google_tasks', 'google_calendar', 'apple_calendar']
+const SERVICE_ORDER: UndoService[] = ['trakt', 'google_tasks', 'apple_calendar']
 
 function joinAnd(items: readonly string[]): string {
   return items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`
@@ -258,15 +258,13 @@ function traktLines(rows: readonly UndoOutbox[]): UndoLine[] {
   return out
 }
 
-const GOOGLE_WORDS: Record<'google_tasks' | 'google_calendar' | 'apple_calendar', { one: string; many: string; ops: Record<string, string> }> = {
+const GOOGLE_WORDS: Record<'google_tasks' | 'apple_calendar', { one: string; many: string; ops: Record<string, string> }> = {
   google_tasks: { one: 'task', many: 'tasks', ops: { create: 'added', update: 'changed', delete: 'removed' } },
-  // 'upsert' (155): a linked slot changed on the server — its event is brought up to date.
-  google_calendar: { one: 'event', many: 'events', ops: { create: 'added', update: 'changed', upsert: 'changed', delete: 'removed' } },
   // 173: a slot or plan whose Apple Calendar event is brought up to date (put or removed, read from the live row).
   apple_calendar: { one: 'event', many: 'events', ops: { upsert: 'brought up to date' } },
 }
 
-function googleLine(s: 'google_tasks' | 'google_calendar' | 'apple_calendar', rows: readonly UndoOutbox[]): UndoLine {
+function googleLine(s: 'google_tasks' | 'apple_calendar', rows: readonly UndoOutbox[]): UndoLine {
   const w = GOOGLE_WORDS[s]
   const order = ['delete', 'create', 'update', 'upsert']
   const parts = [...rows]
@@ -277,7 +275,6 @@ function googleLine(s: 'google_tasks' | 'google_calendar' | 'apple_calendar', ro
 
 /** An outside link (app_undo_links) Undo leaves as it is: what it links, per column. */
 const LINK_WORDS: Record<string, { service: UndoService; what: string }> = {
-  google_calendar_event_id: { service: 'google_calendar', what: 'event link' },
   icloud_area: { service: 'apple_calendar', what: 'event link' },
   google_task_id: { service: 'google_tasks', what: 'Google task link' },
   google_tasklist_id: { service: 'google_tasks', what: 'Google list' },
@@ -294,8 +291,7 @@ function linkLine(l: UndoPlan['links_kept'][number]): UndoLine {
 }
 
 /**
- * What goes to Trakt / Google (the trial run's outbox rows and the Calendar
- * events the browser makes or moves right after), the outside links Undo
+ * What goes to Trakt / Google Tasks / Apple Calendar (the trial run's outbox rows), the outside links Undo
  * leaves, and — for a sync's save — a service that gets nothing from this
  * undo and may bring the change back.
  */
@@ -348,9 +344,6 @@ export function nearbyHint(nearby: readonly UndoNearby[] | undefined): NearbyHin
     action: 'Open the one before',
   }
 }
-
-/** The fields of a slot its Google Calendar event shows (useUndoSave → followUndo moves the event when one goes back). */
-export const CALENDAR_FIELDS = ['date', 'start_time', 'title', 'duration_minutes'] as const
 
 function notesOf(plan: UndoPlan): string[] {
   const notes: string[] = []

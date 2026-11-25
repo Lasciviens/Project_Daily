@@ -18,7 +18,7 @@ export type PlanMode = 'task' | 'schedule' | 'recurring'
 
 // ── Field keys a caller may hide ─────────────────────────────────────────────
 
-/** 'recurrence': no "+ Repeat"; 'gcal': no Google chip. */
+/** 'recurrence': no "+ Repeat"; 'gcal': no Calendar row (its old name: the Google chip). */
 export type ScheduleField = 'recurrence' | 'gcal' | 'category'
 
 /** Each hides its "+" chip and row. 'startDate' is the "do it between" window
@@ -81,7 +81,7 @@ export interface PlanDefaults {
   /** A 'task' item that starts with a time and a length (startTime / duration). */
   scheduled?: boolean
 
-  /** Start on Google Calendar whatever the default says. */
+  /** Start on the calendar whatever the default says. */
   gcal?: boolean
 }
 

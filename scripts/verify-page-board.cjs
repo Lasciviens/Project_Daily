@@ -238,8 +238,8 @@ check('Tasks: groups read left to right by time from step 2', [2, 3, 4].every(s 
       && !fs.existsSync(path.join(__dirname, '../src/features/daily/components/WeekWidget.tsx')))
   check('Personal opens a view only from its own state: no ?tab= / ?mode= / saved tab to fall back from (a ?date= opens that day\'s Today view)',
     !/searchParams\.get\('(?:tab|mode|view)'\)/.test(daily) && !/useRemembered|localStorage/.test(daily) && /searchParams\.get\('date'\)/.test(daily))
-  check('the Google calendar choice moved with the Week card to the Month card (never lost)',
-    /<CalendarFilter\b/.test(src('src/features/daily/components/MonthWidget.tsx')) && /setSelectedCalendarIds/.test(src('src/features/calendar/components/CalendarFilter.tsx')))
+  check('the Month card has no Google calendar choice any more (Google Calendar went, 25.11.2026)',
+    !/CalendarFilter/.test(src('src/features/daily/components/MonthWidget.tsx')) && !fs.existsSync(path.join(__dirname, '../src/features/calendar/components/CalendarFilter.tsx')))
 }
 
 console.log('boardWidthRem (page headers stop where the board stops)')

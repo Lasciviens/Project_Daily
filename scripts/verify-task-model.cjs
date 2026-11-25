@@ -199,27 +199,22 @@ eq(R.isFocusedOpen(task({ is_focused: true, status: 'waiting' })), true, 'a wait
 
 // ── The day schedule ──
 {
-  const block = (id, start, mins, extra = {}) => ({ id, date: TODAY, title: id, start_time: start, duration_minutes: mins, task_id: null, google_calendar_event_id: null, ...extra })
+  const block = (id, start, mins, extra = {}) => ({ id, date: TODAY, title: id, start_time: start, duration_minutes: mins, task_id: null, ...extra })
   const tpl = { id: 'w1', title: 'Weekly', days_of_week: [1], start_time: '18:00:00', end_time: '19:00:00', color: 'blue', category: 'daily' }
   const items = S.buildDaySchedule({
     date: TODAY, // a Monday
     blocks: [
       block('a', '09:00', 60), block('b', '13:00', 90, { task_id: 'tb', task_status: 'done' }),
-      block('c', '14:00', 60, { google_calendar_event_id: 'g1' }), block('u', null, 30),
+      block('c', '14:00', 60), block('g2', '16:00', 30), block('u', null, 30),
     ],
     prevBlocks: [block('night', '23:30', 90, { date: '2026-10-11' })],
     templates: [tpl],
-    events: [
-      { id: 'g1', summary: 'Linked', start: { dateTime: `${TODAY}T14:00:00` }, end: { dateTime: `${TODAY}T15:00:00` } },
-      { id: 'g2', summary: 'Dentist', start: { dateTime: `${TODAY}T16:00:00` }, end: { dateTime: `${TODAY}T16:30:00` } },
-      { id: 'g3', summary: 'Holiday', start: { date: TODAY }, end: { date: '2026-10-13' } },
-    ],
   })
   const ids = items.map(i => i.id).sort()
-  eq(ids, ['a', 'b', 'c', 'g2', 'g3', 'night__spillover', 'u', 'w1'], 'blocks, yesterday\'s tail, the weekly plan and unlinked events — a block\'s own event once')
+  eq(ids, ['a', 'b', 'c', 'g2', 'night__spillover', 'u', 'w1'], 'blocks, yesterday\'s tail and the weekly plan (Google Calendar\'s own events went, 25.11.2026)')
   eq(items.find(i => i.id === 'b').closed, true, 'a block whose task is done is closed')
   eq(items.find(i => i.id === 'night__spillover').planDate, '2026-10-11', 'the tail belongs to the day it started')
-  eq(S.timedItems(items).map(i => i.id), ['night__spillover', 'a', 'b', 'c', 'g2', 'w1'], 'timed: no undated block, no all-day event, in start order')
+  eq(S.timedItems(items).map(i => i.id), ['night__spillover', 'a', 'b', 'c', 'g2', 'w1'], 'timed: no undated block, in start order')
   eq(S.plannedMinutes(items), 60 + 60 + 90 + 60 + 30 + 60, 'planned: every timed item, its own portion (the tail 1h), done ones too')
   const ahead = S.aheadOnDay(items, true, 13.5)
   eq(ahead.map(i => i.id), ['c', 'g2', 'w1'], 'ahead at 13:30: not over, never a closed task\'s block')

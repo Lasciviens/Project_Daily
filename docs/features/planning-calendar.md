@@ -1,10 +1,22 @@
-# Planning, schedule and Google Calendar/Tasks
+# Planning, schedule, Apple Calendar and Google Tasks
 
 > Moved out of CLAUDE.md on 13.10.2026 (word for word, apart from translated quotes). This file describes how the feature works and why. The rules Claude must follow while changing it are in `.claude/rules/planning.md`, which Claude Code loads by itself when a matching file is read or edited.
 
 ## Calendar (summary)
 
-Google OAuth (unified consent, see `calendar-oauth`), read + write events. Sync/refresh button in the Daily agenda header. Two-way block↔event link — see Google Calendar and Tasks below.
+**Apple Calendar is the app's one calendar** (since 25.11.2026): an item's event goes to its area's Apple calendar through the queue (`icloud_outbox`, drained by `icloud-calendar`; `docs/features/calendar-plan.md`, `docs/integrations/icloud-caldav.md`). Google is **Google Tasks** only: one sign-in (`calendar-oauth` / `calendar-token` / `calendar-disconnect` keep their names; `GOOGLE_SCOPES` = `tasks`).
+
+## Google Calendar went (owner, 25.11.2026)
+
+The owner: "Google calendar can be removed. we dont need it anymore" — scope "Calendar only" (Google Tasks stays), and the events already there: "Leave them in Google" (stop syncing, delete nothing in Google).
+
+- **What went.** The browser's Google Calendar calls (`calendarApi`'s event calls, `linkBlockCalendarEvent`, `scheduleSeriesCalendar`, `deletedBlockEvents`), the agenda's, Home's and the day timeline's Google event reads (`useCalendarEventsForDay`, the week dots and the month's "N events" — `useCalendarRange`), `CalendarFilter` (the Month card's calendar picker) and `selectedCalendarIds`, `EditCalendarEventModal` and `eventEditRules`, "Add plans to Calendar", the series top-up and retry list, the read-back line on the Google card, the Google event rows of the day (`DayRow` kind `event`), `calendarOutboxRules` and the outbox drain and the Calendar read-back in `google-tasks-sync`, the Apple drain's hand-over of a Google copy (`icloud_hand_over`), and Settings → Calendar's "Shows in" choice (an area's `app`).
+- **Migration 208** stops the database side: the five Google Calendar outbox triggers and their functions, `calendar_outbox_request_upsert`, `apply_calendar_readback` and `icloud_hand_over` are dropped; what waited in `calendar_outbox` is deleted unsent (a queued delete never reaches Google). `icloud_writes_on` now means "iCloud is connected"; the settings trigger (179) no longer reads `app`; Undo's preview names a slot's or repeat's outside copy as Apple Calendar's (`app_undo_synced`).
+- **Existing items** (208, B–C): an item on Google Calendar — `google_target` Calendar or Both, or a row from before 155 with a Google event — whose area was not on Apple and that has no Apple copy becomes **Only in this app** (Calendar → None) or **Google Tasks** (Both → Tasks; its Google Task stays). An item whose area was on Apple, or that has an Apple copy, keeps Calendar — which is Apple Calendar. Every stored Google event id is forgotten (`google_calendar_event_id`, `google_calendar_from`, `google_calendar_horizon` set to null); the events stay in Google Calendar as they are. A slot with no task (an episode, an old slot) that was on Google Calendar only is no longer on a calendar. Every saved area's `app` is set to `apple`, and the new app reads every area in use as Apple: a new item with a time goes to Apple Calendar.
+- **Kept on purpose** (dropping a table or column needs the owner's go — `.claude/rules/database.md`): the columns above (always null now; the item save, Undo and the repeat days still name them), `calendar_outbox` (empty) and `google_calendar_sync_state` (unread), and `schedule_blocks.google_calendar_time_zone` (a plan's zone from before 183). `user_calendar_tokens` stays: it is Google Tasks' sign-in.
+- **The sign-in.** `GOOGLE_SCOPES` is `tasks` only. A refresh token given before keeps its Calendar scopes until it is revoked, and Google Tasks keeps working on it with no reconnect; Connect Google asks for Tasks only from now on. The owner step to drop the Calendar permission is in `docs/deploy-checklist.md`.
+- **An area turned off** (Settings → Calendar): its items are only in the app; events already in Apple Calendar stay there. Turning an area on moves its items into Apple Calendar (the move popup), as before. iCloud's Disconnect is no longer refused while an area is in use.
+- The sections below about Google Calendar (147, 148, 155's read-back, 135's outbox, the two-way link) are history: they describe what ran until 25.11.2026.
 
 ## The item screen — the one Add sheet (UnifiedPlanModal)
 

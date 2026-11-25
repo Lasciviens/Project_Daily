@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { useDayTasks } from '../../todo/hooks/useTodos'
 import { useTimeBlocks, useTrainingBlocks, useScheduleBlocks, useTrainingDayTasks } from '../../daily/hooks/useSchedule'
-import { useCalendarEventsForDay } from '../../calendar/hooks/useCalendar'
 import { aheadOnDay, buildDaySchedule, plannedMinutes } from '../../daily/daySchedule'
 import { dayRowCounts, repeatDayKeys, repeatsToDoOn } from '../../daily/dayItems'
 import type { TaskCounts } from '../../todo/taskRules'
@@ -21,8 +20,8 @@ import type { ScheduleBlock } from '../../daily/types'
 export interface NextUpItem {
   /** Unique on the day (a weekly plan can show twice: yesterday's tail and today's). */
   key: string
-  kind: 'block' | 'recurring' | 'calendar'
-  /** Real time_blocks / schedule_blocks id or Google event id (edit routing). */
+  kind: 'block' | 'recurring'
+  /** Real time_blocks / schedule_blocks id (edit routing). */
   id: string
   title: string
   startHour: number
@@ -59,9 +58,6 @@ export interface TodayOverview {
   refetchSchedule: () => void
   /** A failed schedule read is being tried again. */
   scheduleRetrying: boolean
-  /** Google Calendar's events for the day are still being read (kept out of isLoading: a token refresh
-   *  or a slow Google must never put the brief back into a skeleton). */
-  calendarLoading: boolean
 }
 
 const hourLabel = (h: number) => {
@@ -91,7 +87,6 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
   const blocksQ = useTimeBlocks(date)
   const prevBlocksQ = useTimeBlocks(prevDay)
   const templatesQ = useScheduleBlocks()
-  const calendarQ = useCalendarEventsForDay(date)
   const trainingQ = useTrainingBlocks(training.from, training.to)
   const trainingDaysQ = useTrainingDayTasks(training.from, training.to)
   // The clock ticks on today, so "Now" / "Next up" move on without a refetch.
@@ -114,7 +109,7 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
     // A repeat's day that is a task (156) carries its state: a ticked one is never "next".
     const withRepeatDays = [...dayTasks.repeatDays, ...dayTasks.open, ...dayTasks.done, ...dayTasks.cancelled]
     const items = buildDaySchedule({
-      date, blocks: blocksQ.data ?? [], prevBlocks: prevBlocksQ.data ?? [], templates, events: calendarQ.data ?? [],
+      date, blocks: blocksQ.data ?? [], prevBlocks: prevBlocksQ.data ?? [], templates,
       dayTasks: withRepeatDays,
     })
     const upcoming: NextUpItem[] = aheadOnDay(items, isToday, nowHour).map(i => ({
@@ -144,8 +139,7 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       upcoming,
       plannedMinutes: plannedMinutes(items),
       nextTraining,
-      // Every read of the app's own waits here, so a day appears once and complete; Google's is
-      // apart (calendarLoading).
+      // Every read waits here, so a day appears once and complete.
       isLoading: dayTasks.isLoading || blocksQ.isLoading || templatesQ.isLoading
         || prevBlocksQ.isLoading || trainingQ.isLoading || trainingDaysQ.isLoading,
       scheduleError: blocksFailed || prevFailed || templatesFailed,
@@ -155,8 +149,7 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
         if (templatesFailed) void refetchTemplates()
       },
       scheduleRetrying,
-      calendarLoading: calendarQ.isLoading,
     }
-  }, [date, nowMs, dayTasks.repeatDays, dayTasks.open, dayTasks.done, dayTasks.cancelled, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, prevBlocksQ.isLoading, templatesQ.data, templatesQ.isLoading, calendarQ.data, calendarQ.isLoading, trainingQ.data, trainingQ.isLoading, trainingDaysQ.data, trainingDaysQ.isLoading,
+  }, [date, nowMs, dayTasks.repeatDays, dayTasks.open, dayTasks.done, dayTasks.cancelled, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, prevBlocksQ.isLoading, templatesQ.data, templatesQ.isLoading, trainingQ.data, trainingQ.isLoading, trainingDaysQ.data, trainingDaysQ.isLoading,
     blocksFailed, prevFailed, templatesFailed, refetchBlocks, refetchPrev, refetchTemplates, scheduleRetrying])
 }

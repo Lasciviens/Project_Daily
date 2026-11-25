@@ -12,10 +12,8 @@ import {
 } from '../api/scheduleApi'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
-import { BLOCK_EVENT_RESET, relinkRestoredBlockEvents, removeDeletedBlockEvents } from '../../calendar/api/deletedBlockEvents'
-import {
-  SERIES_EVENT_RESET, relinkRestoredSeriesEvents, removeDeletedSeriesEvents,
-} from '../../calendar/api/scheduleSeriesCalendar'
+import { BLOCK_EVENT_RESET, SERIES_EVENT_RESET } from '../../calendar/areas/restoreResets'
+import { drainICloudSoon } from '../../calendar/areas/appleAreas'
 import { qk, STALE } from '../../../shared/query'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { repeatDayKeys, repeatDaysOn, repeatsToDoBetween, repeatsToDoOn } from '../dayItems'
@@ -89,9 +87,8 @@ export const linkedTimeBlockQuery = (taskId: string) => queryOptions({
 })
 
 /** Deletes a repeating plan with Undo; the days it became (migration 142) get
- *  their link back on Undo. Its Google Calendar series is removed right after
- *  (the calendar outbox, 147, if Google isn't reached); Undo makes a new one.
- *  Its days nobody acted on yet (an open day's task, 156) go with it and come
+ *  their link back on Undo. Its Apple Calendar series goes through the queue
+ *  (sent right after); Undo makes a new one. Its days nobody acted on yet (an open day's task, 156) go with it and come
  *  back with Undo (their Google Tasks are made again). */
 export function useDeleteScheduleBlock() {
   return useRowsDelete({
@@ -99,9 +96,9 @@ export function useDeleteScheduleBlock() {
     action: 'delete_schedule_block',
     invalidates: ['taskGraph'],
     cache: qk.schedule.all,
-    afterDelete: removeDeletedSeriesEvents,
+    afterDelete: () => drainICloudSoon(),
     overrides: () => ({ ...SERIES_EVENT_RESET, ...TASK_GOOGLE_RESET }),
-    afterRestore: relinkRestoredSeriesEvents,
+    afterRestore: () => drainICloudSoon(),
   })
 }
 
@@ -144,19 +141,17 @@ export function useTrainingDayTasks(from: string, to: string) {
 }
 
 // Every one-off block write refreshes the whole task graph: consumers read
-// schedule under different sub-keys (day, training range, by-task, block),
-// 'calendar' because a block change may have synced a Google event, and
+// schedule under different sub-keys (day, training range, by-task, block), and
 // 'tasks' because a block's title is mirrored FROM its linked task (migration
 // 077 retired the old bidirectional date/time sync and the delete-cascade-to-
 // task behaviour; the only cross-table effects left are the one-way task-title
 // trigger and task_id's ON DELETE CASCADE).
 //
 // Covers postpone (+30m / +1d) and the plan editor's own block writes.
-// mutateAsync resolves the typed calendarStatus. `report: false` for the plan
-// editor, which reports the whole save itself.
+// `report: false` for the plan editor, which reports the whole save itself.
 //
 // Real gap fixed (migration 077): this used to silently drop
-// duration_minutes/category/color/google_calendar_event_id even though the
+// duration_minutes/category/color even though the
 // underlying API function already accepted them. Every field now passes through.
 export function useUpdateTimeBlock({ report = true }: { report?: boolean } = {}) {
   return useMutationWithFeedback({
@@ -173,8 +168,8 @@ export function useUpdateTimeBlock({ report = true }: { report?: boolean } = {})
 }
 
 /**
- * Deletes a one-off slot with Undo (the task it belongs to stays). Its Google
- * Calendar event is removed right after; Undo makes a new one.
+ * Deletes a one-off slot with Undo (the task it belongs to stays). Its Apple
+ * Calendar event goes through the queue (sent right after); Undo makes a new one.
  */
 export function useDeleteTimeBlock() {
   return useRowsDelete({
@@ -182,8 +177,8 @@ export function useDeleteTimeBlock() {
     action: 'delete_time_block',
     invalidates: ['taskGraph'],
     cache: qk.schedule.all,
-    afterDelete: removeDeletedBlockEvents,
+    afterDelete: () => drainICloudSoon(),
     overrides: () => BLOCK_EVENT_RESET,
-    afterRestore: relinkRestoredBlockEvents,
+    afterRestore: () => drainICloudSoon(),
   })
 }

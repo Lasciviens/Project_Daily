@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  The item screen's marks (owner's point 7, answers 4 and 5): a small mark on
 //  a row says where that field goes — Apple's logo for Apple Calendar,
-//  Google's for Google Calendar and Google Tasks, the app's own logo for "only
+//  Google's for Google Tasks, the app's own logo for "only
 //  the app". Shown while Settings → Calendar → "Show where each field goes" is
 //  on. A tap (or a mouse resting on it) says it in words; inside a row that is
 //  a button, the tap stays with the mark. The red dot means Apple refused it.

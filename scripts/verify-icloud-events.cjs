@@ -215,8 +215,8 @@ eq(!/icloud_href|\.href\b/.test(drainOne) && /ownEventUrl\(/.test(drainOne), tru
 eq((drainOne.match(/if \(step === 'put'\) \{\n\s*const url = ownEventUrl\([^)]*\)\n\s*if \(!url\) throw new ICloudError\('calendars', NO_AREA_CALENDAR\)/g) || []).length, 2,
   'an event is put only when the item wants a calendar and its area is on and on Apple; a missing area calendar keeps the row waiting (never a silent skip)')
 eq(/wantsCalendar\(t \? t\.google_target : null,/.test(drainOne), true, 'a slot with no task is on a calendar only where it is now (never put there by default)')
-eq(/const skippedDay = !!b\.schedule_block_id && t\?\.status === 'cancelled' && !t\.closed_reason\n\s*const wanted = !skippedDay && wantsCalendar\(/.test(drainOne) && /schedule_block_id, google_calendar_event_id, icloud_area/.test(drainOne) && /\.select\('status, closed_reason, /.test(drainOne), true,
-  'a skipped day of a repeat comes off Apple Calendar, as it does off Google (Undo of the skip puts it back); a day marked missed stays')
+eq(/const skippedDay = !!b\.schedule_block_id && t\?\.status === 'cancelled' && !t\.closed_reason\n\s*const wanted = !skippedDay && wantsCalendar\(/.test(drainOne) && /schedule_block_id, icloud_area/.test(drainOne) && /\.select\('status, closed_reason, /.test(drainOne), true,
+  'a skipped day of a repeat comes off Apple Calendar (Undo of the skip puts it back); a day marked missed stays')
 eq(/function removeOwnEvent[\s\S]{0,400}if \(!url\) throw new ICloudError\('calendars', NO_AREA_CALENDAR\)/.test(src), true, 'a link is never cleared without a real DELETE')
 eq((drainOne.match(/const etag = await putEvent\([^\n]*\n\s*if \(!\(await link\([^\n]*\n[\s\S]{0,500}?\}\n\s*await removeOld\(/g) || []).length, 2,
   'the new copy first, linked only while the row still is what was read, then the old copies go')
@@ -243,21 +243,21 @@ eq(!/'PROPPATCH'|'MKCALENDAR'/.test(drainOne), true, 'the drain never makes or c
 
 
 console.log('\n== The switch per area (2b-2, migration 175) ==')
-const step = (wanted, apple, inApple, googleCopy, waitsForGoogleTask) => F.drainStep({ wanted, apple, inApple, googleCopy, waitsForGoogleTask })
-eq([step(true, true, false, true, false), step(true, true, true, false, false)], ['put', 'put'], 'an item that wants a calendar in an area on Apple is put there')
-eq([step(true, false, true, false, false), step(true, false, true, true, false)], ['keep', 'remove'],
-  'back on Google: the Apple copy stays until the Google copy exists, then goes (the new copy first)')
-eq([step(false, true, true, false, true), step(false, true, true, false, false), step(false, false, false, false, false)], ['keep', 'remove', 'none'],
+const step = (wanted, apple, inApple, waitsForGoogleTask) => F.drainStep({ wanted, apple, inApple, waitsForGoogleTask })
+eq([step(true, true, false, false), step(true, true, true, false)], ['put', 'put'], 'an item that wants a calendar in an area in use is put there')
+eq([step(true, false, true, false), step(true, false, false, false)], ['keep', 'none'],
+  'an area turned off: its events already in Apple Calendar stay; nothing new goes there')
+eq([step(false, true, true, true), step(false, true, true, false), step(false, false, false, false)], ['keep', 'remove', 'none'],
   'moved to Google Tasks: the Apple copy waits for the Google Task; off every calendar it goes; nothing in Apple, nothing to do')
-eq([F.onApple({ enabled: true, app: 'apple' }), F.onApple({ enabled: false, app: 'apple' }), F.onApple({ enabled: true, app: 'google' })], [true, false, false],
-  'an area writes to Apple only when it is switched to Apple and in use')
+eq([F.onApple({ enabled: true }), F.onApple({ enabled: false }), F.onApple({ enabled: true, app: 'google' })], [true, false, true],
+  'an area writes to Apple whenever it is in use (Apple is the only calendar since 208; an old saved `app` key is not read)')
 eq([F.validEtag('"abc-1"'), F.validEtag('W/"x"'), F.validEtag('"a"\r\nX-Evil: 1'), F.validEtag('abc'), F.validEtag('""'), F.validEtag(null)],
   ['"abc-1"', 'W/"x"', null, null, null, null], 'a stored version goes into If-Match only as one quoted value (never a header break)')
 eq(/validEtag\(b\.icloud_etag\)/.test(drainOne) && /validEtag\(p\.icloud_etag\)/.test(drainOne), true, 'the drain sends a stored version only through that check')
-eq((drainOne.match(/await removeOld\('(slot|plan)', [bp]\.id, area, [bp]\.icloud_area, q\.area\)\n(?:\s*if \(area === 'training'[^\n]*await requeueSessionWorkouts\([^\n]*\n)?\s*return handOver\('(slot|plan)', [bp]\.id, [bp]\.google_calendar_event_id\)/g) || []).length, 2,
-  'the Google Calendar copy is handed over only after the Apple copy is in and linked')
-eq(/db\.rpc\('icloud_hand_over', \{ p_user: userId, p_entity: entity, p_id: id, p_event: eventId \}\)/.test(drainOne), true,
-  "the hand-over is the database's (it deletes only an id the app made for that item, 175)")
+eq((drainOne.match(/await removeOld\('(slot|plan)', [bp]\.id, area, [bp]\.icloud_area, q\.area\)\n(?:\s*if \(area === 'training'[^\n]*await requeueSessionWorkouts\([^\n]*\n)?\s*return 'put'/g) || []).length, 2,
+  'an item is put only after its Apple copy is in and linked')
+eq(!/icloud_hand_over|google_calendar_event_id|googleCopy/.test(drainOne), true,
+  'the drain never touches Google Calendar (no hand-over, no Google link read): nothing is deleted in Google (owner, 25.11.2026)')
 eq((drainOne.match(/if \(step === 'keep'\) \{\n\s*await removeOld\('(slot|plan)', [bp]\.id, [bp]\.icloud_area, q\.area\)\n\s*return 'kept'/g) || []).length, 2,
   'a kept item keeps its linked Apple copy (only an unlinked one left by an Undo goes)')
 const handler = src.slice(src.indexOf('Deno.serve('))
@@ -275,9 +275,9 @@ eq(/!\(AREA_KEYS as readonly string\[\]\)\.includes\(areaKey\) \|\| !\(MOVE_FROM
 eq(/part === 'past days of a repeat'\) page = page\.lt\('date', today\)\.not\('schedule_block_id', 'is', null\)/.test(moveFn), true,
   'from today on also takes the earlier days of a repeat with a slot of their own (they go with the series)')
 const disconnect = src.slice(src.indexOf("if (action === 'disconnect')"), src.indexOf("if (action === 'move')"))
-eq(/onApple\(readCalendarPrefs\(prefsRow\?\.prefs\)\.areas\[k\]\)/.test(disconnect) && disconnect.indexOf('onAppleNow.length') < disconnect.indexOf(".delete()"), true,
-  'disconnect is refused while an area shows in Apple Calendar (its new items would reach no calendar)')
-eq(/if \(!dryRun && !onApple\(/.test(moveFn), true, "an area's items are queued only once it is switched to Apple (the preview only counts)")
+eq(/\.from\('icloud_credentials'\)\.delete\(\)\.eq\('user_id', user\.id\)/.test(disconnect) && !/onApple/.test(disconnect), true,
+  'disconnect deletes only the caller\'s own stored password; with Apple the only calendar, nothing waits for another one (208)')
+eq(/if \(!dryRun && !onApple\(/.test(moveFn), true, "an area's items are queued only once it is turned on (the preview only counts)")
 const moveReads = [...moveFn.matchAll(/db\.from\('[a-z_]+'\)[^\n]*(?:\n\s+\.[^\n]*)*/g)].map(m => m[0]).filter(r => !/\.upsert\(/.test(r))
 eq(moveReads.length >= 4 && moveReads.every(r => /\.eq\('user_id', userId\)/.test(r)), true, `a move reads only the caller's own rows (${moveReads.length})`)
 
@@ -353,8 +353,8 @@ eq(/filter\(d => \(d\.originalDate \?\? ''\) >= today\)\.slice\(0, 31\)/.test(rb
 eq(/db\.rpc\('icloud_calendar_look'/.test(lookFn) && !/from\('calendar_prefs'\)\.upsert/.test(lookFn), true,
   "a calendar renamed on the iPhone changes only its name and colour in Settings (one narrow update, never the whole document)")
 const readFile = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
-eq(/BLOCK_EVENT_RESET: RowOverrides = \{ time_blocks: \{ google_calendar_event_id: null, icloud_area: null, icloud_etag: null \} \}/.test(readFile('src/features/calendar/api/deletedBlockEvents.ts'))
-   && /icloud_area: null, icloud_etag: null, icloud_horizon: null/.test(readFile('src/features/calendar/api/scheduleSeriesCalendar.ts')), true,
+eq(/BLOCK_EVENT_RESET: RowOverrides = \{ time_blocks: \{ google_calendar_event_id: null, icloud_area: null, icloud_etag: null \} \}/.test(readFile('src/features/calendar/areas/restoreResets.ts'))
+   && /icloud_area: null, icloud_etag: null, icloud_horizon: null/.test(readFile('src/features/calendar/areas/restoreResets.ts')), true,
   'Undo of a delete puts the item back without its old Apple link (the next read-back never takes it for deleted on the iPhone)')
 eq(/res\.status === 503\) \{[^\n]*throw new ICloudError\('busy'/.test(src) && /e\.code === 'auth' \|\| e\.code === 'busy'\)\) \{\n[^]*?\n\s*throw e\n\s*\}/.test(drainFn), true,
   "iCloud's rate limit (503) stops the run instead of hammering it")
@@ -426,7 +426,7 @@ console.log('\n== A save\'s own item goes first (03.11.2026) ==')
     && /if \(mine\) said\.set\(keyOf\(mine\.entity, mine\.entity_id\), \{ status: 'failed', error: why, retryAt: next \}\)/.test(drain)
     && /said\.set\(keyOf\(r\.entity, r\.entity_id\), \{ status: 'waiting', error: r\.last_error, retryAt: r\.next_try_at \}\)/.test(drain)
     && /const items = opts\.items\?\.map\(it => \(\{ entity: it\.entity, id: it\.id, \.\.\.said\.get\(keyOf\(it\.entity, it\.id\)\)! \}\)\)/.test(drain)
-    && /const ITEM_STATUS: Record<DrainResult, DrainItemStatus> = \{ put: 'sent', moved: 'sent', foreign: 'sent', kept: 'kept', removed: 'removed', none: 'none' \}/.test(src), true,
+    && /const ITEM_STATUS: Record<DrainResult, DrainItemStatus> = \{ put: 'sent', kept: 'kept', removed: 'removed', none: 'none' \}/.test(src), true,
     "the answer says each named row's own outcome, by its kind and id: sent, kept, removed, none, failed (its reason, its retry time), waiting, or not queued")
   // A fault in the app's own code is never blamed on iCloud.
   const net = new F.ICloudError('unreachable', 'iCloud did not answer')

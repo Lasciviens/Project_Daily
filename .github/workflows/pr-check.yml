@@ -506,6 +506,14 @@ jobs:
         run: node scripts/verify-db-trakt-queue-protect.mjs
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      # Migration 208 (Google Calendar goes; Google Tasks and Apple Calendar stay): nothing queues or sends Google
+      # Calendar work (triggers, read-back, hand-over gone; waiting work dropped unsent), every Google Calendar item is
+      # only in this app (Both → Tasks) unless its area is on Apple or it has an Apple copy, the event links are
+      # forgotten, every area is on Apple, saves still reach Apple and Google Tasks. 208 runs twice: nothing changes.
+      - name: Google Calendar off database scenarios
+        run: node scripts/verify-db-google-calendar-off.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
   # Every scripts/verify-*.cjs|mjs, several at a time, as its own job beside
   # the build above, so it adds no waiting time unless it is slower than the

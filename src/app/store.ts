@@ -163,14 +163,12 @@ export const toast = {
   },
 }
 
-// ─── Calendar ─────────────────────────────────────────────────────────────────
+// ─── Google sign-in (Google Tasks; the name is from when it served Google Calendar too) ──
 
 interface CalendarState {
   accessToken:         string | null
   expiresAt:           number | null
-  selectedCalendarIds: string[] | null
   setAccessToken:          (token: string | null, expiresIn?: number) => void
-  setSelectedCalendarIds:  (ids: string[] | null) => void
 }
 
 export const useCalendarStore = create<CalendarState>()(
@@ -178,14 +176,14 @@ export const useCalendarStore = create<CalendarState>()(
     (set) => ({
       accessToken:         null,
       expiresAt:           null,
-      selectedCalendarIds: null,
       setAccessToken: (token, expiresIn) => set({
         accessToken: token,
         expiresAt:   token && expiresIn ? Date.now() + expiresIn * 1000 : null,
       }),
-      setSelectedCalendarIds: (ids) => set({ selectedCalendarIds: ids }),
     }),
-    { name: 'calendar-token' }
+    // Only the token is kept: the Google calendars a device once picked (`selectedCalendarIds`, gone with Google
+    // Calendar, 25.11.2026) drop out of storage at the next write — their ids name the account.
+    { name: 'calendar-token', partialize: (s) => ({ accessToken: s.accessToken, expiresAt: s.expiresAt }) }
   )
 )
 

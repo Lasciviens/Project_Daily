@@ -25,7 +25,7 @@ export {
 
 type Shape = Pick<ItemInput, 'time' | 'durationMinutes' | 'repeat'>
 
-// ── Google (owner, 15.10.2026) ───────────────────────────────────────────────
+// ── Where it goes (owner, 15.10.2026; Apple Calendar only since 25.11.2026) ───
 
 /** The choice the item saves with: the one picked while it fits, else the default. */
 export function effectiveGoogleTarget(input: Pick<ItemInput, 'time' | 'repeat'>, picked: GoogleTarget | null): GoogleTarget {
@@ -33,7 +33,7 @@ export function effectiveGoogleTarget(input: Pick<ItemInput, 'time' | 'repeat'>,
   return defaultGoogleTarget(input)
 }
 
-/** How the item sits on Google Calendar: busy with a length, free at a time, all day without one. */
+/** How the item sits on its calendar: busy with a length, free at a time, all day without one. */
 function calendarKind(input: Shape): string {
   if (!input.time) return 'all day'
   return input.durationMinutes ? 'busy' : 'free'
@@ -42,20 +42,17 @@ function calendarKind(input: Shape): string {
 /** A repeat on Google Tasks: each day's task (made on its day, 156) is a Google Task. */
 export const REPEAT_TASKS_LABEL = 'Google Tasks · one per day'
 
-/** Which calendar app the item's area writes to (Settings → Calendar, 2b-2): its event is in Google Calendar or
- *  in Apple Calendar; Google Tasks is Google Tasks either way. */
-export type CalendarApp = 'google' | 'apple'
+/** Whether the item's area has a calendar (Settings → Calendar): Apple Calendar when it is in use, none when it is
+ *  off. Google Tasks is Google Tasks either way. (Google Calendar was the other app until 25.11.2026.) */
+export type CalendarApp = 'apple' | 'none'
 
 /** The chip's text — the actual target, never "Auto". */
-export function googleTargetLabel(input: Shape, target: GoogleTarget, app: CalendarApp = 'google'): string {
-  const calendar = app === 'apple' ? 'Apple Calendar' : 'Google Calendar'
+export function googleTargetLabel(input: Shape, target: GoogleTarget, app: CalendarApp = 'apple'): string {
   switch (target) {
-    case 'calendar': return `${calendar} · ${calendarKind(input)}`
+    case 'calendar': return app === 'apple' ? `Apple Calendar · ${calendarKind(input)}` : 'Apple Calendar · area off'
     case 'tasks':    return input.repeat ? REPEAT_TASKS_LABEL : 'Google Tasks'
-    case 'both':
-      if (app === 'apple') return input.repeat ? 'Apple Calendar + Google Tasks · one per day' : 'Google Tasks + Apple Calendar'
-      return input.repeat ? 'Calendar + Google Tasks · one per day' : 'Google Tasks + Calendar'
-    case 'none':     return app === 'apple' ? 'Only in this app' : 'Not on Google'
+    case 'both':     return input.repeat ? 'Apple Calendar + Google Tasks · one per day' : 'Google Tasks + Apple Calendar'
+    case 'none':     return 'Only in this app'
   }
 }
 
@@ -71,24 +68,24 @@ export interface GoogleChoice {
 /** The four choices of the Google chip, each saying what it does for this
  *  item. A repeat may go to Google Tasks since 156 — one task per day, made on
  *  its day (the API can't repeat a task, so there is no series there). */
-export function googleChoices(input: Shape, app: CalendarApp = 'google'): GoogleChoice[] {
+export function googleChoices(input: Shape, app: CalendarApp = 'apple'): GoogleChoice[] {
   const cal = calendarKind(input)
   const blocked = (target: GoogleTarget) => {
     const problem = googleTargetProblem({ repeat: input.repeat, google: target }, app)
     return problem?.level === 'blocked' ? problem.message : undefined
   }
-  const apple = app === 'apple'
+  const off = app === 'none' ? 'Its area is off (Settings → Calendar)' : null
   return [
     {
-      target: 'calendar', label: apple ? 'Apple Calendar' : 'Google Calendar',
-      hint: cal === 'all day' ? (input.repeat ? 'An all-day repeating event' : 'An all-day event')
-        : cal === 'busy' ? 'Busy for its length' : "Free — at its time, doesn't block",
+      target: 'calendar', label: 'Apple Calendar',
+      hint: off ?? (cal === 'all day' ? (input.repeat ? 'An all-day repeating event' : 'An all-day event')
+        : cal === 'busy' ? 'Busy for its length' : "Free — at its time, doesn't block"),
     },
     input.repeat
       ? { target: 'tasks', label: REPEAT_TASKS_LABEL, hint: "Each day's to-do in the Google Tasks widget", disabled: blocked('tasks') }
       : { target: 'tasks', label: 'Google Tasks', hint: 'A to-do in the Google Tasks widget', disabled: blocked('tasks') },
-    { target: 'both', label: 'Tasks and Calendar', hint: apple ? 'In Apple Calendar and as a Google Task' : 'Shows twice in Google Calendar', disabled: blocked('both') },
-    { target: 'none', label: apple ? 'Only in this app' : 'Not on Google', hint: apple ? 'Not in Apple Calendar or Google' : 'Only in this app' },
+    { target: 'both', label: 'Tasks and Calendar', hint: off ?? 'In Apple Calendar and as a Google Task', disabled: blocked('both') },
+    { target: 'none', label: 'Only in this app', hint: 'Not in Apple Calendar or Google Tasks' },
   ]
 }
 

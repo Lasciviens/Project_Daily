@@ -56,25 +56,28 @@ export function hhmm(t: string | null | undefined): string | null {
 }
 const minutesOf = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
 
-// ── Google (owner, 15.10.2026) ───────────────────────────────────────────────
-//  The owner reads to-dos in the Google Tasks widget on the iPhone and sees
-//  Google Calendar through Apple Calendar, which doesn't show Google Tasks.
+// ── Where it goes (owner, 15.10.2026; Apple Calendar only since 25.11.2026) ──
+//  The owner reads to-dos in the Google Tasks widget on the iPhone and the
+//  day's events in Apple Calendar. `google_target` keeps its name: 'calendar'
+//  is the item's calendar — Apple Calendar, through its area (Settings →
+//  Calendar); Google Calendar is no longer one (owner: "Google calendar can be
+//  removed").
 
-/** Where an item goes when nobody picked: a time or a repeat → Google
- *  Calendar (a repeat without a time is an all-day series); no time → Google
- *  Tasks. Never both by default. */
+/** Where an item goes when nobody picked: a time or a repeat → the calendar
+ *  (a repeat without a time is an all-day series); no time → Google Tasks.
+ *  Never both by default. */
 export function defaultGoogleTarget(input: Pick<ItemInput, 'time' | 'repeat'>): GoogleTarget {
   return input.time || input.repeat ? 'calendar' : 'tasks'
 }
 
-/** Why a Google choice doesn't fit the item, or null: Both shows the item
- *  twice in Google Calendar, which lists Google Tasks too (a warning, said in
- *  the sheet). Google Tasks can't repeat through its API, but since 156 a
- *  repeat on Google Tasks is "one per day": each day's task (made on its
- *  day) is a Google Task — so nothing is blocked any more. */
-export function googleTargetProblem(input: Pick<ItemInput, 'repeat' | 'google'>, app: 'google' | 'apple' = 'google'): GoogleTargetProblem | null {
-  // In Apple Calendar (its area on Apple, 2b-2) the event and the Google Task are in two apps: nothing shows twice.
-  if (input.google === 'both' && app === 'google') return { level: 'warning', message: 'Shows twice in Google Calendar' }
+/** Why a choice doesn't fit the item, or null: a calendar choice in an area that has none (not in use, Settings →
+ *  Calendar) is said in the sheet. Google Tasks can't repeat through its API, but since 156 a repeat on Google Tasks
+ *  is "one per day": each day's task (made on its day) is a Google Task — so nothing is blocked. (Both used to warn
+ *  "Shows twice in Google Calendar"; with Apple Calendar the event and the Google Task are in two apps.) */
+export function googleTargetProblem(input: Pick<ItemInput, 'repeat' | 'google'>, app: 'apple' | 'none' = 'apple'): GoogleTargetProblem | null {
+  if ((input.google === 'calendar' || input.google === 'both') && app === 'none') {
+    return { level: 'warning', message: 'Its area has no calendar — turn it on in Settings → Calendar' }
+  }
   return null
 }
 
@@ -98,7 +101,7 @@ export function itemInputProblem(input: ItemInput): string | null {
     if (problem?.level === 'blocked') return problem.message
   }
   if ((input.google === 'calendar' || input.google === 'both') && !input.date && !(r && input.scope !== 'day')) {
-    return 'Google Calendar needs a day — pick one, or choose Google Tasks'
+    return 'A calendar needs a day — pick one, or choose Google Tasks'
   }
   return null
 }
@@ -286,29 +289,29 @@ export function endOf(time: string, minutes: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 }
 
-const GOOGLE_WORDS: Record<GoogleTarget, string | null> = {
+/** An item whose area has no calendar (not in use): only its Google Task leaves the app. A repeat on Google Tasks is
+ *  one Google Task per day (156). */
+const NO_CALENDAR_WORDS: Record<GoogleTarget, string | null> = {
   tasks: 'on Google Tasks',
-  calendar: 'on Google Calendar',
-  both: 'on Google Tasks and Calendar',
+  calendar: null,
+  both: 'on Google Tasks',
   none: null,
 }
-
-/** A repeat on Google Tasks is one Google Task per day (156). */
-const REPEAT_GOOGLE_WORDS: Partial<Record<GoogleTarget, string>> = {
+const REPEAT_NO_CALENDAR_WORDS: Partial<Record<GoogleTarget, string>> = {
   tasks: 'on Google Tasks, one per day',
-  both: 'on Google Calendar and Google Tasks, one per day',
+  both: 'on Google Tasks, one per day',
 }
 
-/** An item whose area shows in Apple Calendar (2b-2): the server sends its event after the save answered, so the
- *  line names where it is going — never that it is there yet. A Google Task reads as on Google. */
+/** An item whose area is in Apple Calendar (2b-2): the server sends its event after the save answered, so the
+ *  line names where it is going — never that it is there yet. A Google Task reads as on Google Tasks. */
 const APPLE_WORDS: Record<GoogleTarget, string | null> = {
-  tasks: GOOGLE_WORDS.tasks,
+  tasks: NO_CALENDAR_WORDS.tasks,
   calendar: 'sending to Apple Calendar',
   both: 'on Google Tasks · sending to Apple Calendar',
   none: null,
 }
 const REPEAT_APPLE_WORDS: Partial<Record<GoogleTarget, string>> = {
-  tasks: REPEAT_GOOGLE_WORDS.tasks,
+  tasks: REPEAT_NO_CALENDAR_WORDS.tasks,
   both: 'on Google Tasks, one per day · sending to Apple Calendar',
 }
 
@@ -326,18 +329,17 @@ export function itemWhenText(input: Pick<ItemInput, 'date' | 'time' | 'durationM
 
 /**
  * The save's one result line (every action says its result): "Added ·
- * 15.10.2026 17:30–18:30 · on Google Calendar", "Saved for 15.10.2026 only ·
- * …", "Added · Every week on Sun · on Google Calendar". `calendarApp`: where
- * the item's area shows (useItemCalendarApp) — an Apple area's line says
- * "sending to Apple Calendar" (until 03.11.2026 it said Google Calendar).
+ * 15.10.2026 17:30–18:30 · sending to Apple Calendar", "Saved for 15.10.2026
+ * only · …", "Added · Every week on Sun · on Google Tasks, one per day".
+ * `calendarApp`: whether the item's area has a calendar (useItemCalendarApp).
  */
-export function describeSaved(input: ItemInput, saved: SavedItem, calendarApp: 'google' | 'apple' = 'google'): string {
+export function describeSaved(input: ItemInput, saved: SavedItem, calendarApp: 'apple' | 'none' = 'apple'): string {
   const created = saved.created ?? (!input.taskId && !input.blockId && !input.scheduleBlockId)
   const day = saved.occurrenceDate ?? (input.scope === 'day' ? input.occurrenceDate : null)
   const verb = day ? `Saved for ${formatDate(day)} only` : created ? 'Added' : 'Saved'
   const parts = [verb, itemWhenText(day ? { ...input, repeat: null } : input)]
   if (input.deadline?.date) parts.push(`due ${formatDate(input.deadline.date)}${input.deadline.time ? ` ${hhmm(input.deadline.time)}` : ''}`)
-  const [words, repeatWords] = calendarApp === 'apple' ? [APPLE_WORDS, REPEAT_APPLE_WORDS] : [GOOGLE_WORDS, REPEAT_GOOGLE_WORDS]
+  const [words, repeatWords] = calendarApp === 'apple' ? [APPLE_WORDS, REPEAT_APPLE_WORDS] : [NO_CALENDAR_WORDS, REPEAT_NO_CALENDAR_WORDS]
   const google = (input.repeat && !day ? repeatWords[input.google] : undefined) ?? words[input.google]
   if (google) parts.push(google)
   return parts.join(' · ')

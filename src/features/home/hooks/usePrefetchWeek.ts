@@ -4,19 +4,17 @@ import { STALE } from '../../../shared/query'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import { dayTasksQuery } from '../../todo/hooks/useTodos'
 import { timeBlocksQuery, trainingBlocksQuery } from '../../daily/hooks/useSchedule'
-import { useCalendarDaysPrefetch } from '../../calendar/hooks/useCalendar'
 import { trainingRangeFor } from './useTodayOverview'
 
 /**
  * Reads the shown week's days ahead, into the same cache entries the day
- * reads use (the one day list, the slots, the calendar, the week's training),
+ * reads use (the one day list, the slots, the week's training),
  * so picking a day in Home's or Personal's week strip shows it at once (owner, 16.10.2026:
  * "why is it so slow to change date?" — every pick was a cold read). Starts
  * once the page is idle; a day already read and fresh is not read again.
  */
 export function usePrefetchWeek(monday: string) {
   const qc = useQueryClient()
-  const prefetchCalendar = useCalendarDaysPrefetch()
   useEffect(() => {
     const run = () => {
       const today = todayStr()
@@ -30,7 +28,6 @@ export function usePrefetchWeek(monday: string) {
         const r = trainingRangeFor(other, today)
         void qc.prefetchQuery(trainingBlocksQuery(r.from, r.to))
       }
-      prefetchCalendar(days)
     }
     const idle = window.requestIdleCallback?.bind(window)
     if (idle) {
@@ -39,5 +36,5 @@ export function usePrefetchWeek(monday: string) {
     }
     const id = window.setTimeout(run, 300)
     return () => window.clearTimeout(id)
-  }, [qc, monday, prefetchCalendar])
+  }, [qc, monday])
 }

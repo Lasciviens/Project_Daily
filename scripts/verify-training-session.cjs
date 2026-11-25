@@ -63,8 +63,8 @@ eq(S.pastWeekMoveLine('Push A', '2026-11-04', null), "Moved 7 or more days: kept
   // Edit session (the Add sheet) reads the same rule and says the same line (28.10.2026).
   const sheet = require('fs').readFileSync(require('path').join(__dirname, '../src/shared/components/plan-modal/UnifiedPlanModal.tsx'), 'utf8')
   eq(/movesPastWeek\(session\.firstDay/.test(sheet) && /pastWeekMoveLine\(input\.title\.trim\(\) \|\| session\.title, to, outcome/.test(sheet)
-    && /carryPastWeekMoveToCalendar\(/.test(sheet) && /fetchPastWeekOutcome\(session\.taskId/.test(sheet), true,
-    "the session's editor reads movesPastWeek, reads back what happened, says pastWeekMoveLine and carries Google")
+    && /sendPastWeekMoveSoon\(\)/.test(sheet) && /fetchPastWeekOutcome\(session\.taskId/.test(sheet), true,
+    "the session's editor reads movesPastWeek, reads back what happened, says pastWeekMoveLine and sends Apple Calendar its change")
   const actions = require('fs').readFileSync(require('path').join(__dirname, '../src/features/training/hooks/useTrainingPlanActions.ts'), 'utf8')
   eq(/return fetchPastWeekOutcome\(rows\.taskId, date/.test(actions) && /pastWeekMoveLine\(v\.plan\.info\.title, v\.date, outcome\)/.test(actions), true,
     'Move reads back what happened and says it')

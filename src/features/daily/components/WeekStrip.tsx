@@ -4,7 +4,6 @@ import { cx } from '../../../shared/ui'
 import { addDays, addWeeks, format, startOfWeek, isToday, isSameDay, getISOWeek } from 'date-fns'
 import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
 import { useOpenOnDay, useTasksByWeek } from '../../todo/hooks/useTodos'
-import { useCalendarEventDatesForRange } from '../../calendar/hooks/useCalendarRange'
 import { useRepeatDays } from '../hooks/useSchedule'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -32,7 +31,6 @@ export function WeekStrip({ viewDate, onDayClick }: Props) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
   const { data: tasks = [] } = useTasksByWeek(weekStart, addDays(weekStart, 6))
-  const { data: calDates }   = useCalendarEventDatesForRange(weekStart, addDays(weekStart, 6))
 
   // The same open count as the day's list: its open tasks (taskRules.onDay)
   // plus the repeat days still to do on it.
@@ -53,7 +51,6 @@ export function WeekStrip({ viewDate, onDayClick }: Props) {
           const viewed = isSameDay(d, viewDate)
           const today  = isToday(d)
           const count  = openCount(d)
-          const hasCal = calDates?.has(format(d, 'yyyy-MM-dd')) ?? false
           return (
             <button
               key={d.toISOString()}
@@ -81,7 +78,6 @@ export function WeekStrip({ viewDate, onDayClick }: Props) {
                     {count}
                   </span>
                 )}
-                {hasCal && <span data-tone="info" className={cx('tone-dot !h-1 !w-1', viewed && 'opacity-80')} aria-hidden />}
               </span>
             </button>
           )

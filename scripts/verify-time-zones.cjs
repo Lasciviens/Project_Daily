@@ -84,8 +84,8 @@ eq([D.rowTimeZone({ item: { block } }), D.rowTimeZone({ item: { template: { time
 }
 ok(/timeZone: MATCH_TIME_ZONE/.test(src('src/features/football/hooks/useFootball.ts')) && (src('src/features/football/footballModel.ts').match(/timeZone: MATCH_TIME_ZONE/g) ?? []).length === 2,
   'a football plan (Plan it, a subscription, a moved kick-off) is on Oslo\'s clock and says so — its time is read there (osloParts)')
-ok(/zoneTag\(rowTimeZone\(row\)\)/.test(src('src/features/daily/components/DayAgendaRows.tsx')) && /row\.kind === 'event' \? null/.test(src('src/features/daily/components/DayAgendaRows.tsx')),
-  'the time column shows the zone of a slot or plan whose clock isn\'t the phone\'s — never of a Google event (already on the phone\'s clock)')
+ok(/zoneTag\(rowTimeZone\(row\)\)/.test(src('src/features/daily/components/DayAgendaRows.tsx')),
+  'the time column shows the zone of a slot or plan whose clock isn\'t the phone\'s')
 
 // ── Apple: a VTIMEZONE for any real zone, read back against the runtime's offsets ──
 const E = require('../src/features/calendar/areas/icloudEvents.ts')
@@ -164,7 +164,7 @@ ok(guarded, 'the last guard: an event whose zone is no zone name is never writte
 const fn = src('supabase/functions/icloud-calendar/index.ts')
 ok(/timeZone: itemTimeZone\(b\.time_zone\)/.test(fn) && /timeZone: planTimeZone\(p\)/.test(fn), 'the drain writes a slot in its zone and a plan in its own (else its Google series\')')
 ok(/icloud_etag, icloud_from, icloud_horizon, time_zone(, place(, alerts, show_as, url, travel_minutes, repeat_until, repeat_count)?)?'\)/.test(fn)
-  && /schedule_block_id, google_calendar_event_id, icloud_area, icloud_etag, time_zone(, place(, alerts, show_as, url, travel_minutes)?)?'\)/.test(fn), '…reading each one\'s zone')
+  && /schedule_block_id, icloud_area, icloud_etag, time_zone(, place(, alerts, show_as, url, travel_minutes)?)?'\)/.test(fn), '…reading each one\'s zone')
 ok(/readbackChangeOf\(item\.ics, o\.entity, `lasci-\$\{o\.entity\}-\$\{o\.id\}@lasciviens\.github\.io`, emoji, zones\.get\(keyOf\(x\)\) \?\? OSLO\)/.test(fn),
   'the read-back reads each iPhone change on its item\'s own clock')
 const block2 = fn.slice(fn.indexOf('// <icloud-pure>'), fn.indexOf('// </icloud-pure>'))

@@ -21,6 +21,15 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-25 · v28 · Google Calendar went (owner: "Google calendar can be
+//                    removed"; "Calendar only" — Google Tasks stays). The
+//                    Calendar row's choices are Apple Calendar, Google Tasks,
+//                    both, or Only in this app; an area that is off says its
+//                    item has no calendar. After a save the item goes to Apple
+//                    Calendar through its queue (settleItemGoogle →
+//                    settleItemApple) — no Google Calendar call is left; a
+//                    training week's move only sends Apple its change
+//                    (sendPastWeekMoveSoon). Migration 208.
 //  2026-11-23 · v27 · ✨ teaches the AI (owner: "The ai should keep learning"):
 //                    Use these keeps the fill's call id; the item's own save
 //                    (Add, or an edit's autosave) then reports the values it
@@ -663,7 +672,7 @@ import { fetchTimeBlocks, fetchScheduleBlocks } from '../../../features/daily/ap
 import { useScheduleBlock, useTimeBlock } from '../../../features/daily/hooks/useSchedule'
 import { findPlanTwin, planTwinMessage } from '../../../features/training/plan/planTwins'
 import { movesPastWeek, pastWeekMoveLine, type PastWeekOutcome } from '../../../features/training/plan/sessionState'
-import { carryPastWeekMoveToCalendar, fetchPastWeekOutcome } from '../../../features/training/api/trainingPlanApi'
+import { fetchPastWeekOutcome, sendPastWeekMoveSoon } from '../../../features/training/api/trainingPlanApi'
 import { qk } from '../../query'
 import { useGoogleTaskLists } from '../../../features/todo/hooks/useGoogleTaskLists'
 import { resolveOrCreateGoogleTaskListId } from '../../../features/todo/api/googleTasksSync'
@@ -795,10 +804,10 @@ export function UnifiedPlanModal({
   // Its result line names the calendar the chip names ("· sending to Apple Calendar" for an Apple area). An edit says
   // "Saved" under its heading instead ('' — the line says it), unless the database moved a training week (167).
   const save = useSaveItem({
-    after: async (input, saved) => {
+    after: async input => {
       const to = outOfWeek(input)
       if (!to || !session) return null
-      carryPastWeekMoveToCalendar({ taskId: session.taskId, blockId: saved.blockId ?? timeBlock?.id ?? null }, to)
+      sendPastWeekMoveSoon()
       return fetchPastWeekOutcome(session.taskId, to, { routineId: session.routineId, title: session.title })
     },
     describe: (input, outcome) => {

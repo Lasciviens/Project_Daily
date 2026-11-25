@@ -25,8 +25,8 @@ require('sucrase/register')
 
 const {
   inferRecurrenceMode, minutesBetweenWrapping, defaultScheduleCategory, daysForRecurrence,
-  blockSourceTypeForTask, taskSourceTypeForBlock, needsGoogleTaskDedupe, shouldCreateLinkedTask,
-  needsGoogleTasksFallback, hasValidRecurrenceSelection, clampDurationMinutes,
+  blockSourceTypeForTask, taskSourceTypeForBlock, shouldCreateLinkedTask,
+  hasValidRecurrenceSelection, clampDurationMinutes,
 } = require('../src/shared/components/plan-modal/planModal.config')
 const { buildInitialForm: buildSheetForm } = require('../src/shared/components/plan-modal/planForm')
 const { itemFromRows, effectiveGoogleTarget } = require('../src/features/items/sheetRules')
@@ -42,10 +42,8 @@ const onCalendar = f => {
   return t === 'calendar' || t === 'both'
 }
 const { shouldSkipPendingCreate } = require('../src/features/todo/api/googleTasksOutboxRules')
-const { classifyCalendarPushFailure } = require('../src/features/daily/api/scheduleSyncRules')
-const { CalendarApiError, isCalendarNotFound, blockEventId } = require('../src/features/calendar/api/calendarApi')
 const { GoogleTasksApiError, isGoogleTaskNotFound } = require('../src/features/todo/api/googleTasksApi')
-const { projectOneOffBlocksForDay, projectRecurringBlocksForDay, projectCalendarEventForDay } = require('../src/features/daily/components/dayAgendaProjection')
+const { projectOneOffBlocksForDay, projectRecurringBlocksForDay } = require('../src/features/daily/components/dayAgendaProjection')
 
 let passed = 0
 let failed = 0
@@ -138,22 +136,7 @@ console.log('\n== 5. blockSourceTypeForTask / taskSourceTypeForBlock (source-fal
     && taskSourceTypeForBlock(undefined) === undefined && taskSourceTypeForBlock(null) === undefined)
 }
 
-console.log('\n== 6. needsGoogleTaskDedupe — "one task = one Google entry" on EDIT (tri-state) ==')
-{
-  // The real bug: editing an ALREADY Google-synced task into a
-  // calendar-linked schedule used to skip the dedupe entirely (it only ran
-  // at create time). Signature now takes the real TimeBlockCalendarStatus
-  // ('linked'/'not_linked'/'unknown'), not a boolean — dedupe may proceed
-  // ONLY on a CONFIRMED 'linked', never on 'not_linked' or 'unknown'.
-  check("calendarStatus='linked' + sync enabled -> needs dedupe",
-    needsGoogleTaskDedupe('linked', true) === true)
-  check("calendarStatus='not_linked' -> no dedupe (nothing confirmed linked)",
-    needsGoogleTaskDedupe('not_linked', true) === false)
-  check("calendarStatus='unknown' -> NEVER dedupe, even if sync enabled",
-    needsGoogleTaskDedupe('unknown', true) === false)
-  check('never synced to Google -> nothing to dedupe even if linked',
-    needsGoogleTaskDedupe('linked', false) === false)
-}
+// §6 (needsGoogleTaskDedupe) went with Google Calendar (25.11.2026).
 
 console.log('\n== 7. The sheet seeds Google from the REAL rows, not a blind default ==')
 {
@@ -190,8 +173,7 @@ console.log('\n== 7. The sheet seeds Google from the REAL rows, not a blind defa
 
 console.log('\n== 8. shouldSkipPendingCreate — the outbox drain half of the dedupe-ordering fix ==')
 {
-  // The exact scenario needsGoogleTaskDedupe(true, true) said "yes, opt out"
-  // for in §6: sync was enabled, no google_task_id yet (a 'create' is still
+  // Sync was enabled, no google_task_id yet (a 'create' is still
   // pending/undrained). Once the opt-out patch lands, that pending create
   // must become a no-op — this is what stops it firing anyway.
   check('pending create (no google_task_id), opted out since -> skip',
@@ -238,70 +220,9 @@ console.log('\n== 9. shouldCreateLinkedTask — the TrainingCalendar duplicate-t
     shouldCreateLinkedTask(false, null) === false && shouldCreateLinkedTask(false, 'existing_task_id') === false)
 }
 
-console.log('\n== 10. needsGoogleTasksFallback — the CREATE-side mirror of needsGoogleTaskDedupe (tri-state) ==')
-{
-  // The real bug: saveTask's plain create and both of saveSchedule's
-  // "Also add to Tasks" branches passed skipGoogleTasks=willBeCalendarEvent
-  // to useCreateTask SPECULATIVELY, before the calendar link was even
-  // attempted. Fallback may proceed ONLY on a CONFIRMED 'not_linked' —
-  // 'unknown' must NEVER trigger it (that would risk a SECOND
-  // representation the moment the calendar link turns out to have
-  // actually succeeded after all).
-  check("skipped Google Tasks, calendarStatus='not_linked' -> must fall back",
-    needsGoogleTasksFallback(true, 'not_linked') === true)
-  check("skipped Google Tasks, calendarStatus='linked' -> no fallback needed",
-    needsGoogleTasksFallback(true, 'linked') === false)
-  check("skipped Google Tasks, calendarStatus='unknown' -> NEVER fall back",
-    needsGoogleTasksFallback(true, 'unknown') === false)
-  check('never skipped (no calendar intent at all) -> nothing to fall back from',
-    needsGoogleTasksFallback(false, 'not_linked') === false)
-}
+// §10 and §11 (Google Calendar's fallback and error classes) went with Google Calendar (25.11.2026).
 
-console.log('\n== 11. classifyCalendarPushFailure / isCalendarNotFound — real typed errors, never string matching ==')
-{
-  // The real bug: updateTimeBlock used to swallow EVERY push failure the
-  // same way (log + do nothing), so a caller checking the block's own
-  // google_calendar_event_id column right after a 404 still saw "confirmed
-  // linked" — editing a calendar-linked task then dedupe-deleted its real
-  // Google Task, leaving NEITHER Google representation. Only a CONFIRMED
-  // 404 (the real HTTP status on a real CalendarApiError — never a string
-  // match against the message) may report 'not_linked'.
-  check('status=404, message is JUST "Not Found" (no digits at all) -> still not_linked',
-    classifyCalendarPushFailure(new CalendarApiError(404, 'Not Found')) === 'not_linked')
-  check('isCalendarNotFound agrees', isCalendarNotFound(new CalendarApiError(404, 'Not Found')) === true)
-  // Google's errors guide: deleting an already-deleted event answers 410 Gone,
-  // "no further action needed" — an event deleted in Google Calendar first
-  // used to make the app refuse to delete its block until Google purged it.
-  check('status=410 (already deleted) -> gone too', isCalendarNotFound(new CalendarApiError(410, 'Resource has been deleted')) === true
-    && classifyCalendarPushFailure(new CalendarApiError(410, 'Gone')) === 'not_linked')
-  // A re-link after an unlink must not reuse the first id (Google keeps the
-  // cancelled event under it): attempt N gets its own base32hex id.
-  {
-    const ids = [0, 1, 2].map(n => blockEventId('3F2A9C1E-0B4D-4E5F-8A6B-7C8D9E0F1A2B', n))
-    check('block event ids: the uuid without dashes, then <hex>v1, <hex>v2 (all base32hex, 5-1024 chars)',
-      ids[0] === '3f2a9c1e0b4d4e5f8a6b7c8d9e0f1a2b' && ids[1] === ids[0] + 'v1' && ids[2] === ids[0] + 'v2'
-      && ids.every(id => /^[0-9a-v]{5,1024}$/.test(id)), JSON.stringify(ids))
-  }
-  check('status=404 with a message that also happens to contain "404" -> not_linked either way',
-    classifyCalendarPushFailure(new CalendarApiError(404, 'Error 404: gone')) === 'not_linked')
-
-  // Everything else must be 'unknown', NEVER 'not_linked' — an unconfirmed
-  // failure must never be treated as proof the link is gone.
-  check('status=500 -> unknown, NOT not_linked', classifyCalendarPushFailure(new CalendarApiError(500, 'Internal error')) === 'unknown')
-  check('status=429 (rate limit) -> unknown', classifyCalendarPushFailure(new CalendarApiError(429, 'Too many requests')) === 'unknown')
-  check('status=401 -> unknown', classifyCalendarPushFailure(new CalendarApiError(401, 'Unauthorized')) === 'unknown')
-  check('status=403 -> unknown', classifyCalendarPushFailure(new CalendarApiError(403, 'Forbidden')) === 'unknown')
-  check('a plain network Error (no status at all) -> unknown',
-    classifyCalendarPushFailure(new Error('NetworkError when attempting to fetch resource.')) === 'unknown')
-  // The exact inverse trap this whole fix closes: a message that CONTAINS
-  // "404" as a substring but is NOT a CalendarApiError (so has no real
-  // status) must NOT classify as not_linked — proves classification is on
-  // the typed status, never a string match.
-  check('a plain Error whose MESSAGE happens to contain "404" is still unknown (no real status to trust)',
-    classifyCalendarPushFailure(new Error('a coincidental 404 in some other unrelated text')) === 'unknown')
-}
-
-console.log('\n== 12. GoogleTasksApiError / isGoogleTaskNotFound — the Tasks-API mirror of §11 ==')
+console.log('\n== 12. GoogleTasksApiError / isGoogleTaskNotFound — a real typed status, never string matching ==')
 {
   check('status=404, bare "Not Found" message -> isGoogleTaskNotFound true',
     isGoogleTaskNotFound(new GoogleTasksApiError(404, 'Not Found')) === true)
@@ -383,43 +304,7 @@ console.log('\n== 14. DayAgenda cross-midnight projection ==')
   check('a Tuesday 00:30 event is detected as overlapping the spillover row', overlaps === true)
 }
 
-console.log('\n== 15. projectCalendarEventForDay (Google Calendar cross-midnight) ==')
-{
-  // Built via local-time Date construction (never a hardcoded 'Z'/offset
-  // string) so this test is timezone-agnostic — exactly what the review
-  // flagged as the real bug: startHour/endHour used to come straight from
-  // each instant's OWN .getHours(), which is correct per-instant but not
-  // as an [start,end) pair once assembled for a single day.
-  const day1 = '2026-08-24'
-  const day2 = '2026-08-25'
-  const crossMidnightEvent = {
-    start: { dateTime: new Date(`${day1}T23:00:00`).toISOString() },
-    end:   { dateTime: new Date(`${day2}T01:00:00`).toISOString() },
-  }
-
-  const onDay1 = projectCalendarEventForDay(day1, crossMidnightEvent)
-  check('day1 shows only its own 23:00-24:00 portion, not a negative range',
-    onDay1 && onDay1.startHour === 23 && onDay1.endHour === 24 && onDay1.spillover === false)
-
-  const onDay2 = projectCalendarEventForDay(day2, crossMidnightEvent)
-  check('day2 shows the spillover tail 00:00-01:00',
-    onDay2 && onDay2.startHour === 0 && onDay2.endHour === 1 && onDay2.spillover === true)
-
-  const dayAfter = '2026-08-26'
-  check('a day the event never touches at all returns null (defensive, not a negative range)',
-    projectCalendarEventForDay(dayAfter, crossMidnightEvent) === null)
-
-  const sameDayEvent = {
-    start: { dateTime: new Date(`${day1}T09:00:00`).toISOString() },
-    end:   { dateTime: new Date(`${day1}T09:30:00`).toISOString() },
-  }
-  const sameDayProjected = projectCalendarEventForDay(day1, sameDayEvent)
-  check('a normal same-day event projects unchanged (no spillover)',
-    sameDayProjected && sameDayProjected.startHour === 9 && sameDayProjected.endHour === 9.5 && !sameDayProjected.spillover)
-
-  check('an all-day event (no dateTime) returns null — handled separately by the caller',
-    projectCalendarEventForDay(day1, { start: { date: day1 }, end: { date: day2 } }) === null)
-}
+// §15 (Google Calendar events across midnight) went with Google Calendar (25.11.2026).
 
 console.log('\n== 16. clampDurationMinutes ==')
 {

@@ -63,6 +63,8 @@ This matters for Phase 3: "find a free time" is only as good as the calendars th
 
 ## Phases
 
+**25.11.2026 — Google Calendar went** (owner: "Google calendar can be removed. we dont need it anymore"; "Calendar only"; "Leave them in Google"). Apple Calendar is the only calendar: Settings → Calendar has no "Shows in" choice any more — an area in use is in Apple Calendar, one turned off is only in the app; turning an area on moves its items into Apple Calendar (the move popup, one way only). Migration 208 set every saved area to Apple and made each item that was on Google Calendar (in an area not on Apple, with no Apple copy) "Only in this app" (Both → Google Tasks). The steps below are the history of how it got here (`docs/features/planning-calendar.md` → Google Calendar went).
+
 **Phase 1 — the Apple check (done, 29.10.2026).** Connect with an app-specific password; the app made a test calendar, wrote 9 test events, read them back and followed an event moved on the iPhone. Everything worked except Maybe and Private (no visible effect). Then **Read my calendars** (read-only): the owner's iCloud calendar reads; subscriptions, Google and work calendars don't (table above). Still to try: a deleted event through Check changes; whether iCloud splits repeating events into days.
 
 **Phase 2 — the app's calendars in iCloud (approved 29.10.2026: "Go").** Items 19, 35, 24, 4, 3, 5, 6, 7 (12 by its fallback). Four steps, each its own PR, each checked by the owner before the next:

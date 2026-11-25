@@ -47,14 +47,15 @@ Two kinds of integration sit side by side there and are labelled differently, de
   (future slots with no task become items Daily can tick; past slots stay as they are; tasks with a
   slot and repeating plans are already one item) with a few examples, and only **Convert** applies
   it (`useConvertPreview` / `useConvertOldItems`, which reports with its own Undo); nothing is
-  deleted and each slot keeps its Google Calendar event. Under the Google Tasks line, a second line
-  says when changes made in Google Calendar were last read back (`useCalendarReadbackState`;
-  `ConvertOldItems.tsx`).
+  deleted (`ConvertOldItems.tsx`). Since Google Calendar went (25.11.2026) the card is Google Tasks'
+  only: its description says so, "Add plans to Calendar" and the line saying when Google Calendar
+  changes were last read back are gone (`docs/features/planning-calendar.md` → Google Calendar went).
 
 Load-bearing details:
 - `GOOGLE_SCOPES` (`src/features/calendar/googleScopes.ts`) is the ONE definition of the Google
-  consent list — the scope array used to live inline in `SettingsMenu.tsx`. Adding a scope =
-  append there + one re-consent; never hard-code a second copy.
+  consent list — the scope array used to live inline in `SettingsMenu.tsx`. Since 25.11.2026 it is
+  `tasks` only (the Calendar scopes went with Google Calendar). Adding a scope = append there + one
+  re-consent; never hard-code a second copy.
 - **`useAutoRefreshCalendarToken()` runs in `useAppBootstrap()`** (called once by `AppShell` on
   EVERY shell route) — never on the Connections tab, which would reduce it to "refreshes only
   while that tab is open".
@@ -86,7 +87,7 @@ Settings → Subscriptions has a read-only **Anthropic** card (the Claude layer'
 ## Open question: Connections vs Subscriptions (owner, 13.10.2026)
 
 The owner said Settings → Subscriptions should hold only what they subscribe to ("Google is not a subscription, it's an integration") and wants to decide the split in a later session. Proposal from 13.10.2026, not built:
-- **Connections** — every integration: signed in from here (Google Calendar + Tasks, Strava, PlayStation, Trakt) and set up on the server (Steam, IGDB, Hevy, Apple Health via Health Auto Export, Kobo).
+- **Connections** — every integration: signed in from here (Google Tasks, Strava, PlayStation, Trakt) and set up on the server (Steam, IGDB, Hevy, Apple Health via Health Auto Export, Kobo).
 - **Subscriptions** — only `service_subscriptions` rows that are paid or renew (likely Hevy Pro, PS Plus, Trakt VIP, Strava, Google One, the ScreenScraper membership, the Supabase plan, Anthropic, Health Auto Export premium); a Connections card may link to its plan.
 - Questions for the owner: free accounts that renew (the IGDB/Twitch developer app, a free ScreenScraper account, the Steam API key) — Connections only? Is Health Auto Export a subscription or a one-off purchase? Rows with the cycle "Free" — their own group on Subscriptions, or moved?
 - Traps: Strava's return address (`REDIRECT_URI` in `stravaApi.ts`) and `traktCallback.ts` land on `#/settings?tab=subscriptions`, so that address must keep opening their cards; about ten in-app links point at `tab=subscriptions` (`SettingsMenu`, `MoreSheet`, `StravaTab`, `ListsView`, `ListDetail`, `SteamTab`, `PlayStationTab`, `EditCalendarEventModal`, `INTEGRATIONS_PATH` in `apiRegistry`, the `DeveloperPage` redirect).

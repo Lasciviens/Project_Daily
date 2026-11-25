@@ -2,7 +2,7 @@ import { useState, useEffect, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useGoogleLogin } from '@react-oauth/google'
 import { useCalendarStore } from '../../../app/store'
-import { BookOpen, CalendarDays, Bike, Gamepad2, Monitor, Dumbbell, HeartPulse, RefreshCw, Sparkles, Timer, Unplug } from 'lucide-react'
+import { BookOpen, ListChecks, Bike, Gamepad2, Monitor, Dumbbell, HeartPulse, RefreshCw, Sparkles, Timer, Unplug } from 'lucide-react'
 import { exchangeGoogleCode, disconnectGoogle } from '../api/connectionsApi'
 import { Button, PageBoard } from '../../../shared/ui'
 import { formatDate, formatDateTime } from '../../../shared/utils/dateFormat'
@@ -10,7 +10,6 @@ import { useCheckWorkoutsWithHevy, useHevyAccountStatus, useHevySyncState } from
 import { hevyAccountFacts, hevyAccountWarning, workoutCountGap } from '../../training/hevyAccountModel'
 import { useLatestHealthValue } from '../../health/hooks/useHealthExport'
 import { GoogleTasksSyncButtons } from '../../todo/components/GoogleTasksSyncButtons'
-import { AddPlansToCalendarButton } from '../../calendar/components/AddPlansToCalendarButton'
 import { StravaWidget } from '../../training/components/StravaWidget'
 import { useStravaStatus } from '../../training/hooks/useTrainingSessions'
 import { usePsnStatus, useDisconnectPsn, usePsnProfile } from '../../games/hooks/usePlayStation'
@@ -25,7 +24,7 @@ import { OtherSubscriptions, SubscriptionSummary } from '../../settings/componen
 import { ConnectionCard, type Status } from './ConnectionCard'
 import { TraktCard } from '../../media/trakt/TraktCard'
 import { useKoboFeedState } from '../../books/hooks/useBooks'
-import { CalendarReadbackLine, ConvertOldItemsButton } from './ConvertOldItems'
+import { ConvertOldItemsButton } from './ConvertOldItems'
 import { ICloudCard } from '../../calendar/icloud/ICloudCard'
 import { useClaudeDescribe } from '../../ai/claude/hooks/useClaude'
 
@@ -87,8 +86,8 @@ function GoogleCard() {
   }
 
   return (
-    <ConnectionCard service="google" kind="user" icon={<CalendarDays />} name="Google"
-      description="Shows your Google Calendar events in Daily and keeps your tasks in step with Google Tasks — one sign-in covers both."
+    <ConnectionCard service="google" kind="user" icon={<ListChecks />} name="Google"
+      description="Keeps your tasks in step with Google Tasks (the app's calendar is Apple Calendar, below)."
       status={connected ? 'connected' : 'disconnected'}>
       <div className="flex items-center gap-2 flex-wrap">
         {connected ? (
@@ -96,12 +95,10 @@ function GoogleCard() {
         ) : (
           <Button variant="primary" onClick={() => { setError(null); login() }} loading={busy}>Connect Google</Button>
         )}
-        {connected && <AddPlansToCalendarButton />}
         {/* Data only (no Google call), so it shows connected or not. */}
         <ConvertOldItemsButton />
         {connected && <GoogleTasksSyncButtons />}
       </div>
-      {connected && <CalendarReadbackLine />}
       {error && <p role="alert" className="mt-2 text-meta text-danger">{error}</p>}
     </ConnectionCard>
   )

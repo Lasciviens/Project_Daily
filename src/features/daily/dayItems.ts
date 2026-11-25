@@ -1,5 +1,5 @@
 // THE day as ONE list (owner, 15.10.2026: "one item"). A day used to be two
-// panes — Schedule (slots, repeating plans, Google events) and Tasks — so a
+// panes — Schedule (slots, repeating plans, Google's own events) and Tasks — so a
 // task with its slot showed twice and a repeat could not be ticked. Here every
 // thing on a day becomes one row, split by TIME, never by the table a row
 // lives in:
@@ -8,7 +8,6 @@
 //     projection and, since 156, the day's own task (made on its day — the
 //     same row, never two), or 142's one-off day (a task + slot that names
 //     the plan and the day) once it was edited on its own;
-//   - a Google event the app didn't make keeps its own row (no tick);
 //   - a task with a time and no slot sits at that time as a moment; anything
 //     with no time is "Anytime".
 // Timed rows keep their place whatever their state (a ticked one is dimmed in
@@ -25,7 +24,7 @@ import { addDaysIso, dayNumber } from './recurrence'
 import type { DayItem } from './daySchedule'
 import type { Task, TaskStatus } from '../todo/types'
 
-/** What a row can still become. null = nothing to tick (a Google event, a slot with no task). */
+/** What a row can still become. null = nothing to tick (a slot with no task). */
 export type RowState = 'open' | 'missed' | 'done' | 'skipped' | 'cancelled'
 
 /**
@@ -33,10 +32,10 @@ export type RowState = 'open' | 'missed' | 'done' | 'skipped' | 'cancelled'
  *  task     — a task (with its slot on this day when it has one): the task row and its actions;
  *  repeat   — a day of a repeating plan: tick / skip / undo that day (useRepeatDay);
  *  training — a planned training session (a slot or a plan's day): the session's own actions;
- *  slot     — a one-off slot with no task (made before "Convert old items"): no tick;
- *  event    — a Google Calendar event the app didn't make: no tick.
+ *  slot     — a one-off slot with no task (made before "Convert old items"): no tick.
+ *  (A Google Calendar event the app didn't make had a row of its own until Google Calendar went, 25.11.2026.)
  */
-export type RowKind = 'task' | 'repeat' | 'training' | 'slot' | 'event'
+export type RowKind = 'task' | 'repeat' | 'training' | 'slot'
 
 export type RowTask = Pick<Task, 'id' | 'title' | 'status' | 'due_date' | 'due_time'>
   & Partial<Pick<Task, 'schedule_block_id' | 'occurrence_date' | 'closed_reason' | 'source_type' | 'hevy_routine_id'>>
@@ -54,12 +53,10 @@ export interface DayRow<T extends RowTask = Task> {
   busy:      boolean
   /** The part after midnight of something that started the day before. */
   spillover: boolean
-  /** A Google all-day event. */
-  allDay:    boolean
   state:     RowState | null
   /** The task behind the row, when it has one. */
   task:      T | null
-  /** The schedule item behind it (slot, plan day, Google event), when it has one. */
+  /** The schedule item behind it (slot, plan day), when it has one. */
   item:      DayItem | null
   /** A day of a repeating plan: the plan and the day (`acted`: the day is an
    *  item of its own — 142's task + slot, or a day's task (156) that left the
@@ -71,7 +68,7 @@ export interface DayRow<T extends RowTask = Task> {
 }
 
 export interface DayRows<T extends RowTask = Task> {
-  /** No time, still to do (a missed repeat day too) — and all-day events. */
+  /** No time, still to do (a missed repeat day too). */
   anytime:   DayRow<T>[]
   /** Everything with a time, in time order, whatever its state. */
   timed:     DayRow<T>[]
@@ -81,8 +78,8 @@ export interface DayRows<T extends RowTask = Task> {
   cancelled: DayRow<T>[]
 }
 
-/** The zone a row's time is in (183): its slot's, else its plan's (else the one its Google series was made in); null
- *  = the home zone. A Google event of the owner's own has none: it is placed on the phone's clock already. */
+/** The zone a row's time is in (183): its slot's, else its plan's (else the one its Google series was made in, before
+ *  183); null = the home zone. */
 export function rowTimeZone(row: Pick<DayRow, 'item'>): string | null {
   const block = row.item?.block
   if (block) return block.time_zone ?? null
@@ -174,17 +171,13 @@ export function buildDayRows<T extends RowTask>(input: {
   const rows: DayRow<T>[] = []
 
   for (const i of items) {
-    const timed = !i.allDay && i.startHour >= 0
+    const timed = i.startHour >= 0
     const busy = timed && i.busy
     const base = {
       key: i.id, title: i.title,
       startHour: timed ? i.startHour : null,
       endHour: busy ? i.endHour : null,
-      busy, spillover: i.spillover, allDay: i.allDay, item: i, overlaps: false,
-    }
-    if (i.kind === 'calendar') {
-      rows.push({ ...base, kind: 'event', state: null, task: null, repeat: null })
-      continue
+      busy, spillover: i.spillover, item: i, overlaps: false,
     }
     if (i.kind === 'recurring') {
       // A plan's day nobody edited on its own (those left the plan, 142) —
@@ -227,7 +220,7 @@ export function buildDayRows<T extends RowTask>(input: {
       ? { scheduleBlockId: t.schedule_block_id, date: t.occurrence_date, acted: true } : null
     rows.push({
       key: `task:${t.id}`, kind: ofRepeat ? 'repeat' : 'task', title: t.title, startHour: at, endHour: null, busy: false,
-      spillover: false, allDay: false, task: t, item: null, repeat: ofRepeat, overlaps: false,
+      spillover: false, task: t, item: null, repeat: ofRepeat, overlaps: false,
       state: ofRepeat ? repeatState(t, t.due_date ?? t.occurrence_date!, today) : taskState(t.status),
     })
   }
@@ -238,11 +231,7 @@ export function buildDayRows<T extends RowTask>(input: {
     .sort((a, b) => a.r.startHour! - b.r.startHour! || Number(b.r.spillover) - Number(a.r.spillover) || a.n - b.n)
     .map(x => x.r)
   const untimed = rows.filter(r => r.startHour === null)
-  // All-day events first (context for the day), then the rest in their order.
   const anytime = untimed.filter(r => r.state === null || r.state === 'open' || r.state === 'missed')
-    .map((r, n) => ({ r, n }))
-    .sort((a, b) => Number(b.r.kind === 'event') - Number(a.r.kind === 'event') || a.n - b.n)
-    .map(x => x.r)
   return {
     anytime,
     timed,

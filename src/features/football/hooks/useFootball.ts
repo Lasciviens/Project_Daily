@@ -236,7 +236,7 @@ export function useStopSubscription() {
     const removed = `${matchCount(leaving.length)} removed from your day`
     await confirmDelete<StopSnapshot>({
       title: unfollow ? `Unfollow ${f.name}?` : `Unsubscribe from ${f.name}?`,
-      message: `Its ${matchCount(leaving.length)} coming up ${leaving.length === 1 ? 'leaves' : 'leave'} your day (and Google Calendar). Matches you planned yourself stay.`,
+      message: `Its ${matchCount(leaving.length)} coming up ${leaving.length === 1 ? 'leaves' : 'leave'} your day (and Apple Calendar). Matches you planned yourself stay.`,
       confirmLabel: unfollow ? 'Unfollow' : 'Unsubscribe',
       remove: async () => {
         // Off first, so no run of the subscription adds them back meanwhile.

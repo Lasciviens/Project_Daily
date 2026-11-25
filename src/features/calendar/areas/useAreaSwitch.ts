@@ -7,7 +7,7 @@ import { previewSwitches, switchAreas, type MoveFrom, type SwitchProgress } from
 
 /** How many items each switched area moves — read when the move popup opens, never cached for later. */
 export function useAreaSwitchPreview(switches: readonly AreaSwitch[], from: MoveFrom) {
-  const key = switches.map(s => `${s.area}:${s.to}`).join(',')
+  const key = switches.map(s => s.area).join(',')
   return useQuery({
     queryKey: qk.icloud.movePreview(key, from),
     queryFn: () => previewSwitches(switches, from),
@@ -17,7 +17,7 @@ export function useAreaSwitchPreview(switches: readonly AreaSwitch[], from: Move
   })
 }
 
-/** Save the calendar settings and move the switched areas' items (the new copy first, then the old one goes).
+/** Save the calendar settings and move the items of the areas turned on into Apple Calendar.
  *  One line says where everything is; a warning when something stayed behind. */
 export function useSwitchAreas() {
   return useMutationWithFeedback({

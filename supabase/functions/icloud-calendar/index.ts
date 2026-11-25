@@ -96,7 +96,7 @@ const MAX_READ_PER_DAY = 40
 //  unique. It may fall in the neighbouring month (the Saturday nearest the
 //  1st can be the 30th before it); it is still that month's occurrence.
 //
-//  Google Calendar (147): a linked plan is ONE repeating event —
+//  A calendar (147; Apple Calendar since 208): a plan is ONE repeating event —
 //  calendar/calendarSeries.ts maps weekly / interval-day / interval-week to
 //  an RRULE, monthly / interval-month / dates to an RDATE list
 //  (occurrencesBetween) and except_dates to EXDATEs, starting on the first
@@ -373,24 +373,18 @@ function repeatSummary(rule: RepeatRule): string {
 
 // ── src/features/calendar/calendarEventRules.ts ──
 // ─────────────────────────────────────────────────────────────────────────────
-//  One item's Google Calendar event (migration 155) — the PURE rules both the
-//  browser and google-tasks-sync use:
-//    · the event a slot (time_blocks) becomes: timed or all-day, Busy or
-//      Free, "✓ " in front once its task is done;
-//    · what a change read back from Google Calendar means for the row
-//      (readbackEvent), and how the read-back lists changes (sync token).
-//  Google's side, checked against its reference first (15.10.2026):
-//  docs/integrations/google-calendar.md.
+//  One item's calendar event (migration 155) — the PURE rules of the event a
+//  slot (time_blocks) becomes: timed or all-day, Busy or Free, "✓ " in front
+//  once its task is done, and an item's calendar fields (193). Apple
+//  Calendar's events are built from it (areas/icloudEvents.ts; generated into
+//  icloud-calendar by scripts/sync-icloud-shared.mjs). Its Google Calendar
+//  half (the PATCH bodies, reminders, the read-back) went with Google Calendar
+//  on 25.11.2026 (docs/integrations/google-calendar.md, retired).
 //
-//  Import-free on purpose. The block between the <calendar-event-rules>
-//  markers is MIRRORED BY HAND into supabase/functions/google-tasks-sync/
-//  index.ts (Deno can't import from src/); edit it here, then copy the block
-//  there. scripts/verify-calendar-event-rules.cjs fails when they differ.
+//  Import-free on purpose.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// <calendar-event-rules>
-/** "Do it at 14:00" has no length: Google gets a short Free event (a
- *  zero-length one risks 400 timeRangeEmpty). Also the slot's stored length. */
+/** "Do it at 14:00" has no length: the calendar gets a short Free event. Also the slot's stored length. */
 const NOMINAL_EVENT_MINUTES = 15
 /** In front of a done item's event title (owner, 15.10.2026); Undo takes it off. */
 const DONE_MARK = '✓ '
@@ -401,7 +395,7 @@ const IANA_ZONE = /^[A-Za-z]+(?:[/_+-][A-Za-z0-9]+)*$/
 
 /**
  * The zone an item's times are in (183): its own when it is a zone this runtime knows, else the home zone. A
- * stored or device value is data — it lands in iCalendar TZID lines and Google's event bodies (the warning in
+ * stored or device value is data — it lands in iCalendar TZID lines (the warning in
  * AGENTS.md) — so anything but a real zone name is never used.
  */
 function itemTimeZone(zone: string | null | undefined): string {
@@ -418,7 +412,7 @@ function calendarTitle(title: string | null | undefined, done: boolean): string 
   return done ? `${DONE_MARK}${clean}` : clean
 }
 
-/** A title as the app keeps it: without the done mark Google shows. */
+/** A title as the app keeps it: without the done mark a calendar shows. */
 function stripDoneMark(summary: string | null | undefined): string {
   let s = (summary ?? '').trim()
   while (s.startsWith('✓')) s = s.slice(1).trim()
@@ -455,7 +449,7 @@ interface EventBlock {
   start_time: string | null
   duration_minutes: number
   title: string | null
-  /** false: no length — Free on Google (155). Missing before 155 = busy. */
+  /** false: no length — Free (155). Missing before 155 = busy. */
   busy?: boolean | null
   /** Where it happens (186): the row's jsonb, read through eventPlace. */
   place?: unknown
@@ -467,7 +461,7 @@ interface EventBlock {
 
 // ── An item's calendar fields (193): Alert + Second Alert, Show As, URL, Travel Time ──
 //  Every value is input (the warning in AGENTS.md): the browser, the assistant and the read-backs write these columns,
-//  and the writers put them into iCalendar lines and Google's bodies. The database CHECKs the same allow-lists
+//  and the writers put them into iCalendar lines. The database CHECKs the same allow-lists
 //  (item_alerts_ok, item_url_ok, the travel and show_as CHECKs); the writers read a row through the event* readers
 //  below again, and Apple's lines have a last guard of their own (icloudEvents).
 
@@ -523,24 +517,6 @@ function eventTransparency(showAs: unknown, timedWithLength: boolean): 'opaque' 
   return (set ? set === 'busy' : timedWithLength) ? 'opaque' : 'transparent'
 }
 
-/** Google's reminders (193; Events reference: `reminders.useDefault`, `overrides[]` of `{ method, minutes }`, minutes
- *  "between 0 and 40320", at most 5). */
-interface EventReminders { useDefault: boolean; overrides: { method: 'popup'; minutes: number }[] }
-/** The calendar's own default — what an item with no alerts of its own has (and what an update puts back). */
-const DEFAULT_REMINDERS: EventReminders = { useDefault: true, overrides: [] }
-
-/**
- * An item's alerts as Google's reminders (193), or null when it has none of its own (the calendar's default, as before
- * 193). Timed: minutes before the start. All day: Google counts from the day's midnight and takes no minutes after it,
- * so 09:00 the day before is 900 and "on the day at 09:00" can't be said — it is left out (Apple has it).
- */
-function googleReminders(raw: unknown, allDay: boolean): EventReminders | null {
-  const alerts = eventAlerts(raw)
-  if (!alerts) return null
-  const minutes = alerts.map(m => (allDay ? allDayAlertDays(m) * 1440 - ALL_DAY_ALERT_MINUTE : m)).filter(m => m >= 0)
-  return { useDefault: false, overrides: [...new Set(minutes)].map(m => ({ method: 'popup' as const, minutes: m })) }
-}
-
 /** An item's place as the calendars get it (186): a name, maybe a town, maybe a map pin. */
 interface EventPlace { name: string; locality?: string; lat?: number; lon?: number }
 
@@ -552,7 +528,7 @@ const placeCoord = (n: unknown, limit: number): n is number => typeof n === 'num
 
 /**
  * A row's place as the writers may use it (186). The column is checked by the database, but a stored value is still
- * input (the warning in AGENTS.md — it lands in iCalendar lines and Google's bodies): only a name of up to 120
+ * input (the warning in AGENTS.md — it lands in iCalendar lines): only a name of up to 120
  * characters, a town of up to 80, and coordinates in range are taken; anything else is no place, or no pin.
  */
 function eventPlace(raw: unknown): EventPlace | null {
@@ -567,42 +543,34 @@ function eventPlace(raw: unknown): EventPlace | null {
   return out
 }
 
-/** "Jernbanetorget, Oslo": Google's `location`. */
+/** "Jernbanetorget, Oslo": a place as one line. */
 function placeText(p: EventPlace): string {
   return p.locality ? `${p.name}, ${p.locality}` : p.name
 }
 
 type EventTime = { date: string } | { dateTime: string; timeZone: string }
 
-/** What events.insert / events.patch get for a slot. */
+/** A slot's event: its title, start and end, Busy or Free. Apple's lines are built from it (icloudEvents.slotEvent). */
 interface BlockEventBody {
   summary: string
   start: EventTime
   end: EventTime
   transparency: 'opaque' | 'transparent'
-  /** The slot's place (186), when it has one. A PATCH of the whole event sends none as null (fullEventPatch). */
-  location?: string
-  /** The slot's own alerts (193), when it has them. A PATCH of the whole event sends none as the default (fullEventPatch). */
-  reminders?: EventReminders
 }
 
 /**
- * The Google event of a slot: a day with no time is an all-day event (end =
- * the next day — Google's end is exclusive) and Free; a time is a wall-clock
- * dateTime in `timeZone` (DST-safe), Busy when the slot has a length, Free
- * with a nominal end when it doesn't — unless Show As says (193). Its own
- * alerts are its reminders (193). null when the slot has no usable day.
+ * The event of a slot: a day with no time is an all-day event (end = the next
+ * day — DTEND is exclusive) and Free; a time is a wall-clock dateTime in
+ * `timeZone` (DST-safe), Busy when the slot has a length, Free with a nominal
+ * end when it doesn't — unless Show As says (193). null when the slot has no
+ * usable day.
  */
 function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: string }): BlockEventBody | null {
   if (!ISO_DAY.test(b.date ?? '')) return null
   const summary = calendarTitle(b.title, opts.done)
   const start = clockMinutes(b.start_time)
-  const place = eventPlace(b.place)
-  const location = place ? { location: placeText(place) } : {}
-  const reminders = googleReminders(b.alerts, start === null)
-  const own = reminders ? { reminders } : {}
   if (start === null) {
-    return { summary, start: { date: b.date }, end: { date: addDaysToIso(b.date, 1) }, transparency: eventTransparency(b.show_as, false), ...location, ...own }
+    return { summary, start: { date: b.date }, end: { date: addDaysToIso(b.date, 1) }, transparency: eventTransparency(b.show_as, false) }
   }
   const busy = b.busy !== false
   const length = Math.min(1440, Math.max(1, Math.round(Number(b.duration_minutes) || (busy ? 60 : NOMINAL_EVENT_MINUTES))))
@@ -612,95 +580,7 @@ function blockEventBody(b: EventBlock, opts: { done: boolean; timeZone: string }
     start: { dateTime: wallClockAt(b.date, start), timeZone },
     end: { dateTime: wallClockAt(b.date, start + length), timeZone },
     transparency: eventTransparency(b.show_as, busy),
-    ...location,
-    ...own,
   }
-}
-
-/** What a push sends: 'all' (the slot's day, time, length, Busy/Free and
- *  title) or 'title' (a done mark, a series renamed: ONLY the summary). */
-type EventPushFields = 'all' | 'title'
-
-/** A start or end in a PATCH: the form not used is sent as null. */
-type EventTimePatch =
-  | { date: string; dateTime: null; timeZone: null }
-  | { dateTime: string; timeZone: string; date: null }
-
-/**
- * PATCH merges objects field by field (Google: "To delete a field, specify the
- * field and set it to null"), and start and end "must both be timed or both
- * be all-day": an item turned all-day kept its old dateTime, and a timed one
- * its old date, so the change never reached Google (owner, 16.10.2026). Every
- * PATCH of a start/end sends the other form as null; an insert keeps the plain
- * body.
- */
-function timePatch(t: EventTime): EventTimePatch {
-  return 'date' in t ? { date: t.date, dateTime: null, timeZone: null } : { dateTime: t.dateTime, timeZone: t.timeZone, date: null }
-}
-
-/** A body for PATCH: its start and end through timePatch. */
-function withTimePatch<B extends { start: EventTime; end: EventTime }>(body: B): Omit<B, 'start' | 'end'> & { start: EventTimePatch; end: EventTimePatch } {
-  return { ...body, start: timePatch(body.start), end: timePatch(body.end) }
-}
-
-/**
- * A whole-event PATCH (186): its start and end through timePatch, and its place — none is sent as null, so a place
- * taken off in the app leaves Google too (Google: "To delete a field, specify the field and set it to null"; the app's
- * item wins, as on Apple, where the event is rewritten whole). An insert keeps the plain body. Its reminders too (193):
- * an item with no alerts of its own sends the calendar's default with no overrides (a PATCH replaces an array and
- * merges an object, so alerts taken off in the app leave Google too).
- */
-function fullEventPatch<B extends { start: EventTime; end: EventTime; location?: string; reminders?: EventReminders }>(body: B): Omit<Omit<B, 'location' | 'reminders'>, 'start' | 'end'> & { start: EventTimePatch; end: EventTimePatch; location: string | null; reminders: EventReminders } {
-  const { location, reminders, ...rest } = body
-  return { ...withTimePatch(rest), location: location ?? null, reminders: reminders ?? { ...DEFAULT_REMINDERS, overrides: [] } }
-}
-
-/**
- * The PATCH a push sends. A title push carries the summary and nothing else,
- * so ticking an item done never sends its old day or time back over a move
- * the owner made in Google Calendar. Anything but 'title' is the whole event,
- * its start and end through timePatch.
- */
-function eventPatchFor(body: BlockEventBody, fields: EventPushFields | string | null | undefined): { summary: string } | ReturnType<typeof fullEventPatch<BlockEventBody>> {
-  return fields === 'title' ? { summary: body.summary } : fullEventPatch(body)
-}
-
-/** The done mark's PATCH: the title with or without "✓ " — and only that. */
-function doneMarkPatch(title: string | null | undefined, done: boolean): { summary: string } {
-  return { summary: calendarTitle(title, done) }
-}
-
-// ── The read-back (google-tasks-sync) ───────────────────────────────────────
-
-/** The fields of a Google event the read-back reads (events.list, singleEvents=false). */
-interface GoogleEventLike {
-  id?: string
-  status?: string
-  summary?: string
-  start?: { date?: string; dateTime?: string; timeZone?: string }
-  end?: { date?: string; dateTime?: string; timeZone?: string }
-  transparency?: string
-  recurringEventId?: string
-  originalStartTime?: { date?: string; dateTime?: string; timeZone?: string }
-  updated?: string
-}
-
-/** One change as apply_calendar_readback (migration 155) takes it. */
-interface ReadbackEvent {
-  id: string
-  seriesId: string | null
-  status: 'confirmed' | 'tentative' | 'cancelled'
-  title: string | null
-  allDay: boolean
-  date: string | null
-  time: string | null
-  minutes: number | null
-  busy: boolean
-  /** Show As as the event has it (193): its transparency, all-day too — the read-back takes it only for an item whose
-   *  Show As is set (else Free still means "no length", as since 155). */
-  showAs: 'busy' | 'free'
-  originalDate: string | null
-  updated: string | null
 }
 
 /** An RFC 3339 instant as the wall clock in `timeZone` ({ date, time 'HH:MM:SS' }). */
@@ -719,101 +599,22 @@ function wallClockIn(instant: string, timeZone: string): { date: string; time: s
   return { date: `${get('year')}-${get('month')}-${get('day')}`, time: `${get('hour')}:${get('minute')}:${get('second')}` }
 }
 
-/** A start's day: its date, or its instant's day in its own zone (else `zone`) — or in `zone` when `force`d. */
-const dayOf = (t: { date?: string; dateTime?: string; timeZone?: string } | undefined, zone: string, force = false): string | null => {
-  if (!t) return null
-  if (t.date && ISO_DAY.test(t.date)) return t.date
-  if (t.dateTime) return wallClockIn(t.dateTime, force ? zone : (t.timeZone || zone))?.date ?? null
-  return null
-}
-
-/**
- * A Google event as the change the read-back applies. Times are read as the
- * wall clock of the item's own zone when the caller knows the item (183: a
- * slot's or plan's `time_zone` — the app stores its times in that zone,
- * whatever zone Google shows the event in), else of the event's own zone
- * (else the calendar's); the length from the two instants (an all-day event:
- * whole days), the title without "✓ ". A cancelled entry may carry only its
- * id (and, for one day of a series, recurringEventId + originalStartTime —
- * Google's reference). null for something with no id.
- */
-function readbackEvent(e: GoogleEventLike, calendarZone: string, itemZone?: string | null): ReadbackEvent | null {
-  if (!e || typeof e.id !== 'string' || !e.id) return null
-  const zone = itemZone ? itemTimeZone(itemZone) : (e.start?.timeZone || calendarZone || SERVER_EVENT_TIME_ZONE)
-  const seriesId = typeof e.recurringEventId === 'string' && e.recurringEventId ? e.recurringEventId : null
-  const originalDate = dayOf(e.originalStartTime, itemZone ? zone : (e.originalStartTime?.timeZone || zone), !!itemZone)
-  const status = e.status === 'cancelled' ? 'cancelled' : e.status === 'tentative' ? 'tentative' : 'confirmed'
-  const base = { id: e.id, seriesId, originalDate, updated: typeof e.updated === 'string' ? e.updated : null }
-  if (status === 'cancelled') {
-    return { ...base, status, title: null, allDay: false, date: null, time: null, minutes: null, busy: false, showAs: 'free' }
-  }
-  const title = typeof e.summary === 'string' ? stripDoneMark(e.summary) : null
-  const busy = e.transparency !== 'transparent'
-  const showAs = busy ? 'busy' as const : 'free' as const
-  if (e.start?.date && ISO_DAY.test(e.start.date)) {
-    const endDay = e.end?.date && ISO_DAY.test(e.end.date) ? e.end.date : addDaysToIso(e.start.date, 1)
-    const days = Math.max(1, Math.round((Date.parse(`${endDay}T00:00:00Z`) - Date.parse(`${e.start.date}T00:00:00Z`)) / 86_400_000))
-    return { ...base, status, title, allDay: true, date: e.start.date, time: null, minutes: Math.min(1440, days * 1440), busy: false, showAs }
-  }
-  const startAt = e.start?.dateTime ? wallClockIn(e.start.dateTime, zone) : null
-  if (!startAt) return { ...base, status, title, allDay: false, date: null, time: null, minutes: null, busy, showAs }
-  const startMs = Date.parse(e.start!.dateTime!)
-  const endMs = e.end?.dateTime ? Date.parse(e.end.dateTime) : NaN
-  const minutes = Number.isFinite(endMs) && endMs > startMs ? Math.min(1440, Math.round((endMs - startMs) / 60_000)) : null
-  return { ...base, status, title, allDay: false, date: startAt.date, time: startAt.time, minutes, busy, showAs }
-}
-
-/** The first read (and the one after a 410) only fetches a sync token. */
-type ReadbackPlan = { mode: 'baseline' } | { mode: 'incremental'; syncToken: string }
-
-function readbackPlan(state: { sync_token?: string | null } | null | undefined): ReadbackPlan {
-  const token = state?.sync_token
-  return typeof token === 'string' && token ? { mode: 'incremental', syncToken: token } : { mode: 'baseline' }
-}
-
-/** How far back the baseline reads (it only needs the token at its end). */
-const READBACK_BASELINE_DAYS = 7
-/** Pages a run reads at most (2500 events each). */
-const READBACK_MAX_PAGES = 20
-
-/**
- * events.list parameters. Google: "Sync tokens aren't compatible with most
- * filters" — timeMin goes on the baseline only; with a syncToken no
- * timeMin/timeMax/updatedMin/orderBy/q, and showDeleted can't be false (it is
- * left out on both, so both requests carry the same set otherwise). A page
- * repeats the same query with its pageToken.
- */
-function readbackListParams(plan: ReadbackPlan, nowMs: number, pageToken?: string | null): Record<string, string> {
-  const params: Record<string, string> = { maxResults: '2500' }
-  if (plan.mode === 'incremental') params.syncToken = plan.syncToken
-  else params.timeMin = new Date(nowMs - READBACK_BASELINE_DAYS * 86_400_000).toISOString()
-  if (pageToken) params.pageToken = pageToken
-  return params
-}
-
-/** 410 Gone on a sync token: Google wants a fresh full sync. */
-function isSyncTokenGone(status: number | null | undefined): boolean {
-  return status === 410
-}
-// </calendar-event-rules>
-
 // ── src/features/calendar/calendarSeries.ts ──
 // ─────────────────────────────────────────────────────────────────────────────
-//  A repeating plan (schedule_blocks) as ONE repeating Google Calendar event
-//  (migration 147) — the pure mapping. Pure and import-free apart from the
-//  repeat rule itself (daily/recurrence.ts) and the zone rule every event
-//  shares (calendarEventRules.itemTimeZone, 183), so scripts/verify-calendar-
-//  recurrence.cjs runs it as is. The calls that send it live in
-//  api/scheduleSeriesCalendar.ts.
+//  A repeating plan (schedule_blocks) as ONE repeating calendar event — the
+//  pure mapping (written for Google Calendar in 147; since Google Calendar
+//  went, 25.11.2026, Apple Calendar's series is built from it:
+//  areas/icloudEvents.planEvent). Pure and import-free apart from the repeat
+//  rule itself (daily/recurrence.ts) and the zone rule every event shares
+//  (calendarEventRules.itemTimeZone, 183), so scripts/verify-calendar-
+//  recurrence.cjs runs it as is.
 //
-//  Google's event (docs/integrations/google-calendar.md, checked 13.10.2026):
-//    start / end  the FIRST occurrence: a wall-clock dateTime with no offset
-//                 plus `timeZone` — required for a repeating event, it is the
-//                 zone the repeat is expanded in, so every occurrence keeps
-//                 its clock time across a daylight-saving change.
-//    recurrence   RFC 5545 lines: RRULE, RDATE, EXDATE (DTSTART is not
-//                 allowed there; start is DTSTART). The occurrences are the
-//                 RRULE's and the RDATEs', plus start itself, minus EXDATEs.
+//  The event (RFC 5545):
+//    start / end  the FIRST occurrence: a wall-clock date-time plus its zone
+//                 (TZID) — the zone the repeat is expanded in, so every
+//                 occurrence keeps its clock time across a daylight-saving change.
+//    recurrence   RRULE, RDATE, EXDATE lines. The occurrences are the RRULE's
+//                 and the RDATEs', plus start itself, minus EXDATEs.
 //
 //  The kinds (recurrence.ts):
 //    weekly            RRULE:FREQ=WEEKLY;WKST=MO;BYDAY=… (all seven days:
@@ -825,48 +626,42 @@ function isSyncTokenGone(status: number | null | undefined): boolean {
 //                      no RRULE can say "the Saturday nearest the 13th", so an
 //                      RDATE list from occurrencesBetween: picked dates all of
 //                      them; the monthly kinds up to a horizon a year ahead
-//                      (`horizon`, kept on the row), pushed again when the
-//                      app opens and less than 90 days of it remain.
-//    except_dates      EXDATE (only days the rule really has — Google wants
-//                      an EXDATE to name a real occurrence).
+//                      (`horizon`, kept on the row as icloud_horizon), written
+//                      again when less than 90 days of it remain.
+//    except_dates      EXDATE (only days the rule really has — an EXDATE must
+//                      name a real occurrence).
 //
 //  Start = the rule's FIRST day on or after the later of effective_from and
-//  the day the plan was added to Google (google_calendar_from, migration 148:
-//  owner, 14.10.2026 — a plan added today must not fill Google with its past
-//  weeks; the app's own projection still starts at effective_from). Never the
-//  day itself: RFC 5545 counts the start as an occurrence and leaves a start
-//  that doesn't fit the rule undefined (a Tuesday start for a Mon/Wed plan
-//  would put an extra Tuesday in Google). A first day that was taken out
-//  stays the start and gets an EXDATE, so skipping a day never moves the
-//  series.
+//  the day the series starts from (`series_from`: the day the plan reached
+//  Apple Calendar, icloud_from — owner, 14.10.2026: a plan added today must
+//  not fill the calendar with its past weeks; the app's own projection still
+//  starts at effective_from). Never the day itself: RFC 5545 counts the start
+//  as an occurrence and leaves a start that doesn't fit the rule undefined. A
+//  first day that was taken out stays the start and gets an EXDATE, so
+//  skipping a day never moves the series.
 //
 //  A plan that crosses midnight (end before start, or equal = 24 h) ends on
 //  the next day — the same reading as dayAgendaProjection.ts.
 //
 //  Since 155 (one item): a repeat with no time (start_time and end_time NULL)
 //  is an ALL-DAY series — start/end are dates (the first day, the day after:
-//  Google's end is exclusive) and every RDATE / EXDATE is a date
-//  (`RDATE;VALUE=DATE:20261018,…` — Google: "must be dates (not date-times)
-//  for all-day events"). Every series says whether it blocks time
+//  DTEND is exclusive) and every RDATE / EXDATE is a date
+//  (`RDATE;VALUE=DATE:20261018,…`). Every series says whether it blocks time
 //  (`transparency`): Busy for a time with a length, Free for a time without
-//  one (busy false) and for all-day. A day held by a moved instance of the
-//  series (the read-back, 155: that slot stores `<seriesId>_…`) gets no
-//  EXDATE (`keepDays`) — an EXDATE would cancel that instance on Google.
+//  one (busy false) and for all-day.
 //
 //  Since 193: End Repeat ends the RRULE — `COUNT=N` when the series starts on
-//  the plan's own first day (its N times are Google's and Apple's N), else
-//  `UNTIL` its last day (recurrence.repeatLastDay): a date for an all-day
-//  series, the last day's 23:59:59 in the plan's zone as UTC for a timed one
-//  (RFC 5545: with a TZID start, UNTIL is UTC). The RDATE kinds simply list no
-//  day after it (the horizon stops there). Show As sets Busy / Free when the
-//  owner picked it (calendarEventRules.eventTransparency), and the plan's own
-//  alerts are its reminders (googleReminders).
+//  the plan's own first day, else `UNTIL` its last day (recurrence.repeatLastDay):
+//  a date for an all-day series, the last day's 23:59:59 in the plan's zone as
+//  UTC for a timed one (RFC 5545: with a TZID start, UNTIL is UTC). The RDATE
+//  kinds simply list no day after it (the horizon stops there). Show As sets
+//  Busy / Free when the owner picked it (calendarEventRules.eventTransparency).
 // ─────────────────────────────────────────────────────────────────────────────
 
 
 /** The RDATE list of a monthly kind covers this many days past today. */
 const SERIES_HORIZON_DAYS = 365
-/** …and is pushed again once fewer than this many days of it remain. */
+/** …and is written again once fewer than this many days of it remain. */
 const SERIES_TOPUP_DAYS = 90
 /** The zone of a plan that names none — the home zone (the owner lives in Oslo). */
 const SERIES_FALLBACK_TIME_ZONE = SERVER_EVENT_TIME_ZONE
@@ -880,12 +675,10 @@ interface SeriesTemplate extends RepeatRule {
   /** 'HH:MM' or 'HH:MM:SS'; null (with end_time) = a repeat with no time — an all-day series (155). */
   start_time:   string | null
   end_time:     string | null
-  /** false: a time with no length — Free on Google (155). Missing = busy. */
+  /** false: a time with no length — Free (155). Missing = busy. */
   busy?:        boolean | null
-  google_calendar_event_id?: string | null
-  /** The last day the event's RDATE list covers (147); null = it lists them all. */
-  google_calendar_horizon?:  string | null
-  /** The zone Google's series was made in (147) — the plan's zone when it names none of its own. */
+  /** The zone its Google series was made in (147, before Google Calendar went) — the plan's zone when it names none
+   *  of its own (a plan saved before 183). */
   google_calendar_time_zone?: string | null
   /** The zone the plan's times are in (183): the phone's when it was made. */
   time_zone?: string | null
@@ -893,15 +686,13 @@ interface SeriesTemplate extends RepeatRule {
   place?: unknown
   /** Show As (193): 'busy' | 'free'; none = by its length, as before. */
   show_as?: unknown
-  /** Alert and Second Alert (193), read through calendarEventRules.eventAlerts; none = the area's (Google's default). */
+  /** Alert and Second Alert (193), read through calendarEventRules.eventAlerts; none = the area's own. */
   alerts?: unknown
-  /** The day the plan was added to Google Calendar (148): its series starts
-   *  on the first real day on or after this. Missing before 148. */
-  google_calendar_from?: string | null
+  /** The day its series starts from (the day it reached Apple Calendar): its first real day on or after this. */
+  series_from?: string | null
 }
 
-/** What events.insert / events.patch get. A timed series: wall-clock
- *  dateTime + zone; an all-day one (155): dates. */
+/** The series event. A timed series: wall-clock dateTime + zone; an all-day one (155): dates. */
 interface SeriesEventBody {
   summary:    string
   start:      { dateTime: string; timeZone: string } | { date: string }
@@ -909,14 +700,9 @@ interface SeriesEventBody {
   recurrence: string[]
   /** opaque = Busy, transparent = Free (155). */
   transparency: 'opaque' | 'transparent'
-  /** The plan's place (186), when it has one. An update sends none as null (calendarEventRules.fullEventPatch). */
-  location?: string
-  /** The plan's own alerts (193), when it has them. An update sends none as the default (fullEventPatch). */
-  reminders?: EventReminders
 }
 
-/** Push options: `keepDays` — days held by a moved instance of the series (155), never EXDATEd. */
-interface SeriesPushOptions { today: string; timeZone: string; keepDays?: readonly string[] }
+interface SeriesPushOptions { today: string; timeZone: string }
 
 interface SeriesPlan {
   body:    SeriesEventBody
@@ -925,8 +711,8 @@ interface SeriesPlan {
   /** Store on the row: the RDATE list's last day, or null when the event
    *  carries every occurrence (an RRULE, or all picked dates). */
   horizon: string | null
-  /** Store on the row: the day the series starts from (148), or null when
-   *  it starts at effective_from (no google_calendar_from given). */
+  /** Store on the row: the day the series starts from, or null when it
+   *  starts at effective_from (no series_from given). */
   from:    string | null
 }
 
@@ -939,10 +725,9 @@ function seriesTimeZone(tz: string | null | undefined): string {
   return itemTimeZone(tz)
 }
 
-/** The zone a plan's series is expanded in, by Google and Apple alike (183): the plan's own (`time_zone` — the
- *  phone's when it was made, changed only by the owner in the sheet), else the zone its Google series was made in,
- *  else the home zone. Never the device's at push time: a push from abroad (a save, a day carried over, the horizon
- *  top-up, Undo, a retry) never re-zones a plan. */
+/** The zone a plan's series is expanded in (183): the plan's own (`time_zone` — the phone's when it was made, changed
+ *  only by the owner in the sheet), else the zone its Google series was made in (before 183), else the home zone.
+ *  Never the device's at write time: a write from abroad never re-zones a plan. */
 function planTimeZone(plan: Pick<SeriesTemplate, 'time_zone' | 'google_calendar_time_zone'>): string {
   const own = typeof plan.time_zone === 'string' ? plan.time_zone.trim() : ''
   return itemTimeZone(own || plan.google_calendar_time_zone)
@@ -966,7 +751,7 @@ const everyOf = (rule: RepeatRule) => {
   return Number.isFinite(n) && n >= 1 ? n : 1
 }
 
-/** True for the kinds Google gets as an RDATE list kept up to a horizon. */
+/** True for the kinds written as an RDATE list kept up to a horizon. */
 function isHorizonKind(rule: RepeatRule): boolean {
   const kind = repeatKindOf(rule)
   return kind === 'monthly' || (kind === 'interval' && rule.repeat_unit === 'month')
@@ -1011,7 +796,7 @@ function endOfDayUtcStamp(day: string, zone: string): string {
 
 /**
  * End Repeat's part of the RRULE (193), '' for a repeat that never ends: `;COUNT=N` when the series starts on the
- * plan's own first day — Google and Apple then count the same N times — else `;UNTIL=` its last day (a date for an
+ * plan's own first day — the calendar then counts the same N times — else `;UNTIL=` its last day (a date for an
  * all-day series; the day's end in `tz` as UTC for a timed one).
  */
 function rruleEndPart(t: RepeatRule, first: string, allDay: boolean, tz: string): string {
@@ -1024,76 +809,16 @@ function rruleEndPart(t: RepeatRule, first: string, allDay: boolean, tz: string)
 }
 
 /** The first day the rule's pattern has on or after its start — the later of
- *  effective_from and the day it was added to Google (taken-out days count). */
-function firstSeriesDay(rule: RepeatRule & Pick<SeriesTemplate, 'google_calendar_from'>, today: string): string | null {
+ *  effective_from and the day its series starts from (taken-out days count). */
+function firstSeriesDay(rule: RepeatRule & Pick<SeriesTemplate, 'series_from'>, today: string): string | null {
   const start = isIsoDay(rule.effective_from) ? rule.effective_from : today
-  const added = rule.google_calendar_from
+  const added = rule.series_from
   const from = isIsoDay(added) && added > start ? added : start
   return nextOccurrences(patternOf(rule), from, 1, FIRST_DAY_SEARCH_DAYS)[0] ?? null
 }
 
-/** Whether the row comes from a database with 148's column (a `*` read carries it, null or not). */
-function hasSeriesFromColumn(row: object): boolean {
-  return 'google_calendar_from' in row
-}
-
 /**
- * The day a push starts the series from (148): the one stored with the link;
- * else today — a new link, or a series linked before 148, which starts over
- * from the day of this push. null without 148's column: the series then
- * starts at effective_from, as before it.
- */
-function seriesFromDay(row: Pick<SeriesTemplate, 'google_calendar_from'>, today: string): string | null {
-  if (!hasSeriesFromColumn(row)) return null
-  return isIsoDay(row.google_calendar_from) ? row.google_calendar_from : today
-}
-
-/** A series linked before 148: no start day stored yet — the app pushes it
- *  once when it opens, so Google drops the past weeks it was given. */
-function needsSeriesFromDay(t: SeriesTemplate): boolean {
-  return !!t.google_calendar_event_id && hasSeriesFromColumn(t) && !isIsoDay(t.google_calendar_from)
-}
-
-/** The event a push sends today: seriesEventFor from the series' start day
- *  (seriesFromDay) — what the plan's link stores as `from`. */
-function seriesEventForPush(row: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan | null {
-  return seriesEventFor({ ...row, google_calendar_from: seriesFromDay(row, opts.today) }, opts)
-}
-
-/** A day of the plan before its series starts on Google (148: the day it was
- *  added) was never there, so a change to it (done, moved, skipped, put
- *  back) stays off Google too. */
-function isBeforeSeriesStart(row: SeriesTemplate, day: string | null | undefined, today: string): boolean {
-  if (!isIsoDay(day)) return false
-  const first = firstSeriesDay({ ...row, google_calendar_from: seriesFromDay(row, today) }, today)
-  return !!first && day < first
-}
-
-/** The repeating plans one tap adds to Google Calendar (148): not on it yet,
- *  with a day left to show from the day they would start there. */
-function plansToAddToCalendar<T extends SeriesTemplate>(rows: readonly T[], today: string): T[] {
-  return rows.filter(r => !r.google_calendar_event_id
-    && seriesEventForPush(r, { today, timeZone: SERIES_FALLBACK_TIME_ZONE }) !== null)
-}
-
-const plans = (n: number) => `${n} repeating plan${n === 1 ? '' : 's'}`
-
-/** "Adding 6 repeating plans to Google Calendar…" */
-function addPlansProgressText(count: number): string {
-  return `Adding ${plans(count)} to Google Calendar…`
-}
-
-/** The one result line of "Add plans to Calendar" ("Added 6 repeating plans
- *  to Google Calendar · 1 failed — …"); a failed one waits on the retry list. */
-function addPlansResultText(r: { added: number; failed: number }): string {
-  const retry = 'the app tries again the next time it opens'
-  if (!r.added && !r.failed) return 'Every repeating plan is already on Google Calendar'
-  if (!r.added) return `Couldn't add ${plans(r.failed)} to Google Calendar — ${retry}`
-  return `Added ${plans(r.added)} to Google Calendar${r.failed ? ` · ${r.failed} failed — ${retry}` : ''}`
-}
-
-/**
- * The Google event for a repeating plan, or null when it has no occurrence
+ * The series event for a repeating plan, or null when it has no occurrence
  * left to show (no day picked, every day taken out). `today` sets the
  * horizon of the monthly kinds; `timeZone` is the zone the times mean.
  */
@@ -1106,7 +831,6 @@ function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan 
   if (!first) return null
 
   const tz = seriesTimeZone(opts.timeZone)
-  const keep = new Set((opts.keepDays ?? []).filter(isIsoDay))
   const except = new Set((t.except_dates ?? []).filter(isIsoDay))
   const pattern = patternOf(t)
   // All-day: dates (VALUE=DATE, no zone); timed: local date-times with TZID.
@@ -1132,18 +856,13 @@ function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan 
     if (repeatKindOf(t) !== 'dates') horizon = last
     const days = occurrencesBetween(pattern, first, last)
     const extra = days.filter(d => d !== first && !except.has(d))
-    if (!extra.length && except.has(first) && !keep.has(first)) return null // nothing left to show
+    if (!extra.length && except.has(first)) return null // nothing left to show
     if (extra.length) recurrence.push(`${prefix('RDATE')}${stamps(extra)}`)
     exdates = except.has(first) ? [first] : []
   }
-  exdates = exdates.filter(d => !keep.has(d))
   if (exdates.length) recurrence.push(`${prefix('EXDATE')}${stamps(exdates)}`)
 
-  const from = isIsoDay(t.google_calendar_from) ? t.google_calendar_from : null
-  const place = eventPlace(t.place)
-  const location = place ? { location: placeText(place) } : {}
-  const reminders = googleReminders(t.alerts, !startClock || !endClock)
-  const own = reminders ? { reminders } : {}
+  const from = isIsoDay(t.series_from) ? t.series_from : null
   if (!startClock || !endClock) {
     return {
       first, horizon, from,
@@ -1153,8 +872,6 @@ function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan 
         end: { date: addDaysIso(first, 1) },
         recurrence,
         transparency: eventTransparency(t.show_as, false),
-        ...location,
-        ...own,
       },
     }
   }
@@ -1169,73 +886,15 @@ function seriesEventFor(t: SeriesTemplate, opts: SeriesPushOptions): SeriesPlan 
       end:   { dateTime: `${endDay}T${endClock}`, timeZone: tz },
       recurrence,
       transparency: eventTransparency(t.show_as, t.busy !== false),
-      ...location,
-      ...own,
     },
   }
-}
-
-/** A linked monthly-kind plan whose RDATE list runs out within 90 days (or
- *  never had one) — the app pushes it again when it opens. */
-function needsHorizonTopUp(t: SeriesTemplate, today: string): boolean {
-  if (!t.google_calendar_event_id || !isHorizonKind(t) || !isIsoDay(today)) return false
-  const h = t.google_calendar_horizon
-  // A repeat that ends (193): once the list reaches its last day there is nothing more to add.
-  const end = repeatLastDay(t)
-  if (end && isIsoDay(h) && h >= end) return false
-  return !isIsoDay(h) || dayNumber(h) - dayNumber(today) < SERIES_TOPUP_DAYS
-}
-
-// ── Retries (pushes Google didn't take) ──────────────────────────────────────
-//  A day carried over (142) or an Undo whose push answered 'unknown' (no
-//  connection, a network or 5xx failure) is remembered on this device and
-//  pushed again the next time the app opens (useCalendarSeriesTopUp). The
-//  list lives in localStorage under SERIES_PENDING_KEY and is cleared on
-//  sign-out (security/accountState.ts).
-
-const SERIES_PENDING_KEY = 'lasci.calendarSeries.pending'
-
-interface PendingSeries {
-  planId:   string
-  /** Days of the plan (one-off blocks, 142) that get their own event once the series took their EXDATE. */
-  blockIds: string[]
-  /** Put back by Undo with its link reset: link it again. */
-  relink?:  boolean
-}
-
-/** The stored list, or [] for anything that isn't one. */
-function parsePendingSeries(raw: string | null | undefined): PendingSeries[] {
-  try {
-    const list: unknown = JSON.parse(raw ?? '[]')
-    if (!Array.isArray(list)) return []
-    return list.flatMap((p): PendingSeries[] => {
-      const x = p as Partial<PendingSeries> | null
-      if (!x || typeof x.planId !== 'string' || !x.planId) return []
-      const blockIds = Array.isArray(x.blockIds) ? x.blockIds.filter((b): b is string => typeof b === 'string' && !!b) : []
-      return [{ planId: x.planId, blockIds: [...new Set(blockIds)], ...(x.relink ? { relink: true } : {}) }]
-    })
-  } catch {
-    return []
-  }
-}
-
-/** Adds a plan (and a day of it) to the list: one entry per plan, days merged. */
-function addPendingSeries(list: readonly PendingSeries[], planId: string, blockId: string | null, relink = false): PendingSeries[] {
-  const at = list.findIndex(p => p.planId === planId)
-  const prev: PendingSeries = at >= 0 ? list[at] : { planId, blockIds: [] }
-  const next: PendingSeries = {
-    planId,
-    blockIds: blockId && !prev.blockIds.includes(blockId) ? [...prev.blockIds, blockId] : [...prev.blockIds],
-    ...(relink || prev.relink ? { relink: true } : {}),
-  }
-  return at >= 0 ? list.map((p, i) => (i === at ? next : p)) : [...list, next]
 }
 
 // ── src/features/calendar/areas/icloudEvents.ts ──
 // The app's events in Apple Calendar (Phase 2b, docs/features/calendar-plan.md):
 // which area an item belongs to, and the iCalendar object iCloud keeps for it —
-// built from the same rules as Google's events (calendarEventRules.blockEventBody
-// for a slot, calendarSeries.seriesEventFor for a repeating plan), plus the
+// built from the event rules (calendarEventRules.blockEventBody for a slot,
+// calendarSeries.seriesEventFor for a repeating plan), plus the
 // area's emoji, alert and a link back to the app. Pure; copied into
 // supabase/functions/icloud-calendar by scripts/sync-icloud-shared.mjs, which
 // is where it runs (verify-icloud-events checks the copy is current).
@@ -1264,7 +923,7 @@ function itemArea(x: AreaInput): AreaKey {
   return 'personal'
 }
 
-/** An item wants a calendar when its Google choice is Calendar or Both; an old row (no choice saved) where it is now. */
+/** An item wants a calendar when its choice is Calendar or Both; an old row (no choice saved) where it is now. */
 function wantsCalendar(target: string | null | undefined, onACalendar: boolean): boolean {
   if (target === 'calendar' || target === 'both') return true
   if (target == null) return onACalendar
@@ -1403,7 +1062,7 @@ function zoneDefinition(zone: string, y: number): string[] {
   return ['BEGIN:VTIMEZONE', `TZID:${zone}`, ...parts, 'END:VTIMEZONE']
 }
 
-/** DTSTART / DTEND from Google's form: a date (all day) or a wall-clock time in a zone. The last guard: a TZID is a
+/** DTSTART / DTEND from the event rules' form: a date (all day) or a wall-clock time in a zone. The last guard: a TZID is a
  *  zone name's shape or the line is not written (183 — the zone is the item's, i.e. input). */
 function timeLine(name: 'DTSTART' | 'DTEND', t: EventTime): string {
   if ('date' in t) return `${name};VALUE=DATE:${ics8(t.date)}`
@@ -1411,7 +1070,7 @@ function timeLine(name: 'DTSTART' | 'DTEND', t: EventTime): string {
   return `${name};TZID=${t.timeZone}:${t.dateTime.replace(/[-:]/g, '').slice(0, 15)}`
 }
 
-/** "✓ 🏋️ Lower B": the done mark first (Google's), then the area's emoji. */
+/** "✓ 🏋️ Lower B": the done mark first, then the area's emoji. */
 function areaTitle(summary: string, area: CalendarArea): string {
   const done = summary.startsWith('✓ ')
   const rest = done ? summary.slice(2) : summary
@@ -1610,8 +1269,8 @@ function planEvent(
   plan: SeriesTemplate & { id: string; notes?: string | null; icloud_from?: string | null; url?: unknown; travel_minutes?: unknown },
   o: { area: CalendarArea; look: EventLook; today: string; timeZone: string; appUrl: string; now: Date },
 ): { uid: string; ics: string; plan: SeriesPlan } | null {
-  // Google's own start day is not iCloud's: a series starts where it reached this calendar.
-  const series = seriesEventFor({ ...plan, google_calendar_from: plan.icloud_from ?? o.today }, { today: o.today, timeZone: o.timeZone })
+  // A series starts where it reached this calendar.
+  const series = seriesEventFor({ ...plan, series_from: plan.icloud_from ?? o.today }, { today: o.today, timeZone: o.timeZone })
   if (!series) return null
   const uid = `lasci-plan-${plan.id}@lasciviens.github.io`
   return { uid, plan: series, ics: eventObject({ uid, body: series.body, area: o.area, look: o.look, notes: plan.notes, link: dayLink(o.appUrl, series.first), now: o.now, place: eventPlace(plan.place),
@@ -1991,10 +1650,8 @@ export interface CalendarArea {
   color:        string
   /** The alert every event of the area gets, in minutes before it; null for none. */
   alertMinutes: number | null
-  /** Off: the area gets no calendar of its own (one made earlier stays in iCloud). */
+  /** Off: the area gets no calendar of its own and its items are only in the app (events made earlier stay in iCloud). */
   enabled:      boolean
-  /** Where the area's events go: Google Calendar (as before) or its Apple Calendar (Phase 2b). */
-  app:          'google' | 'apple'
 }
 
 /** What an event's notes carry in Apple Calendar: the item's own notes and/or a link back to the app. */
@@ -2023,12 +1680,12 @@ export const isAlertMinutes = (v: unknown): v is number | null =>
 
 // No alert unless the owner turns one on (owner, 31.10.2026: "It should be off by default").
 export const DEFAULT_AREAS: Record<AreaKey, CalendarArea> = {
-  training: { name: 'Lasci · Training', emoji: '🏋️', color: '#FF9500', alertMinutes: null, enabled: true, app: 'google' },
-  work:     { name: 'Lasci · Work', emoji: '💼', color: '#007AFF', alertMinutes: null, enabled: true, app: 'google' },
-  personal: { name: 'Lasci · Personal', emoji: '🏠', color: '#34C759', alertMinutes: null, enabled: true, app: 'google' },
-  media:    { name: 'Lasci · Media', emoji: '📺', color: '#AF52DE', alertMinutes: null, enabled: true, app: 'google' },
-  football: { name: 'Lasci · Football', emoji: '⚽', color: '#FF3B30', alertMinutes: null, enabled: true, app: 'google' },
-  games:    { name: 'Lasci · Games', emoji: '🎮', color: '#5856D6', alertMinutes: null, enabled: true, app: 'google' },
+  training: { name: 'Lasci · Training', emoji: '🏋️', color: '#FF9500', alertMinutes: null, enabled: true },
+  work:     { name: 'Lasci · Work', emoji: '💼', color: '#007AFF', alertMinutes: null, enabled: true },
+  personal: { name: 'Lasci · Personal', emoji: '🏠', color: '#34C759', alertMinutes: null, enabled: true },
+  media:    { name: 'Lasci · Media', emoji: '📺', color: '#AF52DE', alertMinutes: null, enabled: true },
+  football: { name: 'Lasci · Football', emoji: '⚽', color: '#FF3B30', alertMinutes: null, enabled: true },
+  games:    { name: 'Lasci · Games', emoji: '🎮', color: '#5856D6', alertMinutes: null, enabled: true },
 }
 
 const NAME_MAX = 60
@@ -2054,7 +1711,6 @@ export function readCalendarPrefs(raw: unknown): CalendarPrefs {
       color,
       alertMinutes: alert !== undefined && isAlertMinutes(alert) ? alert : d.alertMinutes,
       enabled: typeof a.enabled === 'boolean' ? a.enabled : d.enabled,
-      app: a.app === 'apple' || a.app === 'google' ? a.app : d.app,
     }
   }
   const top = isRecord(raw) ? raw : {}
@@ -2065,8 +1721,9 @@ export function readCalendarPrefs(raw: unknown): CalendarPrefs {
   return { areas, notes, allDayAlert }
 }
 
-/** An area whose events go to Apple Calendar: switched to Apple and in use (an area not in use stays on Google). */
-export const onApple = (area: Pick<CalendarArea, 'enabled' | 'app'>) => area.enabled && area.app === 'apple'
+/** An area whose events go to Apple Calendar: one in use (Apple is the only calendar since 208; the saved `app` key
+ *  it had before is not read). */
+export const onApple = (area: Pick<CalendarArea, 'enabled'>) => area.enabled
 
 /** Where an area's calendar lives under the calendar home: fixed per area, so a rename never makes a second calendar. */
 export const areaSlug = (key: AreaKey) => `lasci-${key}/`
@@ -2133,17 +1790,18 @@ export function validEtag(etag: string | null | undefined): string | null {
 export type DrainStep = 'put' | 'keep' | 'remove' | 'none'
 
 /**
- * What the drain does with one item — the owner's rule both ways: the new copy first, then the old one goes.
- *   put    — it wants a calendar and its area is on Apple: its Apple copy is written, then its Google copy goes;
- *   keep   — its Apple copy stays until the new copy exists: the Google Calendar copy (its area is back on
- *            Google) or its Google Task (moved to Google Tasks); that copy appearing queues the item again;
+ * What the drain does with one item — the owner's rule: the new copy first, then the old one goes.
+ *   put    — it wants a calendar and its area is in use: its Apple copy is written;
+ *   keep   — its Apple copy stays: its area was turned off (an event made earlier stays, Settings → Calendar), or it
+ *            moved to Google Tasks and its Google Task isn't there yet (that appearing queues the item again);
  *   remove — its Apple copy goes;
  *   none   — it has no Apple copy and wants none.
+ * (Until Google Calendar went, 25.11.2026, an item could also wait for — or hand over to — a Google Calendar copy.)
  */
-export function drainStep(x: { wanted: boolean; apple: boolean; inApple: boolean; googleCopy: boolean; waitsForGoogleTask: boolean }): DrainStep {
+export function drainStep(x: { wanted: boolean; apple: boolean; inApple: boolean; waitsForGoogleTask: boolean }): DrainStep {
   if (x.wanted && x.apple) return 'put'
   if (!x.inApple) return 'none'
-  if (x.wanted) return x.googleCopy ? 'remove' : 'keep'
+  if (x.wanted) return 'keep'
   return x.waitsForGoogleTask ? 'keep' : 'remove'
 }
 
@@ -2778,7 +2436,7 @@ async function removeOwnEvent(c: Creds, entity: 'slot' | 'plan' | 'workout', id:
   if (r.status >= 300 && r.status !== 404 && r.status !== 410) throw new ICloudError('delete', `iCloud answered ${r.status} when an event was removed`)
 }
 
-type DrainResult = 'put' | 'moved' | 'foreign' | 'kept' | 'removed' | 'none'
+type DrainResult = 'put' | 'kept' | 'removed' | 'none'
 
 /** What the drain did with the save's own item, for its answer (the save's warning gives the item's own reason, and
  *  a retry only when one comes): in Apple Calendar, its copy kept for its replacement, removed, none (it doesn't go
@@ -2789,11 +2447,11 @@ interface DrainItemOutcome { status: DrainItemStatus; error?: string | null; ret
 type DrainItemAnswer = DrainItemOutcome & DrainItem
 /** A named row as read from the queue (its retry state, for itemRowMayGo and a "waiting" answer). */
 type OwnRow = QueueRow & { next_try_at: string; last_error: string | null }
-const ITEM_STATUS: Record<DrainResult, DrainItemStatus> = { put: 'sent', moved: 'sent', foreign: 'sent', kept: 'kept', removed: 'removed', none: 'none' }
+const ITEM_STATUS: Record<DrainResult, DrainItemStatus> = { put: 'sent', kept: 'kept', removed: 'removed', none: 'none' }
 
 /**
  * One queued slot or plan, read live, through drainStep: its Apple copy is put (the new copy first, then an old
- * one in another area's calendar goes, then its Google Calendar copy is handed to Google's delete queue), kept
+ * one in another area's calendar goes), kept
  * while the copy that replaces it doesn't exist yet, or removed. Returns what happened, for the count.
  */
 async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: CalendarPrefs, areaCals: Record<string, { url?: string }>, today: string): Promise<DrainResult> {
@@ -2814,20 +2472,9 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
     const { data } = await db.from(table).select('icloud_area').eq('id', id).eq('user_id', userId).maybeSingle()
     return data?.icloud_area ?? null
   }
-  /** The Apple copy is in: its Google Calendar copy goes to Google's delete queue (175) — only an id the app made for this item. */
-  const handOver = async (entity: 'slot' | 'plan', id: string, eventId: string | null): Promise<DrainResult> => {
-    if (!eventId) return 'put'
-    const { data, error } = await db.rpc('icloud_hand_over', { p_user: userId, p_entity: entity, p_id: id, p_event: eventId })
-    if (error) {
-      throw new ICloudError('store', /icloud_hand_over/.test(error.message) ? 'Moving from Google Calendar needs migration 175 — it runs with the next deploy'
-        : 'In Apple Calendar now, but its Google Calendar copy could not be queued for removal — it is tried again')
-    }
-    return data === 'handed' ? 'moved' : data === 'foreign' ? 'foreign' : 'put'
-  }
-
   if (q.entity === 'slot') {
     const { data: b, error } = await db.from('time_blocks')
-      .select('id, date, start_time, duration_minutes, title, busy, notes, category, source_type, task_id, schedule_block_id, google_calendar_event_id, icloud_area, icloud_etag, time_zone, place, alerts, show_as, url, travel_minutes')
+      .select('id, date, start_time, duration_minutes, title, busy, notes, category, source_type, task_id, schedule_block_id, icloud_area, icloud_etag, time_zone, place, alerts, show_as, url, travel_minutes')
       .eq('id', q.entity_id).eq('user_id', userId).maybeSingle()
     if (error) throw new ICloudError('read', 'A slot could not be read')
     if (!b) {
@@ -2849,12 +2496,11 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
     const area = itemArea({ category: b.category, source_type: b.source_type, task_source_type: t?.source_type, domain: t?.domain, project_id: t?.project_id, hevy_routine_id: t?.hevy_routine_id })
     const conf = prefs.areas[area]
     // A slot with no task is on a calendar only where it is now (itemRules.presentGoogleTarget). A skipped day of a
-    // repeat stays off it, as on Google (scheduleSeriesCalendar.linkDayEvent); Undo of the skip puts it back.
-    // A day marked missed (156: closed_reason 'missed') stays, as on Google.
+    // repeat stays off it; Undo of the skip puts it back. A day marked missed (156: closed_reason 'missed') stays.
     const skippedDay = !!b.schedule_block_id && t?.status === 'cancelled' && !t.closed_reason
-    const wanted = !skippedDay && wantsCalendar(t ? t.google_target : null, !!(b.google_calendar_event_id || b.icloud_area))
+    const wanted = !skippedDay && wantsCalendar(t ? t.google_target : null, !!b.icloud_area)
     const step = drainStep({
-      wanted, apple: onApple(conf), inApple: !!b.icloud_area, googleCopy: !!b.google_calendar_event_id,
+      wanted, apple: onApple(conf), inApple: !!b.icloud_area,
       waitsForGoogleTask: !!t?.google_sync_enabled && !t.google_task_id,
     })
     if (step === 'put') {
@@ -2872,7 +2518,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
         }
         await removeOld('slot', b.id, area, b.icloud_area, q.area)
         if (area === 'training' && !b.icloud_area && b.task_id) await requeueSessionWorkouts(db, userId, { taskId: b.task_id })
-        return handOver('slot', b.id, b.google_calendar_event_id)
+        return 'put'
       }
     }
     if (step === 'keep') {
@@ -2889,7 +2535,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
   if (q.entity === 'workout') return drainWorkout(db, c, userId, q, prefs, areaCals, removeOld)
 
   const { data: p, error } = await db.from('schedule_blocks')
-    .select('id, title, start_time, end_time, busy, days_of_week, repeat_kind, repeat_interval, repeat_unit, repeat_dates, effective_from, except_dates, category, domain, google_target, notes, google_calendar_event_id, google_calendar_time_zone, google_calendar_from, icloud_area, icloud_etag, icloud_from, icloud_horizon, time_zone, place, alerts, show_as, url, travel_minutes, repeat_until, repeat_count')
+    .select('id, title, start_time, end_time, busy, days_of_week, repeat_kind, repeat_interval, repeat_unit, repeat_dates, effective_from, except_dates, category, domain, google_target, notes, google_calendar_time_zone, icloud_area, icloud_etag, icloud_from, icloud_horizon, time_zone, place, alerts, show_as, url, travel_minutes, repeat_until, repeat_count')
     .eq('id', q.entity_id).eq('user_id', userId).maybeSingle()
   if (error) throw new ICloudError('read', 'A repeating plan could not be read')
   if (!p) {
@@ -2898,7 +2544,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
   }
   const area = itemArea({ category: p.category, domain: p.domain })
   const conf = prefs.areas[area]
-  const wanted = wantsCalendar(p.google_target, !!(p.google_calendar_event_id || p.icloud_area))
+  const wanted = wantsCalendar(p.google_target, !!p.icloud_area)
   // A repeat moved to Google Tasks keeps its Apple series until today's day task is a Google Task (156: one per day).
   let waitsForGoogleTask = false
   if (!wanted && p.icloud_area) {
@@ -2907,12 +2553,12 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
     if (de) throw new ICloudError('read', 'A repeat\'s day could not be read')
     waitsForGoogleTask = !!day?.google_sync_enabled && !day.google_task_id
   }
-  const step = drainStep({ wanted, apple: onApple(conf), inApple: !!p.icloud_area, googleCopy: !!p.google_calendar_event_id, waitsForGoogleTask })
+  const step = drainStep({ wanted, apple: onApple(conf), inApple: !!p.icloud_area, waitsForGoogleTask })
   if (step === 'put') {
     const url = ownEventUrl('plan', p.id, area, areaCals)
     if (!url) throw new ICloudError('calendars', NO_AREA_CALENDAR)
-    // A series that was on Google keeps its start (its past days stay on the calendar).
-    const from = p.icloud_from ?? p.google_calendar_from ?? null
+    // A series keeps its start once written (its past days stay on the calendar).
+    const from = p.icloud_from ?? null
     const ev = planEvent({ ...p, icloud_from: from }, { area: conf, look: prefs, today, timeZone: planTimeZone(p), appUrl: APP_URL, now: new Date() })
     if (ev) {
       const etag = await putEvent(c, url, ev.ics, p.icloud_area === area ? validEtag(p.icloud_etag) : null)
@@ -2923,7 +2569,7 @@ async function drainOne(db: Db, c: Creds, userId: string, q: QueueRow, prefs: Ca
       }
       await removeOld('plan', p.id, area, p.icloud_area, q.area)
       if (area === 'training' && !p.icloud_area) await requeueSessionWorkouts(db, userId, { planId: p.id })
-      return handOver('plan', p.id, p.google_calendar_event_id)
+      return 'put'
     }
   }
   if (step === 'keep') {
@@ -3084,7 +2730,7 @@ async function readBackArea(db: Db, c: Creds, userId: string, area: AreaKey, cal
       await apply(o.entity, o.id, change, now)
     }
   }
-  // Only events still linked to this calendar count: one the app removed itself (a delete, a move back to Google)
+  // Only events still linked to this calendar count: one the app removed itself (a delete, a move to another area)
   // is not the iPhone's, and counting it would hold every later run back.
   const removedOwn = await stillLinked(db, userId, area, removed.map(own).filter((o): o is { entity: 'slot' | 'plan'; id: string } => !!o))
   counts.ignored += removed.length - removedOwn.length
@@ -3149,8 +2795,8 @@ async function readBackAccount(db: Db, c: Creds, userId: string, prefs: Calendar
   const { data: states, error } = await db.from('icloud_sync_state').select('area, sync_token, written_name, written_color, synced_at').eq('user_id', userId)
   if (error) throw new ICloudError('read', /icloud_sync_state/.test(error.message) ? 'Changes from Apple Calendar need migration 176 — it runs with the next deploy' : 'The read-back state could not be read')
   const byArea = new Map((states ?? []).map(s => [s.area as AreaKey, s as SyncStateRow]))
-  // An area on Apple, or one read before (an area back on Google may still hold Apple copies kept until their Google
-  // copy exists). A plain drain (a save) skips a calendar read in the last minute — it can't change the saved item.
+  // An area in use, or one read before (an area turned off still holds the Apple copies made earlier). A plain drain
+  // (a save) skips a calendar read in the last minute — it can't change the saved item.
   const areas = AREA_KEYS.filter(k => {
     const url = areaCals[k]?.url
     if (!url || !isICloudUrl(url)) return false
@@ -3186,7 +2832,7 @@ async function readBackAccount(db: Db, c: Creds, userId: string, prefs: Calendar
 }
 
 type DrainCounts = Record<DrainResult | 'failed', number>
-const emptyCounts = (): DrainCounts => ({ put: 0, moved: 0, foreign: 0, kept: 0, removed: 0, none: 0, failed: 0 })
+const emptyCounts = (): DrainCounts => ({ put: 0, kept: 0, removed: 0, none: 0, failed: 0 })
 
 /**
  * One account's queue, the app's own changes oldest first and settings re-sends after them, within a time budget. Each queued slot or plan is read live; a row goes only
@@ -3205,7 +2851,7 @@ async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Reco
   if (leaseError) throw new ICloudError('queue', /drain_until/.test(leaseError.message) ? 'Apple Calendar events need migration 174 — it runs with the next deploy' : 'The queue could not be read')
   if (!(leased ?? []).length) return { busy: true }
   try {
-    // Settings that can't be read are never guessed: the defaults would read every area as Google and remove events.
+    // Settings that can't be read are never guessed: the defaults could remove events.
     const { data: prefsRow, error: prefsError } = await db.from('calendar_prefs').select('prefs').eq('user_id', userId).maybeSingle()
     if (prefsError) throw new ICloudError('prefs', 'The calendar settings could not be read — nothing was changed in Apple Calendar')
     const prefs = readCalendarPrefs(prefsRow?.prefs)
@@ -3213,7 +2859,7 @@ async function drainAccount(db: Db, userId: string, creds: Creds, areaCals: Reco
     // Changes made in Apple Calendar first (2c): a move made on the iPhone reaches the item before anything is sent.
     const readBack = await readBackAccount(db, creds, userId, prefs, areaCals, opts.look)
     const started = Date.now() // the send's own time budget starts after the read-back
-    // A monthly kind's RDATE list runs a year ahead: renewed when under 90 days are left (Google: needsHorizonTopUp).
+    // A monthly kind's RDATE list runs a year ahead: renewed when under 90 days are left.
     const { data: ending } = await db.from('schedule_blocks').select('id, icloud_area')
       .eq('user_id', userId).not('icloud_area', 'is', null).not('icloud_horizon', 'is', null)
       .lt('icloud_horizon', addDaysIso(today, SERIES_TOPUP_DAYS))
@@ -3323,9 +2969,9 @@ async function requeueSessionWorkouts(db: Db, userId: string, by: { taskId: stri
 }
 
 /**
- * A Hevy workout (179): its own event in the Training calendar while Training is on Apple, read live by its key. Not
+ * A Hevy workout (179): its own event in the Training calendar while Training is in use, read live by its key. Not
  * when its planned session's event is already there (the ticked session stands for it) — never twice. A workout gone,
- * or Training back on Google, takes its event away.
+ * or Training turned off, takes its event away.
  */
 async function drainWorkout(db: Db, c: Creds, userId: string, q: QueueRow, prefs: CalendarPrefs, areaCals: Record<string, { url?: string }>,
   removeOld: (entity: 'workout', id: string, keep: string | null, ...olds: (string | null)[]) => Promise<void>): Promise<DrainResult> {
@@ -3383,17 +3029,17 @@ const QUEUE_CHUNK = 500
 async function queueAreaMove(db: Db, userId: string, area: AreaKey, from: MoveFrom, dryRun: boolean): Promise<{ slots: number; plans: number; queued: boolean; partial: boolean }> {
   const { data: prefsRow, error: prefsError } = await db.from('calendar_prefs').select('prefs').eq('user_id', userId).maybeSingle()
   if (prefsError) throw new ICloudError('prefs', 'The calendar settings could not be read — nothing was moved')
-  if (!dryRun && !onApple(readCalendarPrefs(prefsRow?.prefs).areas[area])) throw new ICloudError('prefs', 'Switch the area to Apple Calendar first (Settings → Calendar)')
+  if (!dryRun && !onApple(readCalendarPrefs(prefsRow?.prefs).areas[area])) throw new ICloudError('prefs', 'Turn the area on first (Settings → Calendar)')
   const today = osloClock(new Date()).day
   let partial = false
 
   const slots: string[] = []
-  // From today on: the days from today, plus every earlier day of a repeat that has its own slot (142) — a day moved
-  // in Google Calendar is an instance of the series, and it goes with the series when the series moves.
+  // From today on: the days from today, plus every earlier day of a repeat that has its own slot (142) — it goes with
+  // its series when the series moves.
   const parts = from === 'today' ? ['upcoming', 'past days of a repeat'] as const : ['all'] as const
   for (const part of parts) for (let at = 0; ; at += MOVE_PAGE) {
-    let page = db.from('time_blocks').select('id, category, source_type, task_id, google_calendar_event_id, icloud_area')
-      .eq('user_id', userId).or('google_calendar_event_id.not.is.null,task_id.not.is.null,icloud_area.not.is.null')
+    let page = db.from('time_blocks').select('id, category, source_type, task_id, icloud_area')
+      .eq('user_id', userId).or('task_id.not.is.null,icloud_area.not.is.null')
       .order('id').range(at, at + MOVE_PAGE - 1)
     if (part === 'upcoming') page = page.gte('date', today)
     if (part === 'past days of a repeat') page = page.lt('date', today).not('schedule_block_id', 'is', null)
@@ -3411,7 +3057,7 @@ async function queueAreaMove(db: Db, userId: string, area: AreaKey, from: MoveFr
       const t = b.task_id ? tasks.get(b.task_id) ?? null : null
       if (b.icloud_area === area) continue
       if (itemArea({ category: b.category, source_type: b.source_type, task_source_type: t?.source_type, domain: t?.domain, project_id: t?.project_id, hevy_routine_id: t?.hevy_routine_id }) !== area) continue
-      if (wantsCalendar(t ? t.google_target : null, !!(b.google_calendar_event_id || b.icloud_area))) slots.push(b.id)
+      if (wantsCalendar(t ? t.google_target : null, !!b.icloud_area)) slots.push(b.id)
     }
     if ((rows ?? []).length < MOVE_PAGE) break
     if (at + MOVE_PAGE >= MOVE_MAX_ROWS) { partial = true; break }
@@ -3419,12 +3065,12 @@ async function queueAreaMove(db: Db, userId: string, area: AreaKey, from: MoveFr
 
   const plans: string[] = []
   for (let at = 0; ; at += MOVE_PAGE) {
-    const { data: rows, error } = await db.from('schedule_blocks').select('id, category, domain, google_target, google_calendar_event_id, icloud_area')
+    const { data: rows, error } = await db.from('schedule_blocks').select('id, category, domain, google_target, icloud_area')
       .eq('user_id', userId).order('id').range(at, at + MOVE_PAGE - 1)
     if (error) throw new ICloudError('read', 'The repeating plans could not be read — nothing was moved')
     for (const p of rows ?? []) {
       if (p.icloud_area === area || itemArea({ category: p.category, domain: p.domain }) !== area) continue
-      if (wantsCalendar(p.google_target, !!(p.google_calendar_event_id || p.icloud_area))) plans.push(p.id)
+      if (wantsCalendar(p.google_target, !!p.icloud_area)) plans.push(p.id)
     }
     if ((rows ?? []).length < MOVE_PAGE) break
     if (at + MOVE_PAGE >= MOVE_MAX_ROWS) { partial = true; break }
@@ -3648,22 +3294,16 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'disconnect') {
-      // An area on Apple has its events only there: without the connection its new items would reach no calendar.
-      const { data: prefsRow, error: prefsError } = await db.from('calendar_prefs').select('prefs').eq('user_id', user.id).maybeSingle()
-      if (prefsError) return answer({ error: 'The calendar settings could not be read — try again' }, 502)
-      const onAppleNow = AREA_KEYS.filter(k => onApple(readCalendarPrefs(prefsRow?.prefs).areas[k]))
-      if (onAppleNow.length) {
-        const names = onAppleNow.map(k => readCalendarPrefs(prefsRow?.prefs).areas[k].name).join(', ')
-        return answer({ error: `Move ${names} back to Google Calendar first (Settings → Calendar → Shows in) — then disconnect` }, 400)
-      }
+      // Apple Calendar is the only calendar (208): after Disconnect new items stay in the app; events already in iCloud
+      // stay there (the app never removes them without a connection).
       const { error } = await db.from('icloud_credentials').delete().eq('user_id', user.id)
       if (!error) await db.from('icloud_sync_state').delete().eq('user_id', user.id)
       if (error) throw new ICloudError('store', 'The stored password could not be deleted — try again')
       return answer({ connected: false })
     }
 
-    // Phase 2b-2: an area switched to Apple — its items that want a calendar are queued for Apple Calendar (the
-    // drain puts each one, then hands its Google copy over). dryRun only counts them, for the preview.
+    // Phase 2b-2: an area turned on — its items that want a calendar are queued for Apple Calendar (the drain puts
+    // each one). dryRun only counts them, for the preview.
     if (action === 'move') {
       if (!row) return answer({ error: 'Connect iCloud first' }, 400)
       const areaKey = String(body.area ?? '')

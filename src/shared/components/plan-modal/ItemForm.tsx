@@ -8,7 +8,7 @@
 //    LOCATION   ⌖ Location · Travel Time                 (a slot: a time, a repeat or all day)
 //    TIME       Date · All-day · Starts [Tue 10.11.2026] [17:30]
 //               Ends [Tue 10.11.2026] [18:30] · the day's timeline · Time Zone · Repeat · End Repeat
-//    OPTIONS    Calendar  Google Calendar · busy  ·  List (a Google Task's)
+//    OPTIONS    Calendar  Apple Calendar · busy  ·  List (a Google Task's)
 //               Alert · Second Alert · Show As           (a slot)
 //    DETAILS    URL (a slot) · Notes
 //    PLANNING   Priority · Area · Category · Labels · Deadline · Deadline time · Do it between
@@ -56,10 +56,10 @@ interface Props {
   creating: boolean
   today: string
   nextTime: string
-  /** The Calendar row's choice can be shown: Google is connected here, or the item's area is on Apple Calendar. */
+  /** The Calendar row's choice can be shown: Google (Tasks) is connected here, or the item's area is in Apple Calendar. */
   googleConnected: boolean
   /** Where the item's calendar event lives (the server's rule, worked out by the sheet). */
-  calendarApp: 'google' | 'apple'
+  calendarApp: 'apple' | 'none'
   /** Where an edit stays when this device can't show the choice (its saved target). */
   keptTarget?: GoogleTarget
   /** A repeating item opened on one of its days (its This day | All days is in the header). */
@@ -94,11 +94,10 @@ interface Props {
   taskId?: string | null
 }
 
-/** What "Default" means on the Alert row where the item goes (193: null = the area's alert in Apple Calendar,
- *  Google Calendar's own default there; nothing when it stays in the app). */
+/** What "Default" means on the Alert row where the item goes (193: null = the area's alert in Apple Calendar; nothing
+ *  when it stays in the app). */
 const DEFAULT_ALERT_HINT: Partial<Record<ReturnType<typeof fieldGoes>, string>> = {
   apple: "Its area's alert (Settings → Calendar)",
-  'google-calendar': "Google Calendar's own default",
 }
 
 export function ItemForm({

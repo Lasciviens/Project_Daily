@@ -16,7 +16,6 @@ import { useRepeatDays } from '../hooks/useSchedule'
 import { useMonthKinds } from '../hooks/useMonthKinds'
 import { useMonthLines } from '../hooks/useMonthLines'
 import { MONTH_KIND, MONTH_KINDS, dayAccessibleName, dayTexts, shownSlots, type MonthKind, type MonthSlotLine } from '../monthLines'
-import { CalendarFilter } from '../../calendar/components/CalendarFilter'
 
 interface Props {
   onDayClick?:    (date: Date) => void
@@ -102,7 +101,6 @@ export function MonthWidget({ onDayClick, highlightDate, big }: Props) {
         />
         <div className="flex shrink-0 items-center gap-1">
           {openCount > 0 && <TonePill tone="accent">{openCount} open</TonePill>}
-          <CalendarFilter />
         </div>
       </div>
       </div>

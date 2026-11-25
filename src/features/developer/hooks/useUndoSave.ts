@@ -4,24 +4,20 @@ import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFe
 import { entityModal } from '../../../shared/modals'
 import { qk, STALE } from '../../../shared/query'
 import { logError } from '../../../shared/utils/logError'
-import type { DeletedRows, RowOverrides } from '../../../shared/utils/deletedRows'
+import type { RowOverrides } from '../../../shared/utils/deletedRows'
 import { applyUndo, fetchUndoPlan, type UndoPlan, type UndoResult } from '../api/undoSaveApi'
-import { CALENDAR_FIELDS, touchesTrakt, undoDoneMessage, undoneCount } from '../components/undoPlanText'
+import { touchesTrakt, undoDoneMessage, undoneCount } from '../components/undoPlanText'
 import { TASK_GOOGLE_RESET, syncGoogleTasksSoon } from '../../todo/hooks/useTodos'
-import { BLOCK_EVENT_RESET, relinkRestoredBlockEvents, removeDeletedBlockEvents } from '../../calendar/api/deletedBlockEvents'
-import {
-  SERIES_EVENT_RESET, linkScheduleSeries, relinkRestoredSeriesEvents, removeDeletedSeriesEvents,
-} from '../../calendar/api/scheduleSeriesCalendar'
-import { updateTimeBlock } from '../../daily/api/scheduleApi'
-import type { UpdateTimeBlockInput } from '../../daily/types'
+import { BLOCK_EVENT_RESET, SERIES_EVENT_RESET } from '../../calendar/areas/restoreResets'
+import { drainICloudSoon } from '../../calendar/areas/appleAreas'
 import { scheduleTraktSync } from '../../media/trakt/traktAutoSync'
 
 export type { UndoPlan } from '../api/undoSaveApi'
 
 // "Undo this save" (Developer → Activity, migrations 150/151). The preview and
 // the undo share the overrides the one delete flow's Undo uses (144): a row
-// put back must not claim a Google Task or Calendar event that was deleted on
-// Google with it — it gets a new one right after (the follow-ups below).
+// put back must not claim a Google Task or Apple Calendar event that was
+// deleted with it — it gets a new one right after (the follow-ups below).
 const UNDO_OVERRIDES: RowOverrides = { ...TASK_GOOGLE_RESET, ...BLOCK_EVENT_RESET, ...SERIES_EVENT_RESET }
 
 /**
@@ -44,48 +40,16 @@ export function useUndoPlan(txId: number, { enabled = true }: { enabled?: boolea
   })
 }
 
-const snapshotOf = (groups: DeletedRows['groups']): DeletedRows =>
-  ({ v: 1, root: '', deleted: 0, groups, links: [], touched: [], hidden: [] })
-
 /**
- * After an undo: Google follows, the way it does after the one delete flow's
- * Undo — slots and plans the undo deleted leave Google Calendar, those it put
- * back get an event again, slots whose time or title went back move their
- * event, and Google Tasks delivers what the outbox queued. The preview lists
- * these Calendar writes before they happen (151 counts them from the steps:
- * `outbox` google_calendar create / update), so the owner confirms them.
- * Best effort; a note says what didn't follow.
+ * After an undo: the outside copies follow, the way they do after the one delete flow's Undo — Apple Calendar
+ * through its queue (the database's triggers filled it; sent now), Google Tasks through its outbox. Best effort.
  */
 async function followUndo(result: UndoResult, txId: number): Promise<string> {
-  const notes: string[] = []
-  const deleted = snapshotOf(result.deleted_rows)
-  const byTable = new Map<string, Record<string, unknown>[]>()
-  for (const r of result.reinserted_rows) byTable.set(r.t, [...(byTable.get(r.t) ?? []), r.row])
-  const back = snapshotOf([...byTable].map(([table, rows]) => ({ table, pk: 'id', rows })))
-
-  await removeDeletedBlockEvents(deleted)
-  await removeDeletedSeriesEvents(deleted)
-  const blockNote = await relinkRestoredBlockEvents(back)
-  if (blockNote) notes.push(`a slot is ${blockNote}`)
-  await relinkRestoredSeriesEvents(back)
-
-  for (const r of result.reverted_rows) {
-    if (!r.row.google_calendar_event_id) continue
-    if (r.t === 'time_blocks') {
-      const fields = CALENDAR_FIELDS.filter(f => r.columns.includes(f))
-      if (!fields.length) continue
-      const patch = Object.fromEntries(fields.map(f => [f, r.row[f]])) as UpdateTimeBlockInput
-      const { calendarStatus } = await updateTimeBlock(String(r.row.id), patch)
-      if (calendarStatus === 'unknown') notes.push('a slot\'s Google Calendar event is not moved back yet (open it and save)')
-    } else if (r.t === 'schedule_blocks') {
-      await linkScheduleSeries(String(r.row.id), { fromEditor: false })
-    }
-  }
-
+  drainICloudSoon()
   const tasksTouched = [...result.reverted_rows, ...result.reinserted_rows].some(r => r.t === 'tasks')
     || result.deleted_rows.some(g => g.table === 'tasks')
   if (tasksTouched) syncGoogleTasksSoon({ undoTx: txId })
-  return [...new Set(notes)].join(' · ')
+  return ''
 }
 
 /**
@@ -104,7 +68,7 @@ export function useUndoSave({ onApplied }: { onApplied?: () => void } = {}) {
     silent: 'onSuccess below says the result, with an Undo toast',
     mutationFn: async ({ txId, confirm }: { txId: number; confirm: string }): Promise<UndoPlan> => {
       const done = await applyUndo(txId, confirm, UNDO_OVERRIDES)
-      // The database's answer is the result; Google follows in the background.
+      // The database's answer is the result; Apple Calendar and Google Tasks follow in the background.
       if (done.result) {
         void followUndo(done.result, txId)
           .then(note => { if (note) toast.warning(`Undone, but ${note}`) })

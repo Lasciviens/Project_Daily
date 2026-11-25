@@ -17,7 +17,6 @@ import {
   toggleTaskDone,
 } from '../api/tasksApi'
 import { drainGoogleTasksOutbox } from '../api/googleTasksOutbox'
-import { updateTimeBlock, fetchTimeBlockByTaskId } from '../../daily/api/scheduleApi'
 import { ensureValidCalendarToken } from '../../calendar/api/calendarTokenSync'
 import { toast, useCalendarStore } from '../../../app/store'
 import { logError } from '../../../shared/utils/logError'
@@ -26,8 +25,8 @@ import { qk, STALE } from '../../../shared/query'
 import { mapRowsInCache, putRowsInCache, restoreCache, snapshotCache } from '../../../shared/query/cachePatch'
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { rowsOf, type RowOverrides } from '../../../shared/utils/deletedRows'
-import { BLOCK_EVENT_RESET, relinkRestoredBlockEvents, removeDeletedBlockEvents } from '../../calendar/api/deletedBlockEvents'
-import { refreshSeriesSoon, refreshTaskEventSoon } from '../../calendar/api/itemCalendar'
+import { BLOCK_EVENT_RESET } from '../../calendar/areas/restoreResets'
+import { drainICloudSoon } from '../../calendar/areas/appleAreas'
 import { dayTasks, openOnDay, sectionForDay } from '../taskRules'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { applyTaskPatch, taskUpdateMessage } from '../taskWrites'
@@ -183,30 +182,9 @@ export function useUpdateTask({ report = true }: { report?: boolean } = {}) {
       // migration 071's DB trigger (it has OLD/NEW); this only delivers what
       // it enqueued — in the background.
       syncGoogleTasksSoon({ taskId: id })
-      // Done / reopened: its slot's event gains or loses "✓ " (155). A title
-      // edit pushes the event below anyway.
-      if (patch.status !== undefined && patch.title === undefined) refreshTaskEventSoon(id)
-      // A repeat's day moved (156): the database took its day out of the
-      // repeat (or put it back) — its Google Calendar series follows.
-      if (patch.due_date !== undefined && task.schedule_block_id) refreshSeriesSoon(task.schedule_block_id)
-
-      // Task title is canonical (migration 077) — a DB trigger already kept
-      // the linked time_block's OWN title in sync regardless of which door
-      // wrote it, but the REMOTE Google Calendar event needs an explicit
-      // push here since a trigger has no OAuth token to reach it with.
-      // Routed through scheduleApi's updateTimeBlock so it shares the typed
-      // calendar-status lifecycle of every other calendar push. In the
-      // background: the task is saved; the calendar follows.
-      if (patch.title !== undefined && useCalendarStore.getState().accessToken) {
-        void (async () => {
-          try {
-            const linked = await fetchTimeBlockByTaskId(id)
-            if (linked?.id) await updateTimeBlock(linked.id, { title: task.title })
-          } catch (err) {
-            logError(`Calendar event title sync failed: ${(err as Error).message}`, { taskId: id })
-          }
-        })()
-      }
+      // Done / reopened ("✓ "), a new title (077's trigger renames its slot), a repeat's day moved (156: the
+      // database took its day out of the repeat): the triggers queued the Apple Calendar side — sent shortly.
+      if (patch.status !== undefined || patch.title !== undefined || (patch.due_date !== undefined && task.schedule_block_id)) drainICloudSoon()
       return task
     },
     onMutate: async ({ id, patch }) => {
@@ -232,8 +210,8 @@ export function useToggleTask() {
     mutationFn: async ({ id, isDone }: { id: string; isDone: boolean }) => {
       const task = await toggleTaskDone(id, isDone)
       syncGoogleTasksSoon({ taskId: id })
-      // Its slot's Google Calendar event gains or loses "✓ " (155), in the background.
-      refreshTaskEventSoon(id)
+      // Its slot's Apple Calendar event gains or loses "✓ " (155): queued by the triggers, sent shortly.
+      drainICloudSoon()
       return task
     },
     onMutate: async ({ id, isDone }) => {
@@ -262,24 +240,18 @@ export const TASK_GOOGLE_RESET: RowOverrides = {
   tasks: {
     google_task_id: null, google_etag: null, google_position: null, google_updated_at: null,
     google_web_view_link: null, google_links: null, google_local_edit_at: null,
+    // google_calendar_event_id: retired with Google Calendar (208), never brought back.
     google_calendar_event_id: null, google_hidden: false, google_deleted: false,
   },
 }
 
-/** The repeats whose day a deleted (or restored) task was (156): the
- *  database took the day out of the repeat (or put it back), so its Google
- *  Calendar series is brought up to date — in the background. */
-function refreshRepeatsOf(tasks: readonly Task[]): void {
-  for (const plan of new Set(tasks.map(t => t.schedule_block_id).filter((id): id is string => !!id))) refreshSeriesSoon(plan)
-}
-
 /**
  * THE task delete: one call deletes the task and returns what went with it —
- * its schedule slot (and that slot's Google Calendar event, removed right
- * after), its training skip, and the subtasks, wish and shopping item that
- * pointed at it (migration 144). Undo puts all of it back with the same ids;
- * Google Task and Calendar copies are made again. A repeat's day (156)
- * deleted leaves its repeat — its series loses the day; Undo puts it back.
+ * its schedule slot (its Apple Calendar event goes through the queue), its
+ * training skip, and the subtasks, wish and shopping item that pointed at it
+ * (migration 144). Undo puts all of it back with the same ids; its Google Task
+ * and Apple Calendar copies are made again. A repeat's day (156) deleted
+ * leaves its repeat — its series loses the day; Undo puts it back.
  *   del.run([task.id], { title: 'Delete this task?', done: 'Task deleted' })
  */
 export function useDeleteTask() {
@@ -288,16 +260,14 @@ export function useDeleteTask() {
     action: 'delete_task',
     invalidates: ['taskGraph', qk.training.skipsAll, qk.wishes.all],
     cache: qk.tasks.all,
-    afterDelete: async snapshot => {
-      await removeDeletedBlockEvents(snapshot)
+    afterDelete: snapshot => {
       for (const t of rowsOf<Task>(snapshot, 'tasks')) syncGoogleTasksSoon({ taskId: t.id })
-      refreshRepeatsOf(rowsOf<Task>(snapshot, 'tasks'))
+      drainICloudSoon()
     },
     overrides: () => ({ ...TASK_GOOGLE_RESET, ...BLOCK_EVENT_RESET }),
     afterRestore: async snapshot => {
       for (const t of rowsOf<Task>(snapshot, 'tasks')) if (t.google_sync_enabled) syncGoogleTasksSoon({ taskId: t.id })
-      refreshRepeatsOf(rowsOf<Task>(snapshot, 'tasks'))
-      return relinkRestoredBlockEvents(snapshot)
+      drainICloudSoon()
     },
   })
 }

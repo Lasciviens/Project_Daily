@@ -1,4 +1,10 @@
-# Google Calendar
+# Google Calendar — retired 25.11.2026
+
+> **Retired (owner, 25.11.2026: "Google calendar can be removed. we dont need it anymore"; "Calendar only" — Google Tasks stays; "Leave them in Google").** Since migration 208 the app calls no Google Calendar endpoint: no event is made, changed, read or deleted, and the events it made before stay in Google Calendar as they are. Apple Calendar is the app's one calendar (`docs/integrations/icloud-caldav.md`).
+>
+> **What remains:** the one Google sign-in — `calendar-oauth`, `calendar-token`, `calendar-disconnect` and `user_calendar_tokens` keep their names and now serve Google Tasks only (`GOOGLE_SCOPES` = `https://www.googleapis.com/auth/tasks`; a refresh token given before still carries the Calendar scopes until the owner revokes it — `docs/deploy-checklist.md`); the columns `time_blocks` / `schedule_blocks.google_calendar_event_id`, `schedule_blocks.google_calendar_from` / `_horizon` (always null since 208), `schedule_blocks.google_calendar_time_zone` (a plan's zone from before 183) and the tables `calendar_outbox` (empty) and `google_calendar_sync_state` (unread) — kept until the owner agrees to drop them. How the removal went: `docs/features/planning-calendar.md` → Google Calendar went.
+>
+> Everything below is the record of how the integration worked until then.
 
 Checked: 13.10.2026 against Google's own docs — the Events reference (developers.google.com/workspace/calendar/api/v3/reference/events and its `insert` / `patch` / `instances` pages), the guides "Recurring events" (…/guides/recurringevents) and "Calendars & events" (…/concepts/events-calendars), and RFC 5545 §3.3.10 / §3.8.5 (which the reference names for the `recurrence` lines). No live sample: there are no credentials in a development session — the repeating-event calls were run against a fake Calendar API in the mock harness only.
 

@@ -4,7 +4,7 @@
  * against the REAL un-mocked module via sucrase (no unit-test runner by
  * convention), plus static checks on the data layer around it.
  *   1. the Google default (owner, 15.10.2026) — never 'both', never 'Auto';
- *   2. Google choices that can't be saved, and the "Shows twice" warning;
+ *   2. choices that can't be saved, and the warning for an area with no calendar;
  *   3. the To-Do section follows the day (today → Today, another day →
  *      Backlog, no day → Inbox; a screen with sections and an old item's own
  *      section win);
@@ -35,26 +35,27 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 const TODAY = '2026-10-15'
 const item = (over) => ({ title: 'Gym', domain: 'personal', priority: 'medium', date: null, time: null, durationMinutes: null, google: 'tasks', ...over })
 
-console.log('\n1 · The Google default')
-check('a time → Google Calendar', R.defaultGoogleTarget(item({ date: TODAY, time: '14:00' })) === 'calendar')
-check('a repeat → Google Calendar (with or without a time)', R.defaultGoogleTarget(item({ repeat: { kind: 'weekly', daysOfWeek: [0], startsOn: TODAY } })) === 'calendar')
+console.log('\n1 · The default (the calendar is Apple Calendar since 25.11.2026)')
+check('a time → the calendar', R.defaultGoogleTarget(item({ date: TODAY, time: '14:00' })) === 'calendar')
+check('a repeat → the calendar (with or without a time)', R.defaultGoogleTarget(item({ repeat: { kind: 'weekly', daysOfWeek: [0], startsOn: TODAY } })) === 'calendar')
 check('a day, no time → Google Tasks', R.defaultGoogleTarget(item({ date: TODAY })) === 'tasks')
 check('no day → Google Tasks', R.defaultGoogleTarget(item({})) === 'tasks')
 check('never both by default', ['tasks', 'calendar'].includes(R.defaultGoogleTarget(item({ date: TODAY, time: '09:00', durationMinutes: 30 }))))
 
-console.log('\n2 · Google choices that can\'t be saved, and the warning')
+console.log('\n2 · Choices that can\'t be saved, and the warning')
 const p = R.googleTargetProblem
 check('Tasks for a repeat → allowed since 156 ("one per day": each day\'s task is a Google Task)',
   p(item({ google: 'tasks', repeat: { kind: 'weekly', daysOfWeek: [1], startsOn: TODAY } })) === null)
-check('Both for a repeat → only the warning', eq(p(item({ google: 'both', repeat: { kind: 'weekly', daysOfWeek: [1], startsOn: TODAY } })),
-  { level: 'warning', message: 'Shows twice in Google Calendar' }))
+check('Both for a repeat → fine (Apple Calendar and Google Tasks: two apps, nothing shows twice)',
+  p(item({ google: 'both', repeat: { kind: 'weekly', daysOfWeek: [1], startsOn: TODAY } })) === null)
 check('Calendar with no day: not a chip problem, but the save says so', p(item({ google: 'calendar' })) === null
-  && /Google Calendar needs a day/.test(R.itemInputProblem(item({ google: 'calendar' })) ?? ''))
+  && /A calendar needs a day/.test(R.itemInputProblem(item({ google: 'calendar' })) ?? ''))
 check('…one day of a repeat (scope day, no repeat in the save) may be on Calendar',
   R.itemInputProblem(item({ google: 'calendar', scope: 'day', scheduleBlockId: 'p', occurrenceDate: TODAY, date: TODAY })) === null)
-check('Both → the warning "Shows twice in Google Calendar"', eq(p(item({ google: 'both', date: TODAY })), { level: 'warning', message: 'Shows twice in Google Calendar' }))
+check('Both → fine; in an area that is off → the warning', p(item({ google: 'both', date: TODAY })) === null
+  && eq(p(item({ google: 'both', date: TODAY }), 'none'), { level: 'warning', message: 'Its area has no calendar — turn it on in Settings → Calendar' }))
 check('Calendar for a repeat with no time → fine (an all-day series)', p(item({ google: 'calendar', repeat: { kind: 'weekly', daysOfWeek: [0], startsOn: TODAY } })) === null)
-check('Not on Google → fine', p(item({ google: 'none' })) === null)
+check('Only in this app → fine', p(item({ google: 'none' })) === null && p(item({ google: 'none' }), 'none') === null)
 const q = R.itemInputProblem
 check('an empty title stops the save', q(item({ title: '  ' })) === 'A title is needed')
 check('a time with no day stops the save', q(item({ time: '14:00' })) === 'A time needs a day')
@@ -135,19 +136,19 @@ check('an old standalone slot: its own title, domain from its category, its even
 
 console.log('\n5 · What it says')
 const saved = (over) => ({ taskId: 't', blockId: 'b', scheduleBlockId: null, created: true, ...over })
-check('"Added · 15.10.2026 17:30–18:30 · on Google Calendar"',
-  R.describeSaved(item({ date: TODAY, time: '17:30', durationMinutes: 60, google: 'calendar' }), saved({})) === 'Added · 15.10.2026 17:30–18:30 · on Google Calendar',
+check('"Added · 15.10.2026 17:30–18:30 · sending to Apple Calendar" (a caller that does not say: Apple)',
+  R.describeSaved(item({ date: TODAY, time: '17:30', durationMinutes: 60, google: 'calendar' }), saved({})) === 'Added · 15.10.2026 17:30–18:30 · sending to Apple Calendar',
   R.describeSaved(item({ date: TODAY, time: '17:30', durationMinutes: 60, google: 'calendar' }), saved({})))
-check('an edit says Saved; no length → just the time', R.describeSaved(item({ taskId: 't', date: TODAY, time: '14:00', google: 'calendar' }), saved({ created: false })) === 'Saved · 15.10.2026 14:00 · on Google Calendar')
+check('an edit says Saved; no length → just the time', R.describeSaved(item({ taskId: 't', date: TODAY, time: '14:00', google: 'calendar' }), saved({ created: false })) === 'Saved · 15.10.2026 14:00 · sending to Apple Calendar')
 check('no day → "No date"; Google Tasks named', R.describeSaved(item({}), saved({})) === 'Added · No date · on Google Tasks')
-check('Not on Google says nothing about Google', R.describeSaved(item({ date: TODAY, google: 'none' }), saved({})) === 'Added · 15.10.2026')
+check('Only in this app says nothing about Google', R.describeSaved(item({ date: TODAY, google: 'none' }), saved({})) === 'Added · 15.10.2026')
 check('a deadline is said', R.describeSaved(item({ date: TODAY, deadline: { date: '2026-10-20', time: '12:00' }, google: 'none' }), saved({})) === 'Added · 15.10.2026 · due 20.10.2026 12:00')
 check('a repeat: its summary', R.describeSaved(item({ google: 'calendar', repeat: { kind: 'weekly', daysOfWeek: [0], startsOn: '2026-10-18' } }), saved({ taskId: null, blockId: null, scheduleBlockId: 'p' }))
-  === 'Added · Every week on Sun · on Google Calendar', R.describeSaved(item({ google: 'calendar', repeat: { kind: 'weekly', daysOfWeek: [0], startsOn: '2026-10-18' } }), saved({ taskId: null, blockId: null, scheduleBlockId: 'p' })))
+  === 'Added · Every week on Sun · sending to Apple Calendar', R.describeSaved(item({ google: 'calendar', repeat: { kind: 'weekly', daysOfWeek: [0], startsOn: '2026-10-18' } }), saved({ taskId: null, blockId: null, scheduleBlockId: 'p' })))
 check('one day of a repeat: "Saved for 25.10.2026 only"', R.describeSaved(item({ scope: 'day', scheduleBlockId: 'p', occurrenceDate: '2026-10-25', date: '2026-10-26', time: '08:00', google: 'calendar', repeat: { kind: 'weekly', daysOfWeek: [0], startsOn: '2026-10-18' } }), saved({ created: false, occurrenceDate: '2026-10-25' }))
-  === 'Saved for 25.10.2026 only · 26.10.2026 08:00 · on Google Calendar')
+  === 'Saved for 25.10.2026 only · 26.10.2026 08:00 · sending to Apple Calendar')
 check('an end past midnight wraps', R.endOf('23:30', 90) === '01:00')
-// An item whose area shows in Apple Calendar (2b-2): the line named Google Calendar (owner, 03.11.2026). The server sends
+// An item whose area shows in Apple Calendar (2b-2; every area since 208): the line named Google Calendar until 03.11.2026. The server sends
 // the event after the save answered, so the line says where it is going — never that it is there.
 const timed = item({ date: TODAY, time: '17:30', durationMinutes: 60, google: 'calendar' })
 const weekly = { kind: 'weekly', daysOfWeek: [0], startsOn: '2026-10-18' }
@@ -169,8 +170,9 @@ check('…never that it is there yet, and never Google Calendar', appleLines.eve
 check('a Google Task in an Apple area is still "on Google Tasks"; no calendar says nothing', R.describeSaved(item({}), saved({}), 'apple') === 'Added · No date · on Google Tasks'
   && R.describeSaved(item({ google: 'tasks', repeat: weekly }), saved({ taskId: null, blockId: null, scheduleBlockId: 'p' }), 'apple') === 'Added · Every week on Sun · on Google Tasks, one per day'
   && R.describeSaved(item({ date: TODAY, google: 'none' }), saved({}), 'apple') === 'Added · 15.10.2026')
-check('a Google area (or a caller that does not say) keeps "on Google Calendar"', R.describeSaved(timed, saved({}), 'google') === 'Added · 15.10.2026 17:30–18:30 · on Google Calendar'
-  && R.describeSaved(timed, saved({})) === 'Added · 15.10.2026 17:30–18:30 · on Google Calendar')
+check('an area that is off: a calendar item says no calendar; its Google Task is still named', R.describeSaved(timed, saved({}), 'none') === 'Added · 15.10.2026 17:30–18:30'
+  && R.describeSaved({ ...timed, google: 'both' }, saved({}), 'none') === 'Added · 15.10.2026 17:30–18:30 · on Google Tasks'
+  && R.describeSaved(item({ google: 'both', repeat: weekly }), saved({ taskId: null, blockId: null, scheduleBlockId: 'p' }), 'none') === 'Added · Every week on Sun · on Google Tasks, one per day')
 check('repeat days: "Done for 15.10.2026", "Skipped …", "… open again"', R.describeRepeatDay('done', TODAY) === 'Done for 15.10.2026'
   && R.describeRepeatDay('skip', TODAY) === 'Skipped 15.10.2026' && R.describeRepeatDay('undo', TODAY) === '15.10.2026 open again')
 check('conversion lines', R.describeConverted(4) === 'Converted 4 old slots into items' && /Nothing to convert/.test(R.describeConverted(0))
@@ -190,10 +192,10 @@ check('the sheet\'s helpers re-export the ONE implementation (no second copy)',
   && !/export function (defaultGoogleTarget|googleTargetProblem|sectionForItem|itemFromRows|storedGoogleTarget|presentGoogleTarget)\b/.test(sheet))
 check('the sheet\'s delete is the data layer\'s (useDeleteItem)', /useDeleteItem\(\)/.test(read('src/features/items/useSheetDelete.ts'))
   && !/action: 'skip'/.test(read('src/features/items/useSheetDelete.ts')))
-check('the read-back state reads the run\'s outcome only (never the sync token)', /select\('last_run_at, last_clean_at, last_error, last_applied'\)/.test(api) && !/sync_token/.test(api))
+check('the item api reads no Google Calendar state any more (its read-back went, 25.11.2026)', !/google_calendar_sync_state|sync_token/.test(api))
 check('every hook mutation goes through useMutationWithFeedback', !/useMutation\(/.test(hooks) && (hooks.match(/useMutationWithFeedback</g) ?? []).length >= 5)
 check('deletes go through the one delete flow (useRowsDelete hooks / confirmDelete)', /useDeleteTask\(\)/.test(hooks) && /useDeleteScheduleBlock\(\)/.test(hooks) && /confirmDelete</.test(hooks))
-check('Google follows the save in the background (the save resolves when the database answers)', /void settleItemGoogle\(answer, input\.google, input\.blockId \?\? null\)/.test(hooks))
+check('Apple Calendar and Google Tasks follow the save in the background (the save resolves when the database answers)', /void settleItemGoogle\(answer, input\.google, input\.blockId \?\? null\)/.test(hooks))
 check('keys only from qk; groups for invalidation', !/queryKey: \[/.test(hooks) && /invalidates: \['taskGraph', qk\.items\.all\]/.test(hooks))
 check('the success line comes from describeSaved (a caller may say more: describe, 28.10.2026), with the calendar the caller names',
   /successMessage: \(saved, input\) => own\?\.describe\?\.\(input, saved\.after\) \?\? describeSaved\(input, saved, own\?\.calendarApp\)/.test(hooks))

@@ -1,12 +1,11 @@
 // One item (migration 155) — the database calls. Every write is ONE RPC
-// (one transaction → one entry in Developer → Activity); the Google
-// Calendar calls that follow a save live in calendar/api/itemCalendar.ts.
+// (one transaction → one entry in Developer → Activity); what follows a save
+// (Apple Calendar, Google Tasks) lives in calendar/api/itemCalendar.ts.
 // The website can meet a database without 155 (a failed migration, a
-// revert): a missing RPC or table answers the named NOT_MIGRATED error, and
-// the read-back state reads as "not set up yet". Remove the fallbacks once
-// 155 has been live for a while.
+// revert): a missing RPC answers the named NOT_MIGRATED error. Remove the
+// fallbacks once 155 has been live for a while.
 import { supabase } from '../../integrations/supabase/client'
-import type { CalendarReadbackState, ConvertPreview, ConvertResult, ItemInput } from './itemTypes'
+import type { ConvertPreview, ConvertResult, ItemInput } from './itemTypes'
 
 export const ITEMS_NOT_MIGRATED = 'Saving items needs migration 155 — migration 155 not applied yet.'
 
@@ -14,8 +13,6 @@ interface PgError { code?: string; message?: string; details?: string; hint?: st
 
 const isMissingRpc = (e: PgError | null | undefined) =>
   !!e && (e.code === 'PGRST202' || e.code === '42883' || /could not find the function/i.test(e.message ?? ''))
-const isMissingTable = (e: PgError | null | undefined) =>
-  !!e && (e.code === '42P01' || e.code === 'PGRST205' || /could not find the table/i.test(e.message ?? ''))
 
 /** The database's own refusals (155's IT0xx codes) read as what they say. */
 function rpcError(e: PgError): Error {
@@ -203,23 +200,4 @@ export async function undoConversion(conversionId: string): Promise<{ undone: nu
   if (error) throw rpcError(error)
   const r = (data ?? {}) as Record<string, unknown>
   return { undone: count(r.undone), kept: count(r.kept), already: r.already === true }
-}
-
-/** The Calendar read-back's last run (google-tasks-sync writes it; the browser reads only its outcome). */
-export async function fetchCalendarReadbackState(): Promise<CalendarReadbackState> {
-  const { data, error } = await supabase
-    .from('google_calendar_sync_state')
-    .select('last_run_at, last_clean_at, last_error, last_applied')
-    .maybeSingle()
-  if (error) {
-    if (isMissingTable(error)) return { lastRunAt: null, lastCleanAt: null, lastError: null, lastApplied: 0, available: false }
-    throw error
-  }
-  return {
-    lastRunAt: data?.last_run_at ?? null,
-    lastCleanAt: data?.last_clean_at ?? null,
-    lastError: data?.last_error ?? null,
-    lastApplied: data?.last_applied ?? 0,
-    available: true,
-  }
 }

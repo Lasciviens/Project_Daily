@@ -1,7 +1,6 @@
 import { useCallback, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTodayStr } from '../../../shared/hooks/useToday'
-import { useCalendarEventIdsByDay } from '../../calendar/hooks/useCalendarRange'
 import { useWatchesBetween } from '../../media/hooks/useYearReview'
 import { useShopItems } from '../../shop/hooks/useShop'
 import { useShopCosts } from '../../shop/hooks/useShopMoney'
@@ -39,9 +38,8 @@ export function useMonthLines(from: string, to: string, hidden: readonly MonthKi
   const { skips, routineOf } = usePlanContext()
   const routineOfPlan = useCallback((p: CalendarPlanItem, date: string) => routineOf({ title: p.title, date, startHHMM: planStartHHMM(p) }), [routineOf])
 
-  // Plans: the month's slots plus the Google events no slot made.
+  // Plans: the month's slots (the app's own; Google Calendar's events went with it, 25.11.2026).
   const slots = useTimeBlocksRange(from, to, { enabled: on('plans') })
-  const events = useCalendarEventIdsByDay(new Date(`${from}T12:00:00`), new Date(`${to}T12:00:00`))
 
   // Media: every watch on its own day (the year review's reads).
   const media = useWatchesBetween(from, to)
@@ -63,7 +61,7 @@ export function useMonthLines(from: string, to: string, hidden: readonly MonthKi
     return out
   }, [from, to, workouts.data, activities.data, plans.data, today, skips, routineOfPlan])
 
-  const planCounts = useMemo(() => plansByDay(slots.data ?? [], events.data), [slots.data, events.data])
+  const planCounts = useMemo(() => plansByDay(slots.data ?? []), [slots.data])
   const watched = useMemo(() => mediaByDay(media.watches), [media.watches])
   const spent = useMemo(() => {
     if (!items.data) return new Map()
@@ -80,7 +78,7 @@ export function useMonthLines(from: string, to: string, hidden: readonly MonthKi
   // A failed read is named, never read as "nothing" (THEME §5); Try again reads the failed ones again.
   const failed: MonthKind[] = []
   if (on('training') && (workouts.isError || plans.isError)) failed.push('training')
-  if (on('plans') && (slots.isError || events.isError)) failed.push('plans')
+  if (on('plans') && slots.isError) failed.push('plans')
   if (on('media') && media.failed) failed.push('media')
   if (on('money') && (items.isError || costs.isError)) failed.push('money')
   const retry = useCallback(() => {
@@ -90,7 +88,7 @@ export function useMonthLines(from: string, to: string, hidden: readonly MonthKi
   // A day's lines are one list across these reads: it shows once every shown kind has answered
   // (or failed), so no line moves when a later read lands (THEME §5: one order waits for its own).
   const loading = (on('training') && (workouts.isLoading || activities.isLoading || plans.isLoading))
-    || (on('plans') && (slots.isLoading || events.isLoading))
+    || (on('plans') && slots.isLoading)
     || (on('media') && media.loading)
     || (on('money') && (items.isLoading || costs.isLoading))
 
