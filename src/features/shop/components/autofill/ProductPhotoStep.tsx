@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { Plus, Sparkles, X } from 'lucide-react'
-import { Button, IconButton, cx } from '../../../../shared/ui'
+import { Package, Plus, Sparkles, X } from 'lucide-react'
+import { Button, IconButton } from '../../../../shared/ui'
 import { useMotion } from '../../../../shared/hooks/useMotion'
 import { PhotoButton } from '../../../ai/claude/components/PhotoButton'
 import { costNote } from '../../../ai/claude/featureRules'
@@ -9,41 +9,53 @@ import { ItemThumb } from '../shopKit'
 import { ChoiceChip } from '../shopPickers'
 import type { ProductPhotoStep } from './useProductPhotoStep'
 
-const PHOTO_TIP = 'Photo — take or pick 1–2 photos; AI drafts the product from them and your words (it may ask a few questions first). Nothing is saved until you tap Save; the photos are not kept.'
+const PHOTO_TIP = 'Photo — take or pick 1–2 photos of a product; AI drafts it from them and your words (it may ask a few questions first). A link or a barcode is read first, free. Nothing is saved until you tap Save; the photos are not kept.'
 
-/** The 📷✨ in the link row: the camera or the photo library, up to two photos. */
+/** A box with a small ✨: a thing from photos (its own mark, so it is never taken for the receipt's camera). */
+function PackageAi() {
+  return <span className="relative inline-flex"><Package aria-hidden /><Sparkles aria-hidden className="absolute -right-1.5 -top-1.5 !h-2.5 !w-2.5" /></span>
+}
+
+/** "≤ $0.05": the most both calls can cost, from the job's own prices. */
+const worstLabel = (usd: number | null): string | null => (usd == null ? null : `≤ $${usd < 0.01 ? usd.toFixed(3) : usd.toFixed(2)}`)
+
+/** The 📷✨ button: the camera or the photo library, up to two photos. It shows where its body puts it (one place at a time). */
 export function PhotoAskButton({ step, disabled }: { step: ProductPhotoStep; disabled?: boolean }) {
   return (
-    <PhotoButton iconOnly bordered multiple onFiles={step.add} onFile={f => step.add([f])} disabled={disabled || step.busy} loading={step.busy} tip={PHOTO_TIP}>
+    <PhotoButton iconOnly bordered multiple icon={<PackageAi />} onFiles={step.add} onFile={f => step.add([f])} disabled={disabled || step.busy} loading={step.busy} tip={PHOTO_TIP}>
       Photo
     </PhotoButton>
   )
 }
 
 /**
- * The step under the link row (owner, 25.11.2026): the photos and a line, then the AI's questions (tap a choice or type an
- * answer), then the draft fills the facts below and a line says what it cost. Questions and choices are the AI's words, shown
- * as text; nothing here is saved.
+ * The step (owner, 25.11.2026): the photos and a line, then the AI's questions (tap a choice or type an answer), then the
+ * draft fills the facts and a line says what it cost — or that a link or a barcode filled it with no AI. Questions and
+ * choices are the AI's words, shown as text; nothing here is saved.
  */
 export function ProductPhotoPanel({ step }: { step: ProductPhotoStep }) {
   const motion = useMotion()
   const box = useRef<HTMLDivElement>(null)
-  // On a phone the step sits under the facts: it comes into view when it opens and when the questions land (the owner asked for it).
-  const asking = !!step.questions
+  // On a phone the step can sit under other parts: it comes into view when it opens and when the questions land.
+  const asked = !!step.questions
   useEffect(() => {
     if (step.open) box.current?.scrollIntoView({ block: 'nearest', behavior: motion ? 'smooth' : 'auto' })
-  }, [step.open, asking, motion])
+  }, [step.open, asked, motion])
   if (!step.open) {
     if (!step.done && !step.problem) return null
+    const done = step.done
     return (
       <p className="text-meta text-fg-muted" role="status">
-        {step.done ? `Filled from photo + AI${costNote(step.done.costUsd) ? ` · ${costNote(step.done.costUsd)}` : ''}${step.done.searched ? ' · searched the web' : ''} — check it below.` : step.problem}
+        {done?.free ? `Found by its barcode — no AI: ${done.free}`
+          : done ? `Filled from photo + AI${costNote(done.costUsd) ? ` · ${costNote(done.costUsd)}` : ''}${done.searched ? ' · searched the web' : ''} — check it below.`
+          : step.problem}
       </p>
     )
   }
-  const asked = asking
+  const worst = worstLabel(step.worstUsd)
   return (
-    <div ref={box} className="flex scroll-mb-4 flex-col gap-2 rounded-row border border-line bg-surface-2 p-2" role="group" aria-label="A thing from photos">
+    <div ref={box} className="relative flex scroll-mb-4 flex-col gap-2 rounded-row border border-line bg-surface-2 p-2 pr-11" role="group" aria-label="A thing from photos">
+      <IconButton size="sm" label="Close — drop the photos" onClick={step.close} disabled={step.busy} className="absolute right-1 top-1"><X aria-hidden /></IconButton>
       <div className="flex flex-wrap items-center gap-2">
         {step.photos.map((p, i) => (
           <span key={p.url} className="relative">
@@ -62,12 +74,15 @@ export function ProductPhotoPanel({ step }: { step: ProductPhotoStep }) {
             <input value={step.text} onChange={e => step.setText(e.target.value)} maxLength={PRODUCT_PHOTO_LIMITS.text} disabled={step.busy}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); step.start() } }}
               aria-label="What it is (optional)" placeholder="What is it? (optional)" className="input input-sm min-w-[9rem] flex-1" />
-            <Button size="sm" variant="primary" icon={<Sparkles />} loading={step.busy} onClick={step.start}
-              tip="Ask — the AI looks at the photos and your words; it may ask a few questions, then fills the draft">Ask</Button>
+            {/* The AI is asked only after a link, a typed barcode and a barcode in the photos had their free turn. */}
+            <Button size="sm" variant="primary" icon={<Sparkles />} loading={step.busy} onClick={step.start} disabled={worst == null}
+              tip={`Ask — a link or a barcode is read first, free; then the AI looks at the photos and your words${worst ? ` (both calls at most ${worst.slice(2)})` : ' (working out the cost)'}`}>
+              {worst ? `Ask · ${worst}` : 'Ask'}
+            </Button>
           </>
         )}
-        <IconButton size="sm" label="Close — drop the photos" onClick={step.close} disabled={step.busy} className={cx(asked && 'ml-auto')}><X aria-hidden /></IconButton>
       </div>
+      {step.note && <p className="text-meta text-fg-muted" role="status">{step.note}</p>}
       {step.problem && <p className="text-meta text-warn" role="status">{step.problem}</p>}
       {step.questions && (
         <>

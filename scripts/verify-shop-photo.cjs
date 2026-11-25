@@ -51,9 +51,26 @@ check('questions: distinct plain choices (2–4), no web address, at most 3 ques
 check('questions of which none can be used are nothing', R.readProductPhoto({ kind: 'questions', questions: [{ question: 'Q?', choices: ['A'] }] }, SENT) === null)
 
 console.log('\n2. AI last: code first')
-check('a link in the line goes to the link reader, never the AI', R.photoPlan(' see https://shop.example.com/x1 ').kind === 'link' && R.photoPlan('www.shop.example.com').kind === 'link')
+const ZW = String.fromCharCode(0x200b), WJ = String.fromCharCode(0x2060)
+let plan = R.photoPlan(' see https://shop.example.com/x1, please ')
+check('a link in the line goes to the link reader alone (just the link, the words stay), never the AI', plan.kind === 'link' && plan.url === 'https://shop.example.com/x1' && plan.rest === 'see please', plan)
+plan = R.photoPlan('www.shop.example.com/x1')
+check('a "www." link is read as https', plan.kind === 'link' && plan.url === 'https://www.shop.example.com/x1', plan)
+plan = R.photoPlan(`see ht${ZW}tps://shop.example.com/x1`)
+check('a link split by a zero-width space, or behind a word joiner, is still a link (cleaned first, as the function does)', plan.kind === 'link' && plan.url === 'https://shop.example.com/x1' && R.photoPlan(`w${WJ}ww.shop.example.com`).kind === 'link' && R.photoPlan('ｗｗｗ.shop.example.com').kind === 'link', plan)
 check('a typed barcode number (8–14 digits, spaces or dashes allowed) goes to the barcode lookup', same(R.photoPlan('7 0 4 0 1 2 3 4 5 6 7 8 9'), { kind: 'barcode', code: '7040123456789' }) && same(R.photoPlan('7040-1234'), { kind: 'barcode', code: '70401234' }))
 check('words, or nothing typed, go to the AI', R.photoPlan('my old headphones').kind === 'ai' && R.photoPlan('').kind === 'ai' && R.photoPlan('X1 2024').kind === 'ai')
+check('an answer holding a link (also split or full-width) is caught before it is sent; plain words are not', R.holdsLink('https://shop.example.com') && R.holdsLink(`h${ZW}ttps://x.example`) && R.holdsLink('ｗｗｗ.x') && !R.holdsLink('Black, 2024 model'))
+check('a barcode for the job is digits only, 8–14', R.photoEan('7040123456789') === '7040123456789' && R.photoEan('70401234') === '70401234' && R.photoEan('7040123') === null && R.photoEan('70401234567890123') === null && R.photoEan('7040a23456789') === null && R.photoEan(null) === null)
+check('a third photo says: "Two photos at most — remove one first"', R.PHOTO_WORDS.twoAtMost === 'Two photos at most — remove one first')
+{
+  const prices = { webSearchUsdEach: 0.01, longPromptOverTokens: 200_000, longPromptMultiplier: 2, model: { cacheWrite1hPerMTok: 0.2, outputPerMTok: 0.5 } }
+  const job = { instructionsChars: 3000, maxOutputTokens: 1500 }
+  const prompt = 3000 + (300 + 3 * 248 + 200) + 120 + 1000 + 2 * R.PHOTO_TOKENS_EACH_WORST
+  const one = ((3 * prompt + 3 * 25_000) * 0.2 + 1500 * 0.5) / 1e6 + 2 * 0.01
+  const got = R.photoWorstCost(prices, job, 120)
+  check('the worst cost on Ask is both calls at the function\'s own worst case (two photos at 2116 tokens each, 3 rounds, 2 searches each)', R.PHOTO_TOKENS_EACH_WORST === 2116 && Math.abs(got - 2 * one) < 1e-6, [got, 2 * one])
+}
 
 console.log('\n3. the draft as facts, never over what was typed')
 const facts = PF.photoFacts({ name: 'Demo Headphones X1, black', brand: 'Demo', model: 'X1', category_id: 'c2', condition: 'used', price: 1299, currency: 'NOK', searched: true }, CATS, AT, CALL)
@@ -118,20 +135,31 @@ console.log('\n4. the Save reports what it kept (Developer → AI → Learned)')
   const stepUi = read('src/features/shop/components/autofill/ProductPhotoStep.tsx')
   const stepHook = read('src/features/shop/components/autofill/useProductPhotoStep.ts')
   const hooks = read('src/features/ai/claude/hooks/useProductPhoto.ts')
-  check('one body: the button lives in the autofill that adding and an open record both render (no copy in a frame), offered on a saved thing while some of what it fills is empty',
-    /<PhotoAskButton step=\{step\} \/>/.test(panel) && /\{photo && <PhotoAskButton/.test(panel) && /<ProductPhotoPanel step=\{step\} \/>/.test(panel)
-    && /photo=\{photo\}/.test(body) && /const photo = !r\.item\.category_id \|\| !r\.item\.image_url \|\| !r\.item\.facts\?\.brand \|\| !r\.item\.facts\?\.model/.test(body)
+  check('one body, one step: RecordBody holds the ONE step and shows the button and the step in ONE place — the top line beside the switch on a narrow add, else the autofill\'s link row — never in a frame',
+    (body.match(/useProductPhotoStep\(/g) ?? []).length === 1 && !/useProductPhotoStep\(/.test(panel)
+    && /const photoInBar = !!c && photoOffered && narrow/.test(body) && /inRow: !photoInBar/.test(body) && /photo=\{photoInBar \? photoStep : null\}/.test(body)
+    && /\{photo && <PhotoAskButton step=\{photo\} \/>\}/.test(body) && /\{photo && <ProductPhotoPanel step=\{photo\} \/>\}/.test(body)
+    && /\{photo\?\.inRow && <PhotoAskButton step=\{photo\.step\} \/>\}/.test(panel) && /\{photo\?\.inRow && <ProductPhotoPanel step=\{photo\.step\} \/>\}/.test(panel)
+    && /\(!item\.category_id \|\| !item\.image_url \|\| !item\.facts\?\.brand \|\| !item\.facts\?\.model\)/.test(body)
     && !/PhotoAskButton|ProductPhotoPanel/.test(read('src/features/shop/components/record/ShopCreate.tsx') + read('src/features/shop/components/record/ShopRecord.tsx') + read('src/features/shop/components/record/JustBought.tsx')))
-  check('a short button: an icon (the camera with ✨), its words in the tip and accessible name, starting with its own word', /<PhotoButton iconOnly bordered multiple[\s\S]*?tip=\{PHOTO_TIP\}>\s*Photo\s*<\/PhotoButton>/.test(stepUi) && /const PHOTO_TIP = 'Photo — /.test(stepUi))
-  check('the step\'s buttons are one word each, their words in their tips', /tip="Ask — [^"]+">Ask<\/Button>/.test(stepUi) && /tip="Fill — [^"]+">Fill<\/Button>/.test(stepUi) && /tip="Skip — [^"]+">Skip<\/Button>/.test(stepUi))
-  check('the photos: shrunk for two in one request (≤ 500 KB each, the function takes 700 000 base64 characters), held in memory only, their previews released', R.PRODUCT_PHOTO_MAX_BYTES * 4 / 3 <= 700_000 && /shrinkPhoto\(p\.file, \{ maxBytes: PRODUCT_PHOTO_MAX_BYTES \}\)/.test(stepHook) && /URL\.revokeObjectURL/.test(stepHook)
-    && !/localStorage|sessionStorage|indexedDB|caches\./.test(stepHook + stepUi) && /logPayload: false,\s*mutationFn: input => productFromPhotos\(input\)/.test(hooks))
+  check('a short button with its own icon (a box with ✨, not the receipt\'s camera), its words in the tip and accessible name, starting with its own word', /<PhotoButton iconOnly bordered multiple icon=\{<PackageAi \/>\}[\s\S]*?tip=\{PHOTO_TIP\}>\s*Photo\s*<\/PhotoButton>/.test(stepUi) && /const PHOTO_TIP = 'Photo — /.test(stepUi) && /<Package aria-hidden \/>/.test(stepUi))
+  check('the step\'s buttons are one word each (Ask with the most both calls can cost, "Ask · ≤ $0.05"), their words in their tips; ✕ sits top-right', /\{worst \? `Ask · \$\{worst\}` : 'Ask'\}/.test(stepUi) && /tip=\{`Ask — /.test(stepUi) && /tip="Fill — [^"]+">Fill<\/Button>/.test(stepUi) && /tip="Skip — [^"]+">Skip<\/Button>/.test(stepUi) && /className="absolute right-1 top-1"/.test(stepUi))
+  check('the photos: shrunk for two in one request (≤ 500 KB each, the function takes 700 000 base64 characters), held in memory only, their previews released; a third is refused in words', R.PRODUCT_PHOTO_MAX_BYTES * 4 / 3 <= 700_000 && /shrinkPhoto\(p\.file, \{ maxBytes: PRODUCT_PHOTO_MAX_BYTES \}\)/.test(stepHook) && /URL\.revokeObjectURL/.test(stepHook)
+    && !/localStorage|sessionStorage|indexedDB|caches\./.test(stepHook + stepUi) && /logPayload: false,\s*mutationFn: input => productFromPhotos\(input\)/.test(hooks) && /setProblem\(PHOTO_WORDS\.twoAtMost\)/.test(stepHook))
   const fnLimits = read('supabase/claude-src/job-product-photo.ts')
   check('the app\'s limits are the function\'s (2 photos, a line of 300, 3 answers of 120, questions of 120, choices of 40)', /photos: 2,/.test(fnLimits) && /text: 300, answers: 3, answer: 120, question: 120, questions: 3, choices: 4, choiceMin: 2, choice: 40/.test(fnLimits) && same(R.PRODUCT_PHOTO_LIMITS, { photos: 2, text: 300, answers: 3, answer: 120, question: 120, choice: 40 }))
   check('the draft fills only through the autofill\'s facts (mergeFacts + fieldsAfter), labelled, and a page gives the picture only through useProductPicture (shop-price) while the field is empty',
     /addFacts\('photo', photoFacts\(/.test(panel) && /readPicture\(d\.page_urls/.test(panel) && /if \(fact && !latest\.current\.image\) latest\.current\.addFacts\('page', \[fact\]\)/.test(panel) && /Filled from photo \+ AI/.test(stepUi) && /costNote\(/.test(stepUi))
-  check('AI last on screen: a link goes to the link reader, a barcode number to the barcode lookup, before any call', /if \(plan\.kind === 'link'\) \{ onLink/.test(stepHook) && /if \(plan\.kind === 'barcode'\) \{ onBarcode/.test(stepHook) && /onBarcode: onDetected/.test(panel))
-  check('the Save reports what it kept: the add after its write, the open record once after its save', /photoLearnReport\(s\.facts, row\)/.test(read('src/features/shop/components/record/useCreateRecord.ts')) && /setLearnReport\(\{ at: saved, report: photoLearnReport\(facts, r\.item\) \}\)/.test(body))
+  check('AI last on screen: a link is read alone by the link reader (the photos stay); a typed number, then a barcode the app reads in the photos, goes to the lookup first, and a lookup that filled the thing asks no AI; only a code it did not find goes with the photos, as digits',
+    /if \(plan\.kind === 'link' && t\)/.test(stepHook) && /await t\.readLink\(plan\.url\)/.test(stepHook) && /setText\(plan\.rest\)/.test(stepHook)
+    && /if \(tried\.current !== plan\.code\) \{ await lookUp\(t, plan\.code\); return \}/.test(stepHook)
+    && /await import\('\.\.\/\.\.\/stillBarcode'\)/.test(stepHook) && /if \(code && tried\.current !== code && await lookUp\(t, code\)\) return/.test(stepHook) && /ean\.current = photoEan\(code\)/.test(stepHook)
+    && /if \(r\.filled\) \{ filledFree\(r\.note\); return true \}/.test(stepHook) && /lookupEan: async code =>/.test(panel) && /lookUpGroceryEan\(ean\)/.test(panel))
+  const still = read('src/features/shop/stillBarcode.ts')
+  check('the still photo\'s barcode is read by the app\'s own readers (native BarcodeDetector, else ZXing imported only then), nothing sent anywhere', /BarcodeDetector/.test(still) && /await import\('@zxing\/browser'\)/.test(still) && /decodeFromImageUrl/.test(still) && !/fetch\(|supabase|invoke\(/.test(still))
+  check('an answer that is a link is never sent (the function refuses it too)', /if \(answers\.some\(a => holdsLink\(a\.answer\)\)\) \{ setProblem\(PHOTO_WORDS\.answerLink\); return \}/.test(stepHook))
+  check('the Save reports what it kept: the add after its write; an open record only at its OWN Save (useShopRecord\'s afterSave), never another write', /photoLearnReport\(s\.facts, row\)/.test(read('src/features/shop/components/record/useCreateRecord.ts'))
+    && /onSaved\(row => \{ const report = photoLearnReport\(latest\.current\.facts, row\)/.test(body) && /afterSave\?\.\(saved\)/.test(read('src/features/shop/components/record/useShopRecord.tsx')) && !/setLearnReport|updated_at[^\n]*photoLearnReport/.test(body))
 
   console.log(`\n${ok} passed, ${bad} failed`)
   process.exit(bad ? 1 : 0)

@@ -1,6 +1,6 @@
 import { runClaudeJob } from './claudeApi'
 import type { PhotoInput } from './featureRules'
-import { readProductPhoto, PRODUCT_PHOTO_LIMITS, type PhotoAnswer } from './photoProductRules'
+import { cleanedText, photoEan, readProductPhoto, PRODUCT_PHOTO_LIMITS, type PhotoAnswer } from './photoProductRules'
 import type { CallSummary } from './types'
 
 // Shop's 📷✨ (the `product_photo` job, owner, 25.11.2026): the app's side of the call. Its own module, loaded with the Shop's
@@ -14,6 +14,8 @@ export interface PhotoProductInput {
   photos: readonly PhotoInput[]
   text: string
   answers?: readonly { question: string; answer: string }[]
+  /** A barcode the app's own reader found in the photos (or the owner typed) that the lookup did not find: digits only. */
+  ean?: string
   /** The owner's own categories ('Top' or 'Top / Sub'): the function numbers them, the model never sees an id. */
   categories: readonly { id: string; path: string }[]
   preferredHosts: readonly string[]
@@ -28,8 +30,10 @@ const costOf = (call: CallSummary | undefined): number | null => (call && typeof
 export async function productFromPhotos(input: PhotoProductInput): Promise<{ answer: PhotoAnswer; costUsd: number | null; callId: string | null }> {
   const sent = input.categories.slice(0, PHOTO_CATEGORIES_MAX)
   const body: Record<string, unknown> = { images: input.photos.slice(0, PRODUCT_PHOTO_LIMITS.photos) }
-  const text = input.text.replace(/\s+/g, ' ').trim()
+  const text = cleanedText(input.text)
   if (text) body.text = [...text].slice(0, PRODUCT_PHOTO_LIMITS.text).join('')
+  const ean = photoEan(input.ean)
+  if (ean) body.ean = ean
   if (input.answers) body.answers = input.answers.slice(0, PRODUCT_PHOTO_LIMITS.answers)
   if (sent.length) body.categories = sent
   if (input.preferredHosts.length) body.preferred_hosts = input.preferredHosts.slice(0, 3)

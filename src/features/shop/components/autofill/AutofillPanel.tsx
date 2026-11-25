@@ -25,7 +25,10 @@ import { FactList } from './FactList'
 import { FindIt } from './FindIt'
 import { MaybeYours } from './MaybeYours'
 import { PhotoAskButton, ProductPhotoPanel } from './ProductPhotoStep'
-import { useProductPhotoStep } from './useProductPhotoStep'
+import type { PhotoTarget, ProductPhotoStep } from './useProductPhotoStep'
+import { useQueryClient } from '@tanstack/react-query'
+import { qk, STALE } from '../../../../shared/query'
+import { lookUpGroceryEan } from '../../api/groceryApi'
 
 /** A change of the draft worked out from the draft as it is when it lands (a read or a lookup answers later). */
 export type DraftUpdate = (update: (d: ShopDraft) => Partial<ShopDraft>) => void
@@ -43,7 +46,7 @@ const TITLE_REST_MS = 500
  * anything else offers "Find it" with its digits; a title asks only the owner's own history. Possible duplicates
  * are named, never a block on Add.
  */
-export default function AutofillPanel({ draft, onChange, update, categories, collapsible = false, selfId, savedTitle, photo = true }: {
+export default function AutofillPanel({ draft, onChange, update, categories, collapsible = false, selfId, savedTitle, photo }: {
   draft: ShopDraft
   onChange: (patch: Partial<ShopDraft>) => void
   update: DraftUpdate
@@ -54,8 +57,11 @@ export default function AutofillPanel({ draft, onChange, update, categories, col
   selfId?: string
   /** A saved thing's title as saved: its history is asked only once the owner changes it. */
   savedTitle?: string
-  /** Offer 📷✨ (a thing from photos): always while adding; on a saved thing while some of its fields are empty. */
-  photo?: boolean
+  /**
+   * 📷✨ (a thing from photos): the body's one step (RecordBody holds it), the target this panel fills for it, and whether the
+   * button and the step show in this row (a wide add, an open record) or in the body's top line (a narrow add) — one place.
+   */
+  photo?: { step: ProductPhotoStep; setTarget: (t: PhotoTarget | null) => void; inRow: boolean } | null
 }) {
   const { data: allItems = [] } = useShopItems()
   const items = useMemo(() => (selfId ? allItems.filter(i => i.id !== selfId) : allItems), [allItems, selfId])
@@ -94,16 +100,20 @@ export default function AutofillPanel({ draft, onChange, update, categories, col
     if (scan?.ean && !scan.mine.length && lookup.isSuccess) addFacts('scan', factsFromScan(scan.ean, lookup.data ?? null, new Date().toISOString()))
   }, [scan, lookup.isSuccess, lookup.data, addFacts])
 
-  async function read(u = draft.url.trim()) {
-    if (!/^https?:\/\//i.test(u) || u === readFor) return
+  /** Reads a link (free); resolves with what the read says, or null when nothing was read (not a link, or read just now). */
+  async function read(u = draft.url.trim(), again = false): Promise<string | null> {
+    if (!/^https?:\/\//i.test(u) || (!again && u === readFor)) return null
     setReading(true); setLinkNote(null); setReadFor(u); setLast('link'); setFindOpen(null)
     try {
       const r = await readPriceLink(u)
-      setLinkNote(readNote(r))
+      const said = readNote(r)
+      setLinkNote(said)
       addFacts('link', factsFromRead(r, stores, storeNames(items), new Date().toISOString()))
+      return said ?? 'read — check the facts below.'
     } catch (e) {
       setLinkNote((e as Error).message)
       logError(`shop_read_link: ${(e as Error).message}`, { action: 'shop_read_link' })
+      return (e as Error).message
     } finally { setReading(false) }
   }
 
@@ -136,10 +146,30 @@ export default function AutofillPanel({ draft, onChange, update, categories, col
       else if (!fact) setPictureNote(p.note)
     })
   }, [categories, readPicture])
-  const step = useProductPhotoStep({
-    categories, onDraft: onPhotoDraft, onBarcode: onDetected,
-    onLink: u => { onChange({ url: u }); setReadFor(''); void read(u) },
-  })
+  // The step's target while this panel is mounted: the draft, a link and a barcode go through this panel's own facts, link
+  // reader and barcode lookup (the same ones the owner's own paste and Scan use).
+  const qc = useQueryClient()
+  const readRef = useRef(read)
+  useEffect(() => { readRef.current = read })
+  const setTarget = photo?.setTarget
+  useEffect(() => {
+    if (!setTarget) return
+    setTarget({
+      fill: onPhotoDraft,
+      readLink: async u => { onChange({ url: u }); return (await readRef.current(u, true)) ?? 'nothing to read there.' },
+      lookupEan: async code => {
+        onDetected(code)
+        const ean = ean13(code)
+        if (!ean) return { filled: false, note: `${code} isn't a product barcode (EAN).` }
+        if (ownWithEan(ean, latest.current.items).length) return { filled: true, note: 'you already have this — it is open.' }
+        try {
+          const hit = await qc.fetchQuery({ queryKey: qk.shop.groceryEan(ean), queryFn: () => lookUpGroceryEan(ean), staleTime: STALE.hour, retry: false })
+          return hit ? { filled: true, note: `Kassalapp knows ${ean} — check the facts below.` } : { filled: false, note: `No product found for ${ean}.` }
+        } catch (e) { return { filled: false, note: `${(e as Error).message}.` } }
+      },
+    })
+    return () => setTarget(null)
+  }, [setTarget, onPhotoDraft, onDetected, onChange, qc])
 
   const looking = !!scan?.ean && !scan.mine.length && lookup.isFetching
   const lookedUp = !!scan?.ean && !scan.mine.length && !lookup.isFetching && (lookup.isSuccess || lookup.isError)
@@ -171,18 +201,18 @@ export default function AutofillPanel({ draft, onChange, update, categories, col
         <div className="flex max-w-xl gap-2">
           <input id="shop-link" type="url" inputMode="url" value={draft.url} onChange={e => onChange({ url: e.target.value })}
             onPaste={e => { const t = e.clipboardData.getData('text').trim(); if (/^https?:\/\//i.test(t)) setTimeout(() => { void read(t) }, 0) }}
-            onBlur={() => { void read() }} placeholder="Paste a link to fill the rest" className="input min-w-0 flex-1" />
+            onBlur={() => { void read() }} placeholder="Paste a link" title="Paste a link to fill the rest" className="input min-w-0 flex-1" />
           <Button icon={<Link2 />} onClick={() => { setReadFor(''); void read() }} loading={reading} disabled={!draft.url.trim()}>Read</Button>
           <IconButton bordered label="Scan a barcode" onClick={() => setScanOpen(true)} disabled={looking} aria-busy={looking || undefined}>
             {looking
               ? <span aria-hidden className="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent" />
               : <ScanBarcode aria-hidden />}
           </IconButton>
-          {photo && <PhotoAskButton step={step} />}
+          {photo?.inRow && <PhotoAskButton step={photo.step} />}
         </div>
         {note && <p className="mt-1 text-meta text-fg-muted" role="status">{note}</p>}
       </div>
-      <ProductPhotoPanel step={step} />
+      {photo?.inRow && <ProductPhotoPanel step={photo.step} />}
       {pictureNote && <p className="text-meta text-fg-muted" role="status">{pictureNote}</p>}
       {scan && scan.mine.length > 0 && <MaybeYours duplicates={scan.mine.slice(0, 1).map(item => ({ item, by: 'ean' }))} lead={ownedWords(scan.mine[0])} />}
       <MaybeYours duplicates={duplicates} />

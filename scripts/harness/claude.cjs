@@ -688,6 +688,11 @@ function claudeMock(opts = {}) {
         if (!checked.ok) return stopWith('invalid', `The model's answer could not be used: ${checked.problem}.`)
         result = checked.result
         if (other.name === 'place_ideas') { row.tools = [{ name: 'web_search', searches: 2 }]; row.cost_usd = Math.round((Number(row.cost_usd || 0) + 0.02) * 1e6) / 1e6 }
+        // A thing from photos: a realistic call — two photos (about 4 200 tokens) and the instructions sent, one search ($0.01).
+        if (other.name === 'product_photo') {
+          Object.assign(row, { input_tokens: 5200, cache_read_tokens: 1400, output_tokens: 320, tools: [{ name: 'web_search', searches: 1 }] })
+          row.cost_usd = Math.round((costOf(row.model, row) + 0.01) * 1e6) / 1e6
+        }
       }
       return { ok: true, job: other.name, result: thinkingOff && picked ? { ...result, thinking: '' } : result, call: summaryOf(row) }
     }

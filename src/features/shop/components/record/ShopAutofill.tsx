@@ -3,6 +3,7 @@ import { Skeleton } from '../../../../shared/ui'
 import { lazyWithReload } from '../../../../shared/utils/lazyWithReload'
 import type { ShopCategory } from '../../types'
 import type { DraftUpdate } from '../autofill/AutofillPanel'
+import type { PhotoTarget, ProductPhotoStep } from '../autofill/useProductPhotoStep'
 import type { ShopDraft } from '../ShopItemForm'
 
 // The autofill loads in its own chunk (the reader's rules, the facts, the scanner): only a thing being added shows it,
@@ -31,9 +32,9 @@ function AutofillLoading({ photo }: { photo: boolean }) {
 }
 
 /** The link reader, barcode scan, 📷✨ (a thing from photos), facts and duplicate warning — a part of the one body (RecordBody: adding, and a saved thing's Facts). */
-export function ShopAutofill(props: { draft: ShopDraft; onChange: (patch: Partial<ShopDraft>) => void; update: DraftUpdate; categories: readonly ShopCategory[]; collapsible?: boolean; selfId?: string; savedTitle?: string; photo?: boolean }) {
+export function ShopAutofill(props: { draft: ShopDraft; onChange: (patch: Partial<ShopDraft>) => void; update: DraftUpdate; categories: readonly ShopCategory[]; collapsible?: boolean; selfId?: string; savedTitle?: string; photo?: { step: ProductPhotoStep; setTarget: (t: PhotoTarget | null) => void; inRow: boolean } | null }) {
   return (
-    <Suspense fallback={<AutofillLoading photo={props.photo ?? true} />}>
+    <Suspense fallback={<AutofillLoading photo={!!props.photo?.inRow} />}>
       <AutofillPanel {...props} />
     </Suspense>
   )

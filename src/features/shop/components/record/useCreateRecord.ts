@@ -49,7 +49,7 @@ export function useCreateRecord({ spec, batch, onSaved, onClose, categories }: {
   const costsOf = useCreateCostsForThing()
   const readPicture = useProductPicture()
   const { mutate: reportSave } = useReportAiSave()
-  const count =batch ? batch.fills.length : 1
+  const count = batch ? batch.fills.length : 1
   // Seeded once: a background refetch never overwrites what is being typed.
   const [states, setStates] = useState<CreateState[]>(() => Array.from({ length: count }, (_, i) => {
     const kept = batch?.restore?.[i]
