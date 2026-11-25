@@ -535,17 +535,16 @@
   .tg-portal *, .tg-portal *::before, .tg-portal *::after { animation: none !important; transition: none !important; }
 }
 
-/* ─── Play Queue drag and drop (TgQueueViewDrag) ─────────────────────────── */
+/* ─── Play Queue drag and drop (the shared DragReorderList) ─────────────── */
 
-/* While a row is dragged the others slide out of its way; the dragged row
-   follows the pointer with no easing, lifted over its neighbours. The global
-   reduced-motion rule above removes the slide. */
-.tg-queue.is-dragging [data-queue-id] { transition-property: transform; transition-duration: 160ms; transition-timing-function: ease; }
-.tg-queue.is-dragging [data-queue-id].is-dragged {
+/* The shared drag slides the other rows aside (off under Reduce Motion) and
+   moves the dragged one; this is only the Games look of the dragged row,
+   lifted over its neighbours. */
+.tg-queue [data-queue-id].is-dragged {
   transition: none; z-index: 2;
   background: var(--tg-panel-2); box-shadow: 0 10px 28px -8px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--tg-border);
 }
-.tg-queue.is-dragging, .tg-queue.is-dragging * { cursor: grabbing; user-select: none; -webkit-user-select: none; }
+.tg-queue [data-queue-id].is-dragged, .tg-queue [data-queue-id].is-dragged * { cursor: grabbing; }
 .tg-queue-grip { cursor: grab; color: var(--tg-faint); }
 
 /* ═══ Classic-dialog token remap ══════════════════════════════════════════ */

@@ -1,15 +1,21 @@
-import { useState, type ReactNode } from 'react'
+import { Suspense, useState, type ReactNode } from 'react'
 import { ChevronRight, Zap } from 'lucide-react'
 import { Card, CardHeader, ListRow, PageBoard } from '../../../shared/ui'
 import { useQuickGuessPresets } from '../../recipes/hooks/useQuickGuess'
-import { QuickGuessEditor } from '../../recipes/components/QuickGuessEditor'
+import { lazyPart } from '../../../shared/utils/lazyPage'
+import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
 import { FOOD_SETTINGS_BOARD, type FoodSettingsSection } from '../settingsBoards'
+
+// The editor's list drags its presets (@dnd-kit): its own chunk, loaded in idle time once this tab shows.
+const QuickGuessEditor = lazyPart('quick-guess-editor', () => import('../../recipes/components/QuickGuessPresets').then(m => m.QuickGuessEditor))
+const EDITOR = [QuickGuessEditor] as const
 
 // Settings → Food: settings of the Food page. One row so far — Quick guess,
 // the presets of Food · Today's Quick guess card (quick_guess_items, migration
 // 152), edited in a popup.
 export function FoodTab() {
   const [editing, setEditing] = useState(false)
+  useIdlePreload(EDITOR)
   const { presets, isLoading } = useQuickGuessPresets()
   const summary = isLoading ? 'Loading…'
     : presets.length === 0 ? 'No presets yet'
@@ -30,7 +36,7 @@ export function FoodTab() {
   return (
     <>
       <PageBoard sections={sections} layout={FOOD_SETTINGS_BOARD} stackClassName="max-w-2xl" />
-      {editing && <QuickGuessEditor onClose={() => setEditing(false)} />}
+      {editing && <Suspense fallback={null}><QuickGuessEditor onClose={() => setEditing(false)} /></Suspense>}
     </>
   )
 }

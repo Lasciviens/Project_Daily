@@ -33,16 +33,15 @@ export function visibleItems(list: string[], labels: Record<string, string>, ord
 }
 
 /**
- * One step up or down past the neighbouring VISIBLE item; hidden ids keep
- * their places. Returns the new list, or null at the edge.
+ * The list after moving shown row `from` to the place of shown row `to`
+ * (`rowsToShow`: a drag, ↑ ↓): it lands just before that row going up, just
+ * after it going down; ids the Kobo doesn't show keep their places.
  */
-export function stepItem(list: string[], index: number, dir: -1 | 1, visible: Set<string>, item: string): string[] | null {
-  let j = index + dir
-  while (j >= 0 && j < list.length && !visible.has(list[j])) j += dir
-  if (j < 0 || j >= list.length) return null
+export function moveShownRow(list: readonly string[], rows: readonly { index: number }[], from: number, to: number): string[] | null {
+  if (from === to || !rows[from] || !rows[to]) return null
   const next = list.slice()
-  next.splice(index, 1)
-  next.splice(j, 0, item)
+  const [item] = next.splice(rows[from].index, 1)
+  next.splice(rows[to].index, 0, item)
   return next
 }
 

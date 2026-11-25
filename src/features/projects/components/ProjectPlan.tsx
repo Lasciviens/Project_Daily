@@ -2,7 +2,9 @@ import { Plus } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
 import { Button, Card, CardHeader } from '../../../shared/ui'
 import type { Task } from '../../todo/types'
-import { nextSortOrder, phaseTasks } from '../projectModel'
+import { DragReorderList } from '../../../shared/ui/dragReorder/DragReorderList'
+import { useMovePhase } from '../hooks/useProjects'
+import { nextSortOrder, phaseTasks, reorderPlan } from '../projectModel'
 import { AddTaskInline } from './AddTaskInline'
 import { PhaseCard } from './PhaseCard'
 import { PhaseColumns } from './PhaseColumns'
@@ -29,10 +31,12 @@ export function ProjectPlan({ project, phases, tasks, currentId, focusAdd }: {
   const addTarget = currentId ?? 'loose'
   const addPhase = () => modal.open({ kind: 'project-phase', projectId: project.id })
 
-  const items = phases.map((p, i) => ({
+  const move = useMovePhase()
+  const reorder = (from: number, to: number) => { const plan = reorderPlan(phases, from, to); if (plan) move.save(plan) }
+  const items = phases.map(p => ({
     key: `${p.id}-${p.id === addTarget ? focusAdd : 0}`,
     node: (
-      <PhaseCard phase={p} index={i} tasks={phaseTasks(tasks, p.id)} phases={phases} current={p.id === currentId} area={area}
+      <PhaseCard phase={p} tasks={phaseTasks(tasks, p.id)} phases={phases} current={p.id === currentId} area={area}
         focusAdd={focusAdd > 0 && p.id === addTarget} />
     ),
   }))
@@ -44,7 +48,13 @@ export function ProjectPlan({ project, phases, tasks, currentId, focusAdd }: {
         title={phases.length ? `Plan · ${phases.length} phase${phases.length === 1 ? '' : 's'}` : 'Plan'}
         action={<Button variant="ghost" size="sm" icon={<Plus />} onClick={addPhase}>Phase</Button>}
       />
-      {phases.length > 0 && <PhaseColumns items={items} />}
+      {phases.length > 0 && (
+        // Drag a phase by its header into place (columns: the numbers say where it lands), or ⋯ Move up / down, or Alt+↑ / Alt+↓.
+        <DragReorderList as="div" layout="grid" ids={phases.map(p => p.id)} onMove={reorder} label="Phases"
+          nameOf={id => phases.find(p => p.id === id)?.name ?? 'The phase'}>
+          <PhaseColumns items={items} />
+        </DragReorderList>
+      )}
       {(loose.length > 0 || addTarget === 'loose') && (
         <section className={phases.length ? 'mt-3 border-t border-line pt-2' : ''} aria-label="Other tasks">
           {phases.length > 0 && <h3 className="section-label px-1.5 pb-1">Other tasks</h3>}

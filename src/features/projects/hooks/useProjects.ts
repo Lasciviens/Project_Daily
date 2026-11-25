@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query'
+import { useOrderSave } from '../../../shared/hooks/useOrderSave'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { putRowsInCache } from '../../../shared/query/cachePatch'
@@ -15,7 +16,7 @@ import {
   fetchBlocks, createBlock, updateBlock,
   fetchEntries, fetchOpenQuestions, createEntry, updateEntry,
 } from '../api/projectsApi'
-import { STATUS_LABEL, type MovePlan } from '../projectModel'
+import { STATUS_LABEL, applyMovePlan, type MovePlan } from '../projectModel'
 import type {
   BlockPatch, EntryFields, NewBlockInput, NewPhaseInput, NewProjectInput, NewProjectTaskInput, PhasePatch,
   ProjectBlock, ProjectPatch, ProjectPhase,
@@ -145,15 +146,14 @@ export function useUpdatePhase({ report = true }: { report?: boolean } = {}) {
   })
 }
 
-/** Moves a phase one place (projectModel.movePlan). */
+/** Moves a phase (a drag, ↑ ↓; projectModel.reorderPlan): shown at once, moves during a save wait (the shared useOrderSave). */
 export function useMovePhase() {
-  const qc = useQueryClient()
-  return useMutationWithFeedback({
+  return useOrderSave<MovePlan<ProjectPhase>, ProjectPhase[]>({
     action: 'move_phase',
-    successMessage: (_rows, { moved }) => `${moved.name} moved`,
-    mutationFn: ({ writes }: MovePlan<ProjectPhase>) => Promise.all(writes.map(w => updatePhase(w.id, { sort_order: w.sort_order }))),
-    onSuccess: rows => putRowsInCache(qc, qk.projects.phases(), rows),
-    invalidates: [qk.projects.phases()],
+    successMessage: (_r, { moved }) => `${moved.name} moved`,
+    queryKey: qk.projects.phases(),
+    show: (rows, plan) => rows && applyMovePlan(rows, plan),
+    send: ({ writes }) => Promise.all(writes.map(w => updatePhase(w.id, { sort_order: w.sort_order }))),
   })
 }
 
@@ -212,15 +212,14 @@ export function useUpdateBlock({ report = true }: { report?: boolean } = {}) {
   })
 }
 
-/** Moves a block one place (projectModel.movePlan). */
-export function useMoveBlock() {
-  const qc = useQueryClient()
-  return useMutationWithFeedback({
+/** Moves a block of a project (a drag, ↑ ↓; projectModel.reorderPlan): shown at once, moves during a save wait (the shared useOrderSave). */
+export function useMoveBlock(projectId: string) {
+  return useOrderSave<MovePlan<ProjectBlock>, ProjectBlock[]>({
     action: 'move_block',
-    successMessage: (_rows, { moved }) => `${moved.title} moved`,
-    mutationFn: ({ writes }: MovePlan<ProjectBlock>) => Promise.all(writes.map(w => updateBlock(w.id, { sort_order: w.sort_order }))),
-    onSuccess: (rows, { moved }) => putRowsInCache(qc, qk.projects.blocks(moved.project_id), rows),
-    invalidates: (_r, { moved }) => [qk.projects.blocks(moved.project_id)],
+    successMessage: (_r, { moved }) => `${moved.title} moved`,
+    queryKey: qk.projects.blocks(projectId),
+    show: (rows, plan) => rows && applyMovePlan(rows, plan),
+    send: ({ writes }) => Promise.all(writes.map(w => updateBlock(w.id, { sort_order: w.sort_order }))),
   })
 }
 

@@ -2,8 +2,9 @@ import { useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
+import { useOrderSave } from '../../../shared/hooks/useOrderSave'
 import { qk, STALE } from '../../../shared/query'
-import { mapRowsInCache, putRowsInCache, restoreCache, snapshotCache } from '../../../shared/query/cachePatch'
+import { putRowsInCache } from '../../../shared/query/cachePatch'
 import { toast } from '../../../app/store'
 import { addFoodLogEntries } from '../api/foodLogApi'
 import { createQuickGuessItem, fetchQuickGuessItems, reorderQuickGuessItems, updateQuickGuessItem } from '../api/quickGuessApi'
@@ -11,7 +12,7 @@ import { describeGuess, suggestGuessOptions, type GuessOptionsBrief } from '../.
 import { useReportAiSave } from '../../ai/claude/hooks/useReportAiSave'
 import { optionGroupsLine, takeLearnCall } from '../../ai/claude/learnCalls'
 import {
-  DEFAULT_GUESSES, itemToPreset, matchKnownGuess, parseGuessOptions, readGuessEstimate, recentGuesses,
+  DEFAULT_GUESSES, guessOrderWrites, itemToPreset, matchKnownGuess, parseGuessOptions, readGuessEstimate, recentGuesses,
   type GuessEstimate, type GuessMacros, type GuessOptionGroup, type GuessPreset, type QuickGuessInput, type QuickGuessItem, type RecentGuess,
 } from '../quickGuess'
 import { SLOT_OPTIONS } from '../components/foodLogUtils'
@@ -92,21 +93,20 @@ export function useSaveQuickGuess() {
 }
 
 /** Writes new places; the list moves at once (it shows the order, so no toast). */
+/**
+ * The presets in a new order (a drag, ↑ ↓, Alt+↑/↓): shown at once; moves
+ * during a save wait and only the newest order is sent (the shared useOrderSave).
+ */
 export function useMoveQuickGuess() {
-  const qc = useQueryClient()
-  return useMutationWithFeedback<void, readonly { id: string; sort_order: number }[], { snapshot: ReturnType<typeof snapshotCache> }>({
+  return useOrderSave<QuickGuessItem[], QuickGuessItem[]>({
     action: 'reorder_quick_guess',
     silent: 'the list shows the new order',
-    mutationFn: changes => reorderQuickGuessItems(changes),
-    onMutate: async changes => {
-      await qc.cancelQueries({ queryKey: qk.quickGuess.all })
-      const snapshot = snapshotCache(qc, qk.quickGuess.all)
-      const place = new Map(changes.map(c => [c.id, c.sort_order]))
-      mapRowsInCache<QuickGuessItem>(qc, qk.quickGuess.all, new Set(place.keys()), r => ({ ...r, sort_order: place.get(r.id) ?? r.sort_order }))
-      return { snapshot }
+    queryKey: qk.quickGuess.list(),
+    show: (rows, order) => {
+      const place = new Map(order.map((r, i) => [r.id, i]))
+      return rows?.map(r => (place.has(r.id) ? { ...r, sort_order: place.get(r.id)! } : r))
     },
-    onError: (_e, _v, ctx) => { if (ctx) restoreCache(qc, ctx.snapshot) },
-    invalidates: [qk.quickGuess.all],
+    send: order => reorderQuickGuessItems(guessOrderWrites(order)),
   })
 }
 

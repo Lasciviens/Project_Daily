@@ -37,7 +37,7 @@ const EXCEPTIONS = {
   'src/features/ai/chat/ChatExtras.tsx::toolNames.length': 'a disclosure\'s summary line: it states what is folded (the chat, its tool count, your instructions) — content, not an action',
   'src/features/books/components/library/pieces.tsx::look like the same book': 'a warning that opens its own list: the sentence is the warning',
   'src/features/media/components/stats/MediaStatsView.tsx::with an unknown date': 'a link inside a sentence that explains a count: its words are the sentence',
-  'src/features/books/components/library/pieces.tsx::BookCover': 'a book\'s row (cover, title, author): its words are the book, not a label',
+  'src/features/books/components/library/UpNextBook.tsx::BookCover': 'a book\'s row (cover, title, author): its words are the book, not a label',
   'src/features/home/components/ruter/QuaySavePanel.tsx::All directions': 'a choice card: its words name the choice and what it covers',
   'src/features/shop/components/stats/MoneyChart.tsx::spent ·': 'a chip that is one month\'s figures (spent and got back): its words are the data it opens',
 }

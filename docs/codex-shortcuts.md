@@ -62,6 +62,7 @@
 | `docs/kitchen-scale/` (and the planned `firmware/kitchen-scale/`) | Claude | Kitchen scale project | 14.10.2026 |
 | `.github/workflows/deploy.yml` (setup-cli v3.2.0), `supabase/functions/esde-content-sync/index.ts` and `docs/termux-widgets.md` (the RP6 branch's original-upload block), `docs/games/esde-quota-cleanup-2026-09-16.md`, `docs/backend/edge-functions.md` | Claude | Housekeeping after PR #600: the deploy's Supabase CLI action, the RP6 quota block | 09.11.2026 |
 | `src/features/shop/**`, `supabase/functions/shop-price/`, new `supabase/migrations/` for Shop, `docs/features/shop.md`, `.claude/rules/shop.md` (planning; nothing changed yet) | Claude | Shop renovation (phased; plan first, owner decides) | 09.11.2026 |
+| `src/shared/ui/dragReorder/`, `src/shared/hooks/useOrderSave.ts`, Books Up next / Kobo menu order, Food Quick guess list, Projects phases / blocks / table columns, Games play queue (`TgQueueView*`) | Claude | One shared drag to reorder for every ordered list (owner: "Yes, all lists"), branch `claude/charming-newton-yhk8i-shared-drag` | 25.11.2026 |
 
 ## Tasks
 > Status: `todo` / `in progress` / `blocked` / `done`. Claude edits these. Every

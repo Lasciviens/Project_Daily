@@ -1,7 +1,6 @@
-// Drag-to-reorder for any ordered list — pure rules. Built for the Media
-// Queue; written with no Media names so it moves to src/shared as it is when
-// the other ordered lists get it (owner, 25.11.2026: "Yes, all lists").
-// Checked by scripts/verify-media-queue.cjs.
+// Drag-to-reorder for every ordered list — pure rules. Built for the Media
+// Queue (PR #651), shared by every list the owner orders (owner, 25.11.2026:
+// "Yes, all lists"). Checked by scripts/verify-drag-reorder.cjs.
 
 /** `items` with the one at `from` moved to `to` (clamped); a new array. */
 export function moveItem<T>(items: readonly T[], from: number, to: number): T[] {

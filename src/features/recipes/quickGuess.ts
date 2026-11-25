@@ -142,17 +142,11 @@ export function nextSortOrder(items: readonly Pick<QuickGuessItem, 'sort_order'>
 }
 
 /**
- * Moving one preset up (-1) or down (+1): the list is numbered 0, 1, 2… in
- * its current order with the two swapped, and only the rows whose number
- * changes are returned (two, or more when older rows shared a number).
- * Nothing at either end.
+ * The presets in a new order (a drag, ↑ ↓): numbered 0, 1, 2… in that order,
+ * and only the rows whose number changes are returned (two for a swap, more
+ * when older rows shared a number).
  */
-export function moveGuess(items: readonly Pick<QuickGuessItem, 'id' | 'sort_order'>[], id: string, dir: -1 | 1): { id: string; sort_order: number }[] {
-  const order = [...items].sort((a, b) => a.sort_order - b.sort_order)
-  const from = order.findIndex(i => i.id === id)
-  const to = from + dir
-  if (from < 0 || to < 0 || to >= order.length) return []
-  ;[order[from], order[to]] = [order[to], order[from]]
+export function guessOrderWrites(order: readonly Pick<QuickGuessItem, 'id' | 'sort_order'>[]): { id: string; sort_order: number }[] {
   return order.flatMap((item, i) => (item.sort_order === i ? [] : [{ id: item.id, sort_order: i }]))
 }
 

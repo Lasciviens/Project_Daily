@@ -289,6 +289,7 @@ Use the React primitive when one exists; the CSS class is for places a component
 | Empty state | `<EmptyState icon title description action bordered />` |
 | Loading | `<Skeleton>` / `<SkeletonText>` / `<SkeletonCard>` copying the real geometry; `<KeepRoom ids loading skeleton first remember>` around a part whose data comes in on its own (it keeps the room the part took last time, §5; `as="span"` inside a button); `<SkeletonTab>` as a lazy tab's Suspense fallback |
 | List row | `<ListRow leading title subtitle meta trailing onClick />` (`.row`, `.row-interactive`) |
+| An ordered list (the owner's order) | `<DragReorderList ids onMove label nameOf as layout disabled>` + `useDragReorderRow(id, { handle })` + `<ReorderControls>` (`shared/ui/dragReorder/`), saved through `useOrderSave` (`shared/hooks/`) — the one drag to reorder (owner, 25.11.2026: "Yes, all lists"); see "Drag to reorder" below |
 | On / off | `<Switch on onChange label size>` (`shared/ui`): the accent track when on; `md` keeps a 44px row of its own, `sm` sits in a row that is already the target (the item screen's All-day) |
 | Tick a choice | `<Checkbox checked onChange label tip tint>` (`shared/ui`): the browser's checkbox with its word, the whole label the target — 36px, no 44px step on touch; the accent, or a category tint (`tint`, §2.5) when the box is the key to that colour (Personal → Month's kinds) |
 | Text tabs (2–5 views) | `<SegmentedControl>` (`.seg` / `.seg-btn`); `size="xs"` is a 28px pill row for a compact popup header (This day \| All days); `fit` sizes each segment to its own label, with tighter sides at every size (`.seg-fit`), instead of equal shares (five views with one long name on a phone: Developer → AI; six with three counts: AI → Learned), `label` names the group for screen readers |
@@ -385,6 +386,18 @@ text label. Emoji are allowed only as user-facing *content* (a meal slot, a seas
 UI chrome or section markers.
 
 ---
+
+### Drag to reorder (every list the owner orders)
+
+One shared component (`src/shared/ui/dragReorder/`, built for the Media Queue, PR #651), never a list's own drag:
+
+- **How a drag starts:** a mouse once it moves 6px (a click stays a click); a finger holds 250ms, then drags (a swipe still scrolls: the row is `touch-pan-y`). Never from a row's controls (`data-no-drag` on its buttons, fields, selects) nor from a menu it opened (a portal). Alt+↑ / Alt+↓ on a row's control moves it one place, never while typing in a field.
+- **While dragging:** the drop target is the row under the pointer (between rows: the nearest centre — a tall card's own centre is far from the finger); the row follows the pointer, the rows between step aside (CSS 150ms, off under Reduce Motion) and every row shows the number it gets (`row.place + 1`); the page scrolls only in the outer 12% (`EDGE_SCROLL`); a list layout keeps the row inside the list.
+- **Rows:** a row drags by itself (`rowProps`, `rowClassName`). A card whose body has fields, tables or links of its own drags by a handle (`{ handle: true }` → `handleProps`, `handleClassName`: a project's phase and block by their header, a table column's form row by its top line, a Games queue row by its grip). Cards in columns (a project's phases) use `layout="grid"`: the card moves freely, the others stay, the numbers say where it lands.
+- **The keyboard and menu fallback stays:** `<ReorderControls>` puts ↑ ↓ in the row from a container width (`@container`, `wide="26rem"|"30rem"`) and Up / Down (Top on long lists) in ⋯ below it, where the arrows would squeeze the title. A ⋯ with lines of its own (a phase's, a block's) lists Move up / Move down itself.
+- **Saving:** each list keeps its own order write, called through `useOrderSave` (`useMutationWithFeedback` inside): shown at once, moves during a save wait and only the newest order is sent, a refused save puts back the last saved order. A form's list (a table's columns) only changes the form; its Save stores it.
+- **Code size:** `@dnd-kit/core` is ~12 kB; a list that is not the page's main content loads it as a `lazyPart` (Media's Queue, Books' Up next, Settings → Food's Quick guess editor) and shows the same rows without it until it lands.
+- Lists that have it: Media → Queue; Books → Up next, Kobo menu order; Food → Quick guesses; Projects → phases, blocks, a table's columns; Games → Play queue. Not To-do items: no order write exists for them (25.11.2026). `verify-drag-reorder` checks the shared part and each list.
 
 ## 6. Layout
 

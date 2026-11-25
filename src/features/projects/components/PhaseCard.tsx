@@ -3,10 +3,11 @@ import { ArrowDown, ArrowUp, Check, ChevronDown, MoreHorizontal, Pencil, RotateC
 import { HoverPeek } from '../../../shared/components/HoverPeek'
 import { useEntityModal } from '../../../shared/modals'
 import { cx } from '../../../shared/ui'
+import { useDragReorderRow } from '../../../shared/ui/dragReorder/dragReorderRow'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import type { Task } from '../../todo/types'
-import { useDeletePhase, useMovePhase, useUpdatePhase } from '../hooks/useProjects'
-import { movePlan, nextSortOrder } from '../projectModel'
+import { useDeletePhase, useUpdatePhase } from '../hooks/useProjects'
+import { nextSortOrder } from '../projectModel'
 import { AddTaskInline } from './AddTaskInline'
 import { ProjectTaskRow } from './ProjectTaskRow'
 import { DOTTED } from './peekStyle'
@@ -15,11 +16,11 @@ import type { ProjectArea, ProjectPhase } from '../types'
 /**
  * One phase: its name and how many of its tasks are done; open, its finish
  * line ("Done when"), its tasks and "Add a task". The current phase opens by
- * itself; the others wait for a tap (details on demand).
+ * itself; the others wait for a tap (details on demand). A row of the plan's
+ * `DragReorderList`: it drags by its header (on touch: hold, then drag).
  */
-export function PhaseCard({ phase, index, tasks, phases, current, area, focusAdd }: {
+export function PhaseCard({ phase, tasks, phases, current, area, focusAdd }: {
   phase: ProjectPhase
-  index: number
   tasks: Task[]
   phases: ProjectPhase[]
   current: boolean
@@ -29,32 +30,31 @@ export function PhaseCard({ phase, index, tasks, phases, current, area, focusAdd
 }) {
   const modal = useEntityModal()
   const update = useUpdatePhase()
-  const move = useMovePhase()
+  const row = useDragReorderRow(phase.id, { handle: true })
   const del = useDeletePhase()
   const done = phase.status === 'done'
   const counted = tasks.filter(t => t.status !== 'cancelled')
   const doneCount = counted.filter(t => t.status === 'done').length
   const dateText = phase.done_at ? `Done ${formatDate(phase.done_at)}` : phase.target_on ? `Target ${formatDate(phase.target_on)}` : null
-  const up = movePlan(phases, phase.id, -1)
-  const down = movePlan(phases, phase.id, 1)
 
   return (
-    <Disclosure as="section" defaultOpen={current || !!focusAdd}
-      className={cx('rounded-card border', current ? 'border-accent-200 bg-accent-50/40' : 'border-line bg-surface')}>
+    <Disclosure as="section" defaultOpen={current || !!focusAdd} {...row.rowProps}
+      className={cx(row.rowClassName, 'rounded-card border', current ? 'border-accent-200 bg-accent-50/40' : 'border-line bg-surface', row.dragging && 'shadow-menu')}>
       {({ open }) => (
         <>
-          <div className="flex items-center gap-2 py-1.5 pl-2 pr-1">
+          <div {...row.handleProps} className={cx(row.handleClassName, 'flex items-center gap-2 py-1.5 pl-2 pr-1')}>
             <DisclosureButton className="flex min-h-[40px] min-w-0 flex-1 items-center gap-2.5 rounded-row text-left">
               <PhaseMark done={done} current={current} />
               <span className="min-w-0 flex-1">
                 <span className="block break-words text-ui text-fg">
-                  <span className="text-fg-muted tabular-nums">{index + 1} · </span>{phase.name}
+                  {/* While a phase is dragged every phase shows the number it gets if it drops now. */}
+                  <span className="text-fg-muted tabular-nums">{row.place + 1} · </span>{phase.name}
                 </span>
               </span>
               {counted.length > 0 && <span className="shrink-0 text-meta tabular-nums text-fg-muted">{doneCount}/{counted.length}</span>}
               <ChevronDown aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform motion-reduce:transition-none', open ? '' : '-rotate-90')} />
             </DisclosureButton>
-            <Menu as="div" className="shrink-0">
+            <Menu as="div" data-no-drag="" className="shrink-0 cursor-auto">
               <MenuButton className="icon-btn h-9 w-9" aria-label={`More for ${phase.name}`}>
                 <MoreHorizontal className="h-4 w-4" aria-hidden />
               </MenuButton>
@@ -70,16 +70,16 @@ export function PhaseCard({ phase, index, tasks, phases, current, area, focusAdd
                     {done ? <RotateCcw aria-hidden className="h-4 w-4" /> : <Check aria-hidden className="h-4 w-4" />} {done ? 'Reopen' : 'Mark done'}
                   </button>
                 </MenuItem>
-                {up && (
+                {row.index > 0 && (
                   <MenuItem>
-                    <button type="button" className="menu-item" onClick={() => move.mutate(up)}>
+                    <button type="button" className="menu-item" onClick={() => row.move(row.index - 1)}>
                       <ArrowUp aria-hidden className="h-4 w-4" /> Move up
                     </button>
                   </MenuItem>
                 )}
-                {down && (
+                {row.index < row.count - 1 && (
                   <MenuItem>
-                    <button type="button" className="menu-item" onClick={() => move.mutate(down)}>
+                    <button type="button" className="menu-item" onClick={() => row.move(row.index + 1)}>
                       <ArrowDown aria-hidden className="h-4 w-4" /> Move down
                     </button>
                   </MenuItem>
