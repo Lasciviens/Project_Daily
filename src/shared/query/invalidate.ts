@@ -16,8 +16,9 @@ const groups = {
   nutrition: [qk.foodLog.all, qk.mealPlan.all, qk.water.all, qk.dayTargets.all, qk.dayTargets.profiles, qk.health.cutDiaryAll, qk.supplements.all],
   recipes: [qk.recipes.all, qk.ingredients.all, qk.mealPlan.all],
   /** An episode was marked (un)watched: progress, next-up, planned blocks, recents. */
-  episodeWatched: [qk.media.watchedAll, qk.media.nextEpisodeAll, qk.media.tv, qk.media.recent(), qk.schedule.all],
-  media: [qk.media.movies, qk.media.tv, qk.media.watchedAll, qk.media.nextEpisodeAll, qk.media.recent()],
+  // A watch closes its planned episode's or movie's task (155, 211): the task lists refresh too.
+  episodeWatched: [qk.media.watchedAll, qk.media.nextEpisodeAll, qk.media.tv, qk.media.recent(), qk.schedule.all, qk.tasks.all],
+  media: [qk.media.movies, qk.media.tv, qk.media.watchedAll, qk.media.nextEpisodeAll, qk.media.recent(), qk.tasks.all],
   /** Hevy/Strava data changed (a sync, a logged workout, a routine edit):
    *  every Training view, the current program it scopes, and Health (body
    *  measurements feed the bodyweight series). */
