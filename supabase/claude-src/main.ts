@@ -51,7 +51,7 @@ import { checkSuggestRuns, makeWeeklySuggestions } from './suggest-batch.ts'
 import { decideTuning, reportSave } from './learn-save.ts'
 import { checkEvalRuns, makeWeeklyEval } from './learn-eval.ts'
 import { decideChatProposal, runChat, setChatDeleted, type ChatEvent } from './chat-loop.ts'
-import type { DnsLookup } from './types.ts'
+import type { DnsLookup, Provider } from './types.ts'
 
 // <supabase-keys>
 // Supabase's new API keys (sb_secret_… / sb_publishable_…) arrive as JSON
@@ -138,6 +138,32 @@ function corsHeaders(origin: string | null): Record<string, string> {
     'Access-Control-Allow-Headers': 'authorization, content-type, x-client-info, apikey',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
   }
+}
+
+// 212: Anthropic rejecting the key becomes a notice under the bell (and a push, as the owner chose). Every provider
+// method's answer passes here (a Proxy, so a method added later is covered too); a 'key' failure calls `onRejected`
+// once per request and waits for it, so the write isn't cut off when the answer goes. The database writes at most one a
+// day while one is unread (notify_service_problem) and builds the notice from the service code alone.
+function watchKeyRejection(provider: Provider, onRejected: () => Promise<void>): Provider {
+  let told = false
+  const seen = async (answer: unknown) => {
+    const failed = !!answer && typeof answer === 'object' && (answer as { ok?: unknown }).ok === false && (answer as { kind?: unknown }).kind === 'key'
+    if (failed && !told) {
+      told = true
+      await onRejected().catch(() => {})
+    }
+    return answer
+  }
+  return new Proxy(provider, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver)
+      if (typeof value !== 'function') return value
+      return (...args: unknown[]) => {
+        const out = value.apply(target, args)
+        return out instanceof Promise ? out.then(seen) : out
+      }
+    },
+  })
 }
 
 Deno.serve(async (req) => {
@@ -250,7 +276,12 @@ Deno.serve(async (req) => {
       userDb,
       adminDb,
       // `fetch` is handed over by name, so a test that swaps the network swaps it for the SDK too.
-      provider: apiKey ? anthropicProvider(apiKey, fetch) : null,
+      provider: apiKey
+        ? watchKeyRejection(anthropicProvider(apiKey, fetch), async () => {
+          const { error } = await adminDb.rpc('notify_service_problem', { p_user: userId, p_service: 'anthropic' })
+          if (error) console.error(`[claude] the key notice was not written (${error.code ?? 'error'})`)
+        })
+        : null,
       providerName: ANTHROPIC_INFO.name,
       page: { fetch, dnsLookup },
       // Only the owner's phone is ever pushed to: any other account's reports (a second allowed account) get no push.

@@ -78,6 +78,11 @@ check('each sync function tells the database which service refused its sign-in (
   producers.map(([fn, svc]) => new RegExp(`rpc\\('notify_service_problem', \\{ p_user: userId, p_service: '${svc}' \\}\\)`).test(read(`supabase/functions/${fn}/index.ts`))
     && /await notifySignInFailed\(/.test(read(`supabase/functions/${fn}/index.ts`))), producers.map(() => true))
 
+const claudeMain = read('supabase/claude-src/main.ts')
+check('claude: every provider answer passes the key watch; a rejected key tells the database (service code only), once per request',
+  [/provider: apiKey\n\s+\? watchKeyRejection\(anthropicProvider\(apiKey, fetch\)/.test(claudeMain), /rpc\('notify_service_problem', \{ p_user: userId, p_service: 'anthropic' \}\)/.test(claudeMain),
+    /\(answer as \{ kind\?: unknown \}\)\.kind === 'key'/.test(claudeMain), /if \(failed && !told\)/.test(claudeMain)], [true, true, true, true])
+
 console.log('push-send')
 const block = s => (s.match(/\/\/ <notification-text>\n([\s\S]*?)\/\/ <\/notification-text>/) || [])[1]
 const pushSend = read('supabase/functions/push-send/index.ts')
