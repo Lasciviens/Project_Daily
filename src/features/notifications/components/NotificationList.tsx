@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Bell, CheckCheck, Circle, CircleCheck, Clapperboard, Film, KeyRound, ShoppingBag, Sparkles, Settings2 } from 'lucide-react'
-import { Button, IconButton, SegmentedControl, Skeleton, ToneDot, Truncate, cx } from '../../../shared/ui'
+import { Button, Card, IconButton, SegmentedControl, Skeleton, ToneDot, Truncate, cx } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { formatDateTime } from '../../../shared/utils/dateFormat'
 import { todayStr } from '../../../shared/utils/dateUtils'
@@ -41,8 +41,8 @@ export function NotificationList({ mode, onDone }: { mode: NotificationListMode;
   const readAll = useMarkAllNoticesRead()
   const today = todayStr()
 
-  return (
-    <div className={cx('flex min-w-0 flex-col', page ? 'gap-3' : 'gap-1')}>
+  const body = (
+    <div className={cx('flex min-w-0 flex-col', page ? 'gap-2' : 'gap-1')}>
       <div className={cx('flex items-center gap-2', !page && 'px-1.5 pt-0.5')}>
         {page
           ? <SegmentedControl size="sm" label="Show" value={filter} onChange={setFilter}
@@ -52,12 +52,10 @@ export function NotificationList({ mode, onDone }: { mode: NotificationListMode;
           tip="Read all: mark every unread notification read" loading={readAll.isPending} onClick={() => readAll.mutate()}>
           Read all
         </Button>
-        {!page && (
-          <Link to="/settings?tab=notifications" onClick={onDone} aria-label="Settings: where each notification goes" title="Settings: where each notification goes"
-            className="icon-btn h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [&_svg]:h-[18px] [&_svg]:w-[18px]">
-            <Settings2 aria-hidden />
-          </Link>
-        )}
+        <Link to="/settings?tab=notifications" onClick={onDone} aria-label="Settings: where each notification goes" title="Settings: where each notification goes"
+          className="icon-btn h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [&_svg]:h-[18px] [&_svg]:w-[18px]">
+          <Settings2 aria-hidden />
+        </Link>
       </div>
 
       {failed ? (
@@ -91,6 +89,8 @@ export function NotificationList({ mode, onDone }: { mode: NotificationListMode;
       )}
     </div>
   )
+  // The page's list is a card (the icon tiles need its surface); the drop-down is already one.
+  return page ? <Card>{body}</Card> : body
 }
 
 function NoticeRow({ n, today, page, onDone }: { n: Notice; today: string; page: boolean; onDone?: () => void }) {

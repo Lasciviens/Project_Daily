@@ -41,7 +41,7 @@ export function MobileHeader() {
         <IconButton label="Requests" aria-pressed={isDevRequestsOpen} onClick={toggleDevRequests} className={isDevRequestsOpen ? 'bg-accent-50 !text-accent-700' : undefined}>
           <ClipboardList strokeWidth={1.9} aria-hidden />
         </IconButton>
-        <NotificationBell />
+        <NotificationBell look="header" />
         <SettingsMenu />
       </div>
     </header>

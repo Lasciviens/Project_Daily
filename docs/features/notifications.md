@@ -9,10 +9,12 @@ table itself is `211`'s.
 - **The bell** sits next to the avatar in the top bar and in the phone header (`NotificationBell`). A red count shows
   the unread notifications (99+ above 99); it is read again every 5 minutes and when the app comes back to the front.
   Tapping it opens a drop-down (Headless UI Popover) with the newest 8: **Read all** (with Undo), a ⚙ link to
-  Settings → Notifications, and **See all**.
+  Settings → Notifications, and **See all**. The drop-down is at most the screen's height less the phone's bars and
+  scrolls inside (the phone held sideways). In the top bar the bell is bordered like Ask AI and Requests; in the phone
+  header it is a plain icon button like its neighbours.
 - **/notifications** (`NotificationsPage`, in `navigation.ts` and `pages.ts`; no nav row of its own) is the full list:
-  **All | Unread**, each row's **Read / Unread** button (with Undo), **More** for older ones (30 at a time), and a
-  **Settings** link.
+  **All | Unread**, each row's **Read / Unread** button (with Undo), **More** for older ones (30 at a time), in a card.
+  Both modes have **Read all** and a ⚙ link to Settings → Notifications.
 - The drop-down and the page are **one component**, `NotificationList`, with the modes `dropdown` and `page` (owner,
   12.11.2026: "same job, one component"). A mode hides a part (the filter, the per-row button, More), never copies it.
 - **Opening a notice** marks it read and acted on, then opens the thing by the kind's fixed way: a Shop thing opens its

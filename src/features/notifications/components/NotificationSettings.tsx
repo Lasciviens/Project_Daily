@@ -46,16 +46,16 @@ function NoticeKindsCard() {
         {NOTICE_KINDS.map(k => {
           const value: NoticeChannel = prefs.data?.[k.kind] ?? k.defaultChannel
           return (
-            <li key={k.kind} className="flex flex-col gap-1.5 border-t border-line py-3 first:border-t-0">
-              <div className="min-w-0">
+            <li key={k.kind} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-t border-line py-3 first:border-t-0">
+              <div className="min-w-[14rem] flex-1">
                 <p className="text-body font-medium text-fg">{k.label}</p>
                 <p className="text-meta text-fg-muted">{k.hint}</p>
               </div>
               {prefs.isLoading
                 ? <Skeleton className="h-9 w-64 rounded-control" />
-                : <SegmentedControl size="sm" fit label={`${k.label}: where it goes`} value={value}
+                : <div className="flex"><SegmentedControl size="sm" fit label={`${k.label}: where it goes`} value={value}
                     onChange={channel => save.mutate({ kind: k.kind, channel })}
-                    options={NOTICE_CHANNELS.map(c => ({ value: c.value, label: c.label, tip: c.tip }))} />}
+                    options={NOTICE_CHANNELS.map(c => ({ value: c.value, label: c.label, tip: c.tip }))} /></div>}
             </li>
           )
         })}

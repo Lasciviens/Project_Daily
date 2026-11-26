@@ -1203,6 +1203,22 @@ function buildTables(now = new Date()) {
     user_id: owner, job: 'item_fill', enabled: true, model: null, effort: null, max_output_tokens: null, monthly_budget_usd: 1, thinking: null, updated_at: at(-6, '08:20'),
   }]
 
+  // 212: the bell's notifications — a refused sign-in (unread), a PlayStation sign-in ending, a follow's new film (unread),
+  // the Shop's bought-through-a-plan notice (read). A follow and its event name the film.
+  const follow = { id: lid('f0110000', 1), user_id: owner, kind: 'director', tmdb_id: 525, name: 'Christopher Nolan', trakt_list_id: null, known_ids: [], trailer_keys: [], last_checked_at: at(-1, '06:00'), created_at: at(-60, '12:00') }
+  tables.media_follows = [...(tables.media_follows || []), follow]
+  const followEvent = { id: lid('f0e70000', 1), user_id: owner, follow_id: follow.id, kind: 'new_title', tmdb_id: 990001, title: 'The Long Night Over Jernbanetorget', poster_path: null, release_date: day(40), video_key: null, created_at: at(-1, '06:10'), seen_at: null }
+  tables.media_follow_events = [followEvent]
+  const shopThing = tables.shop_items.find(r => r.status === 'bought') ?? tables.shop_items[0]
+  tables.notifications = [
+    { id: lid('a0710000', 1), user_id: owner, kind: 'sign_in_failed', link_kind: null, link_id: null, service: 'trakt', due_on: null, dedupe_key: `sign_in_failed:trakt:${day(0)}`, created_at: at(0, '07:45'), read_at: null, acted_at: null, pushed_at: at(0, '08:00') },
+    { id: lid('a0710000', 2), user_id: owner, kind: 'sign_in_expiring', link_kind: null, link_id: null, service: 'psn', due_on: day(7), dedupe_key: `sign_in_expiring:psn:${day(7)}:7`, created_at: at(0, '06:40'), read_at: null, acted_at: null, pushed_at: null },
+    { id: lid('a0710000', 3), user_id: owner, kind: 'follow_new_title', link_kind: 'media_follow_event', link_id: followEvent.id, service: null, due_on: null, dedupe_key: `follow:${followEvent.id}`, created_at: at(-1, '06:10'), read_at: null, acted_at: null, pushed_at: null },
+    { id: lid('a0710000', 4), user_id: owner, kind: 'shop_bought_draft', link_kind: 'shop_item', link_id: shopThing.id, service: null, due_on: null, dedupe_key: `shop_bought:${lid('a0710000', 99)}`, created_at: at(-3, '19:20'), read_at: at(-3, '20:00'), acted_at: null, pushed_at: null },
+  ]
+  tables.notification_prefs = [{ id: lid('a0720000', 1), user_id: owner, kind: 'follow_new_title', channel: 'push_morning', created_at: at(-5, '10:00'), updated_at: at(-5, '10:00') }]
+  tables.integration_expiry = [{ id: lid('a0730000', 1), user_id: owner, service: 'anthropic', starts_on: day(-300), duration_count: 12, duration_unit: 'months', ends_on: addDays(day(-300), 365), key_hint: 'Xy9_', created_at: at(-300, '10:00'), updated_at: at(-300, '10:00') }]
+
   // Read by the pages and empty for this owner: nothing connected outside, nothing overridden.
   for (const name of [
     'supplement_dose_state', 'athlete_limitations', 'athlete_muscle_preferences', 'exercise_target_overrides',

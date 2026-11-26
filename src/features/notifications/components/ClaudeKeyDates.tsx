@@ -47,11 +47,11 @@ function KeyDatesForm({ stored }: { stored: KeyDates | null }) {
         Only these dates are kept, never the key.
       </p>
       <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
-        <label className="flex flex-col gap-1">
+        <label className="flex flex-col items-start gap-1">
           <span className="text-micro font-semibold text-fg-muted">Made on</span>
-          <DateInput value={startsOn} onChange={setStartsOn} aria-label="Made on: the day the key was made" className="w-[9.5rem]" />
+          <DateInput value={startsOn} onChange={setStartsOn} aria-label="Made on: the day the key was made" className="input w-[8.5rem]" />
         </label>
-        <label className="flex flex-col gap-1">
+        <label className="flex flex-col items-start gap-1">
           <span className="text-micro font-semibold text-fg-muted">Lasts</span>
           <span className="flex items-center gap-1.5">
             <input className="input w-16 text-center tabular-nums" inputMode="numeric" value={count} aria-label={`Lasts: how many ${unit}`}
@@ -60,7 +60,7 @@ function KeyDatesForm({ stored }: { stored: KeyDates | null }) {
               options={[{ value: 'days', label: 'Days', tip: 'Days: the duration in days' }, { value: 'months', label: 'Months', tip: 'Months: the duration in months' }]} />
           </span>
         </label>
-        <label className="flex flex-col gap-1">
+        <label className="flex flex-col items-start gap-1">
           <span className="text-micro font-semibold text-fg-muted">Last 4</span>
           <input className="input w-20 font-mono" value={hint} maxLength={4} autoComplete="off" spellCheck={false}
             aria-label="Last 4: the key's last 4 characters (optional, to tell keys apart)" placeholder="optional"
@@ -70,7 +70,7 @@ function KeyDatesForm({ stored }: { stored: KeyDates | null }) {
       <p className="text-meta tabular-nums text-fg-2" aria-live="polite">
         {problem
           ? <span className="text-danger">{problem}</span>
-          : <>Ends <span className="font-semibold text-fg">{formatDate(endsOn)}</span> ({noticeWhen(today, endsOn as string)})</>}
+          : <>Ends <span className="font-semibold text-fg">{formatDate(endsOn)}</span> ({(endsOn as string) < today ? 'passed' : noticeWhen(today, endsOn as string)})</>}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="primary" icon={<Save />} disabled={!!problem || !changed} loading={save.isPending}

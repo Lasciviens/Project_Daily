@@ -38,7 +38,7 @@ export function AppTopBar() {
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         <ShellToggle label="Ask AI" icon={<Sparkles className="h-4 w-4" strokeWidth={2} aria-hidden />} on={isAIOpen} onClick={toggleAI} />
         <ShellToggle label="Requests" icon={<ClipboardList className="h-4 w-4" strokeWidth={2} aria-hidden />} on={isDevRequestsOpen} onClick={toggleDevRequests} />
-        <NotificationBell />
+        <NotificationBell look="bar" />
         <SettingsMenu />
       </div>
     </header>
