@@ -44,7 +44,7 @@ export async function openPlanRoutine(routine: Pick<HevyRoutine, 'id' | 'title'>
   entityModal.open({
     kind: 'time-block',
     defaults: { title: routine.title, category: 'training', color: 'accent', alsoCreateTask: true, ...(opts.date ? { date: opts.date } : {}) },
-    source: { sourceType: 'training_session', sourceId: routine.id, taskSourceType: 'training_session' },
+    source: { sourceType: 'training_session', sourceId: routine.id, taskSourceType: 'training_session', link: { kind: 'training', id: routine.id } },
     onSaved: opts.onSaved ? () => opts.onSaved?.() : undefined,
   })
 }

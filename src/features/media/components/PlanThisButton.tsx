@@ -29,7 +29,7 @@ export function PlanThisButton({ entryId, title, runtimeMinutes }: Props) {
           color:          'purple',
           alsoCreateTask: true,
         },
-        source: { sourceType: 'movie', sourceId: entryId, taskSourceType: 'movie' },
+        source: { sourceType: 'movie', sourceId: entryId, taskSourceType: 'movie', link: { kind: 'movie', id: entryId } },
       })}
     >
       Plan

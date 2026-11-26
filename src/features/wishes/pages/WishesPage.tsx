@@ -56,16 +56,13 @@ export function WishesPage() {
     w => (w.status === 'idea' || w.status === 'planned') && resolveWishWindow(w, today) === 'open',
   ).length
 
-  // Promotion: the task is the commitment, the wish stays as the memory — so
-  // this only flips the wish to 'planned' and records which task came out of it.
+  // Promotion: the task is the commitment, the wish stays as the memory. The task and its link are one save (210);
+  // the database records the task on the wish and turns an idea into 'planned'.
   function plan(wish: WishItem) {
     modal.open({
       kind: 'task',
       defaults: { title: wish.title },
-      onSaved: result => update.mutate({
-        id: wish.id,
-        patch: { status: 'planned', ...(result.taskId ? { promoted_task_id: result.taskId } : {}) },
-      }),
+      source: { link: { kind: 'wish', id: wish.id } },
     })
   }
 
