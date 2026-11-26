@@ -140,17 +140,23 @@ function corsHeaders(origin: string | null): Record<string, string> {
   }
 }
 
-// 212: Anthropic rejecting the key becomes a notice under the bell (and a push, as the owner chose). Every provider
-// method's answer passes here (a Proxy, so a method added later is covered too); a 'key' failure calls `onRejected`
-// once per request and waits for it, so the write isn't cut off when the answer goes. The database writes at most one a
-// day while one is unread (notify_service_problem) and builds the notice from the service code alone.
-function watchKeyRejection(provider: Provider, onRejected: () => Promise<void>): Provider {
-  let told = false
+// 212: Anthropic rejecting the key becomes a notice under the bell (and a push, as the owner chose); Anthropic answering
+// again puts that notice away. Every provider method's answer passes here (a Proxy, so a method added later is covered
+// too): a 'key' failure calls `on.rejected`, an answer that went well `on.accepted` — each at most once per request, and
+// awaited, so the write isn't cut off when the answer goes. The database builds and settles the notice from the service
+// code alone (notify_service_problem / notify_service_settle: one indexed write, only while a notice is unread).
+function watchKey(provider: Provider, on: { rejected: () => Promise<void>; accepted: () => Promise<void> }): Provider {
+  let rejectedTold = false
+  let acceptedTold = false
   const seen = async (answer: unknown) => {
-    const failed = !!answer && typeof answer === 'object' && (answer as { ok?: unknown }).ok === false && (answer as { kind?: unknown }).kind === 'key'
-    if (failed && !told) {
-      told = true
-      await onRejected().catch(() => {})
+    const ok = !!answer && typeof answer === 'object' ? (answer as { ok?: unknown }).ok : undefined
+    const failed = ok === false && (answer as { kind?: unknown }).kind === 'key'
+    if (failed && !rejectedTold) {
+      rejectedTold = true
+      await on.rejected().catch(() => {})
+    } else if (ok === true && !acceptedTold) {
+      acceptedTold = true
+      await on.accepted().catch(() => {})
     }
     return answer
   }
@@ -277,9 +283,15 @@ Deno.serve(async (req) => {
       adminDb,
       // `fetch` is handed over by name, so a test that swaps the network swaps it for the SDK too.
       provider: apiKey
-        ? watchKeyRejection(anthropicProvider(apiKey, fetch), async () => {
-          const { error } = await adminDb.rpc('notify_service_problem', { p_user: userId, p_service: 'anthropic' })
-          if (error) console.error(`[claude] the key notice was not written (${error.code ?? 'error'})`)
+        ? watchKey(anthropicProvider(apiKey, fetch), {
+          rejected: async () => {
+            const { error } = await adminDb.rpc('notify_service_problem', { p_user: userId, p_service: 'anthropic' })
+            if (error) console.error(`[claude] the key notice was not written (${error.code ?? 'error'})`)
+          },
+          accepted: async () => {
+            const { error } = await adminDb.rpc('notify_service_settle', { p_user: userId, p_service: 'anthropic' })
+            if (error) console.error(`[claude] the key notice was not settled (${error.code ?? 'error'})`)
+          },
         })
         : null,
       providerName: ANTHROPIC_INFO.name,
