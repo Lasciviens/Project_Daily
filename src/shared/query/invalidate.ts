@@ -8,7 +8,8 @@ const groups = {
   /** A task or its schedule slot changed. */
   // shop items, wishes and football plans: a deleted task clears their task_id (ON DELETE SET NULL), and a task's
   // link (210) keeps their old back-pointer in step (a wish linked from an idea becomes planned).
-  taskGraph: [qk.tasks.all, qk.schedule.all, qk.shop.items(), qk.wishes.all, qk.football.plans()],
+  // 211: a done plan buys its wishlist thing (a draft + a notification), fulfils a wish or closes a project phase.
+  taskGraph: [qk.tasks.all, qk.schedule.all, qk.shop.items(), qk.wishes.all, qk.football.plans(), qk.notifications.all, qk.projects.phases()],
   schedule: [qk.schedule.all],
   /** Anything in the food diary / plan / targets / water. A supplement dose is
    *  taken while its diary line exists (160), so its doses refresh too. */

@@ -393,8 +393,9 @@ console.log('\n== 10. Step 3: one screen for everything ==')
   // Games' two copies, and nobody else, mount the screen directly no more.
   const mounts = require('child_process').execSync("grep -rln '<UnifiedPlanModal' src --include=*.tsx || true", { cwd: path.join(__dirname, '..') }).toString().trim().split('\n').filter(Boolean)
   check('only the plan-modal folder mounts UnifiedPlanModal (Games\' two copies open it through useEntityModal)',
-    mounts.every(f => f.startsWith('src/shared/components/plan-modal/')) && /entityModal\.open\(\{ kind: 'time-block'/.test(src('src/features/games/components/GameDetailModal.tsx'))
-    && /planSession: \(g\) => entityModal\.open\(\{ kind: 'time-block'/.test(src('src/features/games/test-game/TestGamePage.tsx')), mounts.join(', '))
+    // Since 211 both plan a game through THE Plan helper (usePlanThis → useEntityModal; verify-plan-this).
+    mounts.every(f => f.startsWith('src/shared/components/plan-modal/')) && /<PlanThingButton thing=\{\{ kind: 'game'/.test(src('src/features/games/components/GameDetailModal.tsx'))
+    && /planSession: \(g\) => \{ void planThis\(\{ kind: 'game'/.test(src('src/features/games/test-game/TestGamePage.tsx')), mounts.join(', '))
 
   // The quick adds: the one parser, the one item save; Open takes the text to the item screen.
   const S = require('../src/features/items/sheetRules')

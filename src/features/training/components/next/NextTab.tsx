@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Button, Card, EmptyState, KeepRoom, PageBoard, Skeleton, ToneDot, cx, useBoardStep } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
-import { openPlanRoutine } from '../../planTraining'
+import { usePlanThis } from '../../../items/usePlanThis'
 import { daysBetween } from '../../plan/nextSession'
 import type { TrainingTabId } from '../../pages/trainingTabs'
 import { useNextPlan, type NextPlan } from './useNextPlan'
@@ -32,6 +32,7 @@ function lastDoneText(last: string | null, today: string): string {
 }
 
 function SessionHeader({ plan }: { plan: NextPlan }) {
+  const planThis = usePlanThis()
   const { pick, routine, session, today } = plan
   const title = routine?.title ?? session?.title ?? 'Next session'
   // The exercises are already on this page, so the plan's actions (done,
@@ -70,7 +71,7 @@ function SessionHeader({ plan }: { plan: NextPlan }) {
       )}
       {pick?.source === 'least_recent' && routine && (
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="primary" icon={<CalendarPlus />} onClick={() => openPlanRoutine(routine, { date: today })} tip="Plan this session">Plan</Button>
+          <Button size="sm" variant="primary" icon={<CalendarPlus />} onClick={() => { void planThis({ kind: 'training', routine, date: today }) }} tip="Plan this session">Plan</Button>
         </div>
       )}
     </Card>

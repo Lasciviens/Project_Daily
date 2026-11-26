@@ -18,6 +18,7 @@ import { useAddMovieWatch, useMovieNotWatched, useStartRewatch, WAITS_FOR_TRAKT 
 import { useWatchesWaitForTrakt } from '../trakt/useTrakt'
 import { airedRegularEpisodes, cacheWatches, isPlaceholder, rewatchStartRound, rewatchTotals, watchCounts } from '../watches'
 import { PlanThisButton } from './PlanThisButton'
+import { PlannedChip } from '../../items/components/LinkedPlanChips'
 import { StarRating } from './StarRating'
 import { MovieWatchedControls } from './MovieWatchedControls'
 import { MovieWatchHistory } from './MovieWatchHistory'
@@ -472,6 +473,8 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
 
       <div className="flex flex-wrap gap-1 sm:gap-2">
         {isMovie && <PlanThisButton entryId={entryId} title={movie!.title} runtimeMinutes={movie!.runtime} />}
+        {/* A show's own screen: its nearest open plan (any episode), which opens it. Episodes are planned below. */}
+        {!isMovie && <PlannedChip kind="tv" id={entryId} />}
         {tvEntry?.status === 'watching' && (
           <Button size="sm" icon={<SkipForward />} onClick={handleNextEpisode} loading={markWatched.isPending}
             title="Next episode — record the next episode as watched">

@@ -16,7 +16,7 @@ import { useDayPlanContext } from '../../../training/hooks/usePlanContext'
 import { useScheduleBlocks, useTrainingBlocks, useTrainingDayTasks } from '../../hooks/useSchedule'
 import { NEXT_SESSION_LOOKAHEAD_DAYS } from '../../../training/hooks/useTrainingSessions'
 import { pickNextTrainingSession } from '../../../training/trainingPlanModel'
-import { openPlanRoutine } from '../../../training/planTraining'
+import { usePlanThis } from '../../../items/usePlanThis'
 import { matchDaySessions, planStartHHMM } from '../../../training/components/calendar/calendarSessions'
 import { getWorkoutDuration } from '../../../training/components/calendar/calendarModel'
 import { planRefOf } from '../../../training/sessionRef'
@@ -200,6 +200,7 @@ function WeekDots({ week }: { week: { date: string; letter: string; mark: WeekDa
 
 /** Nothing planned that day: the next session, and a menu to plan one of the routines. */
 function RestDayBox({ date, label, loading }: { date: string; label: string; loading: boolean }) {
+  const plan = usePlanThis()
   const lookaheadTo = shiftDateStr(date, NEXT_SESSION_LOOKAHEAD_DAYS)
   const { data: blocks = [] } = useTrainingBlocks(date, lookaheadTo)
   const { data: templates = [] } = useScheduleBlocks()
@@ -225,7 +226,7 @@ function RestDayBox({ date, label, loading }: { date: string; label: string; loa
               <p className="menu-label">Plan for {formatWeekdayDate(date)}</p>
               {routines.map(r => (
                 <MenuItem key={r.id}>
-                  <button type="button" className="menu-item" onClick={() => openPlanRoutine(r, { date })}>{r.title}</button>
+                  <button type="button" className="menu-item" onClick={() => { void plan({ kind: 'training', routine: r, date }) }}>{r.title}</button>
                 </MenuItem>
               ))}
             </MenuItems>

@@ -27,7 +27,7 @@ import { TgModals } from './components/TgModals'
 import { TgMobileHeader, TgMobileGrid } from './components/TgMobile'
 import { TgQueueView } from './components/TgQueueView'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
-import { entityModal } from '../../../shared/modals'
+import { usePlanThis } from '../../items/usePlanThis'
 import { recalledDepth, rememberDepth } from './components/tgScrollMemory'
 import { TgGamesContext, TgRanksContext } from './components/tgRanks'
 import { TgChunkFailed, TgEmptyState, TgLoadingShelf, TgErrorState, TgProviderError } from './components/TgStates'
@@ -130,13 +130,14 @@ export function TestGamePage() {
   const header = useTgHeaderConfig({ games: lib.games, counted: lib.countedGames, platform: effectivePlatform, statusCounts: sCounts, visibleCount: countedVisible.length, shelfTotal, uncounted, scopePlatform: effectiveScopePlatform })
 
   // ── Actions ───────────────────────────────────────────────────────────────
+  const planThis = usePlanThis()
   const actions: TgActions = useMemo(() => ({
     openEdit: (id) => setEditId(id),
     openFull: (id) => setFullId(id),
     openProvider: (g) => setProvider(g),
-    // The one item screen, as from every other page (step 3 of the item screen plan).
-    planSession: (g) => entityModal.open({ kind: 'time-block', defaults: { title: `🎮 ${g.title}`, duration: 60, category: 'games', color: 'purple' } }),
-  }), [])
+    // THE Plan helper (items/usePlanThis): the game's open plan, or a new one linked to the game.
+    planSession: (g) => { void planThis({ kind: 'game', id: g.id, title: g.title }) },
+  }), [planThis])
   // Phone: a tap opens the full-screen sheet. Wider: an arrow key only walks
   // the selection (an open overlay follows it); a click opens the overlay and
   // leaves focus alone; Enter opens it and moves focus in.

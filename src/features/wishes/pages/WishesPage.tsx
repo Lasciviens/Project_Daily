@@ -56,16 +56,6 @@ export function WishesPage() {
     w => (w.status === 'idea' || w.status === 'planned') && resolveWishWindow(w, today) === 'open',
   ).length
 
-  // Promotion: the task is the commitment, the wish stays as the memory. The task and its link are one save (210);
-  // the database records the task on the wish and turns an idea into 'planned'.
-  function plan(wish: WishItem) {
-    modal.open({
-      kind: 'task',
-      defaults: { title: wish.title },
-      source: { link: { kind: 'wish', id: wish.id } },
-    })
-  }
-
   function confirmDelete(wish: WishItem) {
     void remove.run([wish.id], { title: 'Delete this wish?', message: wish.title, done: 'Wish deleted' })
   }
@@ -104,7 +94,6 @@ export function WishesPage() {
                 wish={wish}
                 today={today}
                 onEdit={() => modal.open({ kind: 'wish', id: wish.id })}
-                onPlan={() => plan(wish)}
                 onStatus={s => update.mutate({ id: wish.id, patch: { status: s } })}
                 onDelete={() => { void confirmDelete(wish) }}
               />

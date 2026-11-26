@@ -5,7 +5,7 @@ import { CalendarPlus, ChevronDown, ClipboardList, FolderPlus, Pencil, Plus } fr
 import { Button, Card, EmptyState, IconButton, Skeleton, TonePill } from '../../../shared/ui'
 import { SET_TYPE_META } from '../setTypeMeta'
 import { formatSet } from '../setFormat'
-import { openPlanRoutine } from '../planTraining'
+import { usePlanThis } from '../../items/usePlanThis'
 import { NewRoutineModal, EditRoutineModal } from './RoutineModals'
 import { CreateRoutineFolderModal } from './CreateRoutineFolderModal'
 import { ExerciseThumb } from '../exerciseMedia'
@@ -45,6 +45,7 @@ function ExerciseNotes({ notes }: { notes: string }) {
 const EXERCISES_PREVIEW = 5
 
 function RoutineCard({ routine, typeById, onEdit }: { routine: HevyRoutine; typeById: Map<string, string>; onEdit: (r: HevyRoutine) => void }) {
+  const plan = usePlanThis()
   const [expanded, setExpanded] = useState(false)
   const [showAllExercises, setShowAllExercises] = useState(false)
 
@@ -70,7 +71,7 @@ function RoutineCard({ routine, typeById, onEdit }: { routine: HevyRoutine; type
         </button>
 
         <div className="flex shrink-0 items-center gap-0.5">
-          <Button size="sm" icon={<CalendarPlus />} onClick={() => openPlanRoutine(routine)}>Plan</Button>
+          <Button size="sm" icon={<CalendarPlus />} onClick={() => { void plan({ kind: 'training', routine }) }}>Plan</Button>
           <IconButton label="Edit routine" onClick={() => onEdit(routine)}><Pencil /></IconButton>
           <IconButton label={expanded ? 'Collapse' : 'Expand'} onClick={() => setExpanded(o => !o)}>
             <ChevronDown className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />

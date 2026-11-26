@@ -23,8 +23,13 @@ export type RepeatEnd = { until: string } | { count: number }
 
 /** What a task plans (210's link columns on tasks): one thing per task, checked as the caller's own by the database. */
 export type ItemLinkKind = 'movie' | 'tv' | 'shop_item' | 'wish' | 'football' | 'game' | 'book' | 'training'
-/** `training`'s id is a Hevy routine id; the rest are uuids. A TV link names one episode with both numbers, or the show. */
-export interface ItemLink { kind: ItemLinkKind; id: string; season?: number; episode?: number }
+/** `training`'s id is a Hevy routine id; the rest are uuids. A TV link names one episode with both numbers, or the show.
+ *  A football match not recorded yet goes as its ESPN facts (211): the save writes its record and the link together. */
+export type ItemLink =
+  | { kind: ItemLinkKind; id: string; season?: number; episode?: number }
+  | { kind: 'football'; match: FootballMatchRef }
+/** A match as `app_save_item` takes it (211): ESPN's event id and league slug, the kick-off (UTC), whether its time is set. */
+export interface FootballMatchRef { eventId: string; league: string; kickoffAt: string; timeValid: boolean }
 
 export interface ItemInput {
   /** Editing an item that has a task. */

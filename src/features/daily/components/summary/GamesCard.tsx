@@ -4,7 +4,7 @@ import { Cell, CellHeader, CellLink } from './cellKit'
 import { Truncate } from '../../../../shared/ui'
 import { useLastPlayed, usePlayQueue } from '../../../games/hooks/useGames'
 import { formatDate } from '../../../../shared/utils/dateFormat'
-import { useEntityModal } from '../../../../shared/modals'
+import { usePlanThis } from '../../../items/usePlanThis'
 import type { QueueGame } from '../../../games/types'
 
 // What to play — the top of the Play Queue, with "plan a session for this day"
@@ -13,13 +13,10 @@ export function GamesCard({ date }: { date: string }) {
   const { data: queue = [], isError } = usePlayQueue()
   // The game played last, up to the shown day (any library; one row).
   const { data: last } = useLastPlayed(date)
-  const modal = useEntityModal()
+  const planThis = usePlanThis()
   const top = queue.slice(0, 3)
 
-  const plan = (g: QueueGame) => modal.open({
-    kind: 'time-block',
-    defaults: { title: g.title, date, duration: 60, category: 'games', color: 'purple' },
-  })
+  const plan = (g: QueueGame) => { void planThis({ kind: 'game', id: g.id, title: g.title, date }) }
 
   return (
     <Cell>

@@ -1,6 +1,7 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { ArrowRight, CalendarPlus, Check, ExternalLink, MapPin, MoreHorizontal, Pencil, Trash2, Undo2, Ban } from 'lucide-react'
+import { ArrowRight, Check, ExternalLink, MapPin, MoreHorizontal, Pencil, Trash2, Undo2, Ban } from 'lucide-react'
 import { ToneDot, TonePill, Truncate } from '../../../shared/ui'
+import { PlanThingButton } from '../../items/components/LinkedPlanChips'
 import { resolveWishWindow, wishPeriodLabel } from '../wishRules'
 import { SCHEDULED_TONE, WINDOW_TONE, WISH_PRIORITY_TONE } from '../wishTones'
 import type { WishItem, WishStatus } from '../types'
@@ -9,12 +10,11 @@ interface Props {
   wish:      WishItem
   today:     string
   onEdit:    () => void
-  onPlan:    () => void
   onStatus:  (status: WishStatus) => void
   onDelete:  () => void
 }
 
-export function WishCard({ wish, today, onEdit, onPlan, onStatus, onDelete }: Props) {
+export function WishCard({ wish, today, onEdit, onStatus, onDelete }: Props) {
   const state    = resolveWishWindow(wish, today)
   const period   = wishPeriodLabel(wish)
   const isDone   = wish.status === 'done'
@@ -81,10 +81,9 @@ export function WishCard({ wish, today, onEdit, onPlan, onStatus, onDelete }: Pr
           {isDone ? <><Undo2 aria-hidden className="h-4 w-4" /> Not done yet</> : <><Check aria-hidden className="h-4 w-4" /> Done</>}
         </button>
         {!isClosed && (
-          <button type="button" onClick={onPlan} title="Plan it — turn it into a real task — the wish stays on this list"
-            className="btn-ghost btn-sm flex-1 justify-center text-accent-600">
-            <CalendarPlus aria-hidden className="h-4 w-4" /> Plan it
-          </button>
+          // THE Plan helper: a new plan linked to the wish, or "Planned 28.11.2026" that opens its open plan.
+          <PlanThingButton thing={{ kind: 'wish', id: wish.id, title: wish.title }} label="Plan it" variant="ghost"
+            className="flex-1 justify-center text-accent-600" tip="Plan it — turn it into a real task — the wish stays on this list" />
         )}
       </div>
     </div>

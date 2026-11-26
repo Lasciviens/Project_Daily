@@ -1,8 +1,8 @@
-import { useEntityModal } from '../../../shared/modals'
 import { Skeleton } from '../../../shared/ui'
 import { DragReorderList } from '../dragReorder/DragReorderList'
 import { moveItem } from '../dragReorder/dragReorderModel'
-import { useLibraryIndex } from '../hooks/useLibraryIndex'
+import { useLibraryEntries, useLibraryIndex } from '../hooks/useLibraryIndex'
+import { usePlanThis } from '../../items/usePlanThis'
 import { libraryKey } from '../listModel'
 import { useQueue, useReorderQueue } from '../queue/useQueue'
 import { useRemoveFromTraktList } from '../trakt/useTraktExtras'
@@ -20,7 +20,8 @@ export function QueuePanel({ onOpen }: { onOpen: OpenMediaDetail }) {
   const reorder = useReorderQueue(list?.id ?? null)
   const removeItems = useRemoveFromTraktList()
   const index = useLibraryIndex()
-  const modal = useEntityModal()
+  const entries = useLibraryEntries()
+  const planThis = usePlanThis()
 
   if (loading) return <Skeleton className="h-40 w-full" />
   if (!list || items.length === 0) {
@@ -36,10 +37,13 @@ export function QueuePanel({ onOpen }: { onOpen: OpenMediaDetail }) {
   }
   const finished = items.filter(i => libOf(i)?.bucket === 'completed')
   const removeOne = (i: TraktListItem) => remove([i], `Take “${i.title}” out of the Queue?`, `Took “${i.title}” out of the Queue`)
-  const plan = (i: TraktListItem) => modal.open({
-    kind: 'time-block',
-    defaults: { title: `Watch: ${i.title}`, duration: i.type === 'show' ? 60 : 120, category: 'media', color: 'purple', alsoCreateTask: true },
-  })
+  // The library's own entry (found by its TMDB id) is the plan's link; a title not in the library plans without one.
+  const plan = (i: TraktListItem) => {
+    const e = i.tmdb ? entries.get(libraryKey(typeOf(i), i.tmdb)) : undefined
+    void planThis(i.type === 'show'
+      ? { kind: 'tv', id: e?.entryId ?? null, show: i.title, runtimeMinutes: 60 }
+      : { kind: 'movie', id: e?.entryId ?? null, title: i.title, runtimeMinutes: e?.runtime ?? null })
+  }
   const open = (i: TraktListItem) => {
     if (i.tmdb) onOpen(i.tmdb, typeOf(i), items.filter(x => x.tmdb).map(x => ({ tmdbId: x.tmdb!, mediaType: typeOf(x) })))
   }
