@@ -369,5 +369,20 @@ console.log('the tile: one size on the whole page (owner, 24.11.2026: "Every box
   check('the old paths are gone: no categoryColumns, stackRem, packGroups or tileTrack', ['categoryColumns', 'stackRem', 'packGroups', 'tileTrack', 'STACK_GAP_REM'].every(k => !(k in T)))
 }
 
+// A5 (211): a plan ticked done bought a wishlist thing as a draft — the server's notice is a Needs a look row.
+console.log('\n== the server\'s notices (211) ==')
+{
+  const bought = mine({ id: 'kettle', title: 'Kettle', bought_at: '2026-11-26T10:00:00Z', price: null })
+  const back = item({ id: 'lamp', title: 'Lamp' })
+  const rows = S.noticeLooks([{ id: 'n1', link_id: 'kettle', created_at: at(0) }, { id: 'n2', link_id: 'lamp', created_at: at(0) }, { id: 'n3', link_id: 'gone', created_at: at(0) }], [bought, back])
+  check('a notice for a thing still bought is one row: "Bought through a plan", its day, "check the purchase"; it opens the thing',
+    rows.length === 1 && rows[0].kind === 'bought_draft' && rows[0].itemId === 'kettle' && rows[0].action === 'open'
+    && rows[0].facts.join(' · ') === 'Bought through a plan · 26.11.2026 · check the purchase', JSON.stringify(rows))
+  check('it is put away by its own id (read), never snoozed', rows[0].subject === 'n1' && rows[0].snoozeTo === null)
+  check('a notice whose draft went back to the wishlist (untick) or whose thing is gone shows nothing', !rows.some(r => r.itemId === 'lamp'))
+  const split = S.splitLooks(rows, [], '2026-11-26')
+  check('190\'s signal states never hide a notice', split.shown.length === 1 && split.hidden.length === 0)
+}
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)
