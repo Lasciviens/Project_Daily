@@ -9,7 +9,9 @@ import { useStopDirections, useTrips } from '../../hooks/useTransitQueries'
 import { Button, IconButton, SectionLabel, Skeleton, Truncate, cx } from '../../../../shared/ui'
 import { StopSearchInput } from './StopSearchInput'
 import { TripCard } from './TripCard'
-import { fmtLastUpdated, fmtTime } from './transitUtils'
+import { fmtLastUpdated, fmtTime, stopChipLine } from './transitUtils'
+import { groupTripsByRoute, tripKey, tripStep } from './tripRoutes'
+import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import { toast } from '../../../../app/store'
 import { DateInput } from '../../../../shared/components/DateInput'
 import { todayStr as todayString } from '../../../../shared/utils/dateUtils'
@@ -215,7 +217,9 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
   const [saveLabel,      setSaveLabel]      = useState('')
   const [showSaveForm,   setShowSaveForm]   = useState(false)
   const [saving,         setSaving]         = useState(false)
-  const [visibleCount,   setVisibleCount]   = useState(4)
+  // How many steps of trips each results list shows (tripStep trips a step).
+  const [bestSteps,      setBestSteps]      = useState(1)
+  const [otherSteps,     setOtherSteps]     = useState(1)
   const [autoFilledFrom, setAutoFilledFrom] = useState(false)
 
   // Prefill "From" with the user's real location once it's available, so
@@ -383,7 +387,8 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
   const [seenVersion, setSeenVersion] = useState(search?.version)
   if (seenVersion !== search?.version) {
     setSeenVersion(search?.version)
-    setVisibleCount(4)
+    setBestSteps(1)
+    setOtherSteps(1)
   }
 
   const { data, isLoading, error, refetch, isFetching, dataUpdatedAt } = useTrips(search, { enabled: active })
@@ -397,6 +402,9 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
     )
     return { filteredData: matched.length > 0 ? matched : data, lineFilterActive: true, lineMatchCount: matched.length }
   }, [data, search?.preferredLine])
+
+  // Left: the best trip's route; right: trips on other lines or stops (tripRoutes.ts).
+  const groups = useMemo(() => groupTripsByRoute(filteredData ?? []), [filteredData])
 
   // Saved routes are plain stop→stop pairs (no via column).
   const canSave = !!(search && !search.via && search.from.kind === 'stop' && search.to.kind === 'stop')
@@ -423,13 +431,244 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
   }
 
   const canPlan = !!(draftFrom && draftTo)
+  // Two-up rows (place chips | route card, best route | other routes) from 44rem
+  // of the tab's own width (THEME §6.6 W1: `@container`, never the viewport) —
+  // a phone held sideways too; upright it is one compact column. The same width,
+  // measured, sets how many trips a list shows (tripStep).
+  const { ref: tabRef, width: tabRem } = useElementWidthRem()
+  const twoUp = (tabRem ?? 0) >= 44
+  const hasOther = groups.other.length > 0
+  const step = tripStep(twoUp, hasOther)
+  const twoColumns = 'grid grid-cols-1 items-start gap-x-4 gap-y-2 @[44rem]:grid-cols-2'
 
   return (
-    <div className="space-y-4">
-      {/* One-tap trips from where you are */}
-      {!stopsLoading && (
-        <PlaceButtons stops={savedStops} disabled={fromLocState === 'loading'}
-          onPick={stop => void planGpsToStop(stop, { fallbackToDefault: true })} />
+    <div ref={tabRef} className="@container space-y-3">
+      {/* Row 2: one-tap trips from where you are on the left, the route card on the right */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        {!stopsLoading && (
+          <PlaceButtons stops={savedStops} disabled={fromLocState === 'loading'}
+            onPick={stop => void planGpsToStop(stop, { fallbackToDefault: true })} />
+        )}
+
+        {/* Planner form — collapses to a summary bar after planning */}
+        {formCollapsed && search ? (
+          <div className={cx('flex w-fit max-w-full items-center gap-2 rounded-row border border-accent-500/30 bg-accent-50 py-2 pl-3 pr-1 @[30rem]:max-w-sm @[44rem]:ml-auto')}>
+            {/* Route summary with colored origin/dest dots */}
+            <div className="flex-1 min-w-0 space-y-0.5">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-danger flex-shrink-0" />
+                <Truncate as="p" className="text-meta font-medium text-fg-2">{search.from.name.split(',')[0]}</Truncate>
+              </div>
+              {search.via && (
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span aria-hidden className="w-2 h-2 rounded-full bg-warn flex-shrink-0" />
+                  <Truncate as="p" className="text-meta text-fg-muted">via {search.via.name.split(',')[0]}</Truncate>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-success flex-shrink-0" />
+                <Truncate as="p" className="text-meta font-medium text-fg-2">{search.to.name.split(',')[0]}</Truncate>
+              </div>
+              <p className="text-micro text-accent-600 pl-3.5">{search.label}</p>
+            </div>
+            {/* Refresh button — solid accent, always visible */}
+            <IconButton label="Refresh routes" onClick={() => refetch()} disabled={isFetching}>
+              <RefreshCw className={cx(isFetching && 'animate-spin motion-reduce:animate-none')} />
+            </IconButton>
+            <button
+              onClick={() => setFormCollapsed(false)}
+              className="text-meta font-medium text-accent-600 hover:text-accent-700 transition-colors duration-150 flex-shrink-0 min-h-[44px] px-2 flex items-center"
+            >Edit</button>
+          </div>
+        ) : (
+          <div className="w-full max-w-2xl space-y-3">
+
+            {/* FROM + TO — grouped in a single card with a swap divider */}
+            <div ref={placesCard} className="rounded-row border border-line bg-surface overflow-hidden divide-y divide-line">
+
+              {/* FROM field */}
+              <div className="px-3 pt-3 pb-3">
+                {draftFrom ? (
+                  <PlaceDisplay place={draftFrom} label="From" onClear={() => { setDraftFrom(null); setFromLocState('idle') }} />
+                ) : (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex-1 min-w-0">
+                        <StopSearchInput placeholder="From — stop or address…" favorites={favoriteStops} widthFrom={placesCard}
+                          onSelect={s => { const p = toTransitPlace(s); if (p) setDraftFrom(p) }} />
+                      </div>
+                      <button
+                        onClick={() => locateFor('from')}
+                        disabled={fromLocState === 'loading'}
+                        title="Use current location"
+                        aria-label="Use current location"
+                        className="icon-btn shrink-0 disabled:opacity-50"
+                      >
+                        <LocateFixed aria-hidden className={cx('h-[18px] w-[18px]', fromLocState === 'loading' && 'animate-pulse')} />
+                      </button>
+                    </div>
+                    {fromLocState === 'denied' && (
+                      <span className="text-micro text-danger block">Location permission denied</span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Middle row: add a via stop · swap From/To */}
+              {((!draftVia && !showVia) || (draftFrom && draftTo)) && (
+                <div className="flex items-center justify-between gap-2 px-3">
+                  {!draftVia && !showVia ? (
+                    <button title="Via stop — add a via stop" type="button" onClick={() => setShowVia(true)}
+                      className="flex min-h-[44px] items-center gap-1.5 text-meta font-medium text-fg-muted transition-colors duration-150 hover:text-accent-600">
+                      <Plus aria-hidden className="h-3.5 w-3.5" /> Via stop
+                    </button>
+                  ) : <span />}
+                  {draftFrom && draftTo && (
+                    <button type="button" onClick={swapStops}
+                      className="flex min-h-[44px] items-center gap-1 px-1 text-meta text-fg-muted transition-colors duration-150 hover:text-accent-600">
+                      <ArrowUpDown aria-hidden className="h-3.5 w-3.5" /> Swap
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* VIA — optional; the trip must pass through this stop */}
+              {draftVia ? (
+                <div className="px-3 py-3">
+                  <PlaceDisplay place={draftVia} label="Via" onClear={clearVia} />
+                </div>
+              ) : showVia && (
+                <div className="flex items-center gap-1.5 px-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <StopSearchInput placeholder="Via — pass through this stop…" favorites={favoriteStops} widthFrom={placesCard}
+                      onSelect={s => { const p = toTransitPlace(s); if (p) setDraftVia(p) }} />
+                  </div>
+                  <IconButton label="Remove via stop" onClick={clearVia}><X /></IconButton>
+                </div>
+              )}
+
+              {/* TO field */}
+              <div className="px-3 pt-3 pb-3">
+                {draftTo ? (
+                  <PlaceDisplay place={draftTo} label="To" onClear={() => { setDraftTo(null); setToLocState('idle') }} />
+                ) : (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex-1 min-w-0">
+                        <StopSearchInput placeholder="To — stop or address…" favorites={favoriteStops} widthFrom={placesCard}
+                          onSelect={s => { const p = toTransitPlace(s); if (p) setDraftTo(p) }} />
+                      </div>
+                      <button
+                        onClick={() => locateFor('to')}
+                        disabled={toLocState === 'loading'}
+                        title="Use current location"
+                        aria-label="Use current location"
+                        className="icon-btn shrink-0 disabled:opacity-50"
+                      >
+                        <LocateFixed aria-hidden className={cx('h-[18px] w-[18px]', toLocState === 'loading' && 'animate-pulse')} />
+                      </button>
+                    </div>
+                    {toLocState === 'denied' && (
+                      <span className="text-micro text-danger block">Location permission denied</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* When chips + line filter trigger, same row */}
+            <div>
+              <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                {(['now', '+15', '+30', '+1h', 'arriveBy', 'custom'] as WhenPreset[]).map(p => (
+                  <button key={p} onClick={() => setDraftWhen(p)}
+                    className={`text-meta px-3 py-2 rounded-control border transition-colors duration-150 min-h-[44px] ${
+                      draftWhen === p
+                        ? 'bg-accent-500 text-on-accent border-accent-500'
+                        : 'text-fg-2 border-line hover:border-accent-500/40'
+                    }`}>
+                    {p === 'now' ? 'Now' : p === 'arriveBy' ? 'Arrive by…' : p === 'custom' ? 'Custom…' : p}
+                  </button>
+                ))}
+
+                {!showLineFilter ? (
+                  <button onClick={() => setShowLineFilter(true)}
+                    className="text-meta px-3 py-2 rounded-control border border-dashed border-line text-fg-muted hover:text-fg-2 hover:border-line-strong transition-colors duration-150 min-h-[44px]">
+                    + Line №
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <input value={draftLine} onChange={e => setDraftLine(e.target.value)}
+                      placeholder="e.g. 68" autoFocus
+                      aria-label="Line number" className="input w-20" />
+                    <IconButton label="Clear line filter" onClick={() => { setDraftLine(''); setShowLineFilter(false) }}><X /></IconButton>
+                  </div>
+                )}
+              </div>
+
+              {draftWhen === 'arriveBy' && (
+                <div className="space-y-1">
+                  <select value={draftTime} onChange={e => setDraftTime(e.target.value)}
+                    className="select w-full">
+                    {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <p className="text-micro text-fg-muted">Arrive by this time today</p>
+                </div>
+              )}
+
+              {draftWhen === 'custom' && (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    {(['departAt', 'arriveBy'] as TripMode[]).map(m => (
+                      <button key={m} onClick={() => setDraftMode(m)}
+                        className={`flex-1 text-meta py-2 rounded-control border transition-colors duration-150 min-h-[44px] ${
+                          draftMode === m ? 'bg-fg text-surface border-fg' : 'text-fg-muted border-line hover:border-line-strong'
+                        }`}>
+                        {m === 'departAt' ? 'Leave at' : 'Arrive by'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <DateInput value={draftDate} onChange={setDraftDate} min={todayString()}
+                      className="input min-w-0 flex-1" />
+                    <select value={draftTime} onChange={e => setDraftTime(e.target.value)} aria-label="Time"
+                      className="select min-w-0 flex-1">
+                      {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Plan button — only shown once both stops are picked */}
+            {canPlan && (
+              <Button variant="primary" block onClick={handlePlan}>Plan route</Button>
+            )}
+
+            {/* Save as favorite — available as soon as both stops are NSR stops */}
+            {draftCanSave && !draftAlreadySaved && !showSaveForm && (
+              <button title="Favourite — save as a favourite route"
+                onClick={() => {
+                  setSaveLabel(suggestLabel(draftFrom!, draftTo!))
+                  setShowSaveForm(true)
+                }}
+                className="text-micro text-accent-600 hover:text-accent-700 transition-colors duration-150 min-h-[44px] flex items-center"
+              >
+                <Save aria-hidden className="mr-1 h-3.5 w-3.5" /> Favourite
+              </button>
+            )}
+            {draftCanSave && !draftAlreadySaved && showSaveForm && (
+              <SaveRouteForm
+                label={saveLabel} onLabelChange={setSaveLabel}
+                onSave={handleSaveRoute} onCancel={() => { setShowSaveForm(false); setSaveLabel('') }}
+                saving={saving} placeholder="e.g. Work to home" heading="Name this route"
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      {fromLocState === 'loading' && !geo && (
+        <p className="text-micro text-fg-muted">Getting location…</p>
       )}
 
       {/* Shortcuts — saved routes, other saved stops from here, recent searches */}
@@ -455,22 +694,33 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
           {otherStops.length > 0 && (
             <div>
               <SectionLabel className="mb-1.5">From here to</SectionLabel>
-              <div className="flex flex-wrap gap-2">
-                {otherStops.map(s => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => planGpsToStop(s)}
-                    className="flex min-h-[44px] max-w-full items-center gap-1.5 rounded-row border border-line px-3 py-1.5 text-left text-meta text-fg-2 transition-colors duration-150 hover:bg-surface-hover"
-                  >
-                    <LocateFixed aria-hidden className="h-3.5 w-3.5 shrink-0 text-fg-faint" />
-                    <span className="flex min-w-0 flex-col leading-tight">
-                      <Truncate>{s.label ?? s.stop_name.split(',')[0]}</Truncate>
-                      {/* Which platform/direction this favourite was saved for. */}
-                      {s.quay_description && <Truncate className="text-micro text-fg-muted">{s.quay_description}</Truncate>}
-                    </span>
-                  </button>
-                ))}
+              {/* Compact chips, two a row on an upright phone and three when wide: no empty track beside three. */}
+              <div className="grid grid-cols-2 gap-2 @[40rem]:grid-cols-3">
+                {otherStops.map(s => {
+                  const name = s.label ?? s.stop_name.split(',')[0]
+                  // The direction alone in the owner's "Tw" form; the platform as a badge.
+                  const { direction, platform } = stopChipLine(s.quay_description)
+                  const tip = `${name} — plan from here${s.quay_description ? ` (${s.quay_description})` : ''}`
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => planGpsToStop(s)}
+                      title={tip}
+                      aria-label={tip}
+                      className="flex min-h-[44px] min-w-0 items-center gap-1.5 rounded-row border border-line px-2.5 py-1 text-left text-meta text-fg-2 transition-colors duration-150 hover:bg-surface-hover"
+                    >
+                      <LocateFixed aria-hidden className="h-3.5 w-3.5 shrink-0 text-fg-faint" />
+                      <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                        <span className="flex min-w-0 items-center gap-1">
+                          <Truncate>{name}</Truncate>
+                          {platform && <span aria-hidden className="shrink-0 rounded bg-surface-2 px-1 text-micro font-semibold tabular-nums text-fg-muted">{platform}</span>}
+                        </span>
+                        {direction && <Truncate fullText={s.quay_description ?? undefined} className="text-micro text-fg-muted">{direction}</Truncate>}
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )}
@@ -497,228 +747,14 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
         </div>
       )}
 
-      {fromLocState === 'loading' && !geo && (
-        <p className="text-micro text-fg-muted">Getting location…</p>
-      )}
-
-      {/* Planner form — collapses to a summary bar after planning */}
-      {formCollapsed && search ? (
-        <div className="flex w-fit max-w-full items-center gap-2 rounded-row border border-accent-500/30 bg-accent-50 py-2 pl-3 pr-1 sm:max-w-sm">
-          {/* Route summary with colored origin/dest dots */}
-          <div className="flex-1 min-w-0 space-y-0.5">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="w-2 h-2 rounded-full bg-danger flex-shrink-0" />
-              <Truncate as="p" className="text-meta font-medium text-fg-2">{search.from.name.split(',')[0]}</Truncate>
-            </div>
-            {search.via && (
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span aria-hidden className="w-2 h-2 rounded-full bg-warn flex-shrink-0" />
-                <Truncate as="p" className="text-meta text-fg-muted">via {search.via.name.split(',')[0]}</Truncate>
-              </div>
-            )}
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="w-2 h-2 rounded-full bg-success flex-shrink-0" />
-              <Truncate as="p" className="text-meta font-medium text-fg-2">{search.to.name.split(',')[0]}</Truncate>
-            </div>
-            <p className="text-micro text-accent-600 pl-3.5">{search.label}</p>
-          </div>
-          {/* Refresh button — solid accent, always visible */}
-          <IconButton label="Refresh routes" onClick={() => refetch()} disabled={isFetching}>
-            <RefreshCw className={cx(isFetching && 'animate-spin motion-reduce:animate-none')} />
-          </IconButton>
-          <button
-            onClick={() => setFormCollapsed(false)}
-            className="text-meta font-medium text-accent-600 hover:text-accent-700 transition-colors duration-150 flex-shrink-0 min-h-[44px] px-2 flex items-center"
-          >Edit</button>
-        </div>
-      ) : (
-        <div className="space-y-3">
-
-          {/* FROM + TO — grouped in a single card with a swap divider */}
-          <div ref={placesCard} className="rounded-row border border-line bg-surface overflow-hidden divide-y divide-line">
-
-            {/* FROM field */}
-            <div className="px-3 pt-3 pb-3">
-              {draftFrom ? (
-                <PlaceDisplay place={draftFrom} label="From" onClear={() => { setDraftFrom(null); setFromLocState('idle') }} />
-              ) : (
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex-1 min-w-0">
-                      <StopSearchInput placeholder="From — stop or address…" favorites={favoriteStops} widthFrom={placesCard}
-                        onSelect={s => { const p = toTransitPlace(s); if (p) setDraftFrom(p) }} />
-                    </div>
-                    <button
-                      onClick={() => locateFor('from')}
-                      disabled={fromLocState === 'loading'}
-                      title="Use current location"
-                      aria-label="Use current location"
-                      className="icon-btn shrink-0 disabled:opacity-50"
-                    >
-                      <LocateFixed aria-hidden className={cx('h-[18px] w-[18px]', fromLocState === 'loading' && 'animate-pulse')} />
-                    </button>
-                  </div>
-                  {fromLocState === 'denied' && (
-                    <span className="text-micro text-danger block">Location permission denied</span>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Middle row: add a via stop · swap From/To */}
-            {((!draftVia && !showVia) || (draftFrom && draftTo)) && (
-              <div className="flex items-center justify-between gap-2 px-3">
-                {!draftVia && !showVia ? (
-                  <button title="Via stop — add a via stop" type="button" onClick={() => setShowVia(true)}
-                    className="flex min-h-[44px] items-center gap-1.5 text-meta font-medium text-fg-muted transition-colors duration-150 hover:text-accent-600">
-                    <Plus aria-hidden className="h-3.5 w-3.5" /> Via stop
-                  </button>
-                ) : <span />}
-                {draftFrom && draftTo && (
-                  <button type="button" onClick={swapStops}
-                    className="flex min-h-[44px] items-center gap-1 px-1 text-meta text-fg-muted transition-colors duration-150 hover:text-accent-600">
-                    <ArrowUpDown aria-hidden className="h-3.5 w-3.5" /> Swap
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* VIA — optional; the trip must pass through this stop */}
-            {draftVia ? (
-              <div className="px-3 py-3">
-                <PlaceDisplay place={draftVia} label="Via" onClear={clearVia} />
-              </div>
-            ) : showVia && (
-              <div className="flex items-center gap-1.5 px-3 py-3">
-                <div className="min-w-0 flex-1">
-                  <StopSearchInput placeholder="Via — pass through this stop…" favorites={favoriteStops} widthFrom={placesCard}
-                    onSelect={s => { const p = toTransitPlace(s); if (p) setDraftVia(p) }} />
-                </div>
-                <IconButton label="Remove via stop" onClick={clearVia}><X /></IconButton>
-              </div>
-            )}
-
-            {/* TO field */}
-            <div className="px-3 pt-3 pb-3">
-              {draftTo ? (
-                <PlaceDisplay place={draftTo} label="To" onClear={() => { setDraftTo(null); setToLocState('idle') }} />
-              ) : (
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex-1 min-w-0">
-                      <StopSearchInput placeholder="To — stop or address…" favorites={favoriteStops} widthFrom={placesCard}
-                        onSelect={s => { const p = toTransitPlace(s); if (p) setDraftTo(p) }} />
-                    </div>
-                    <button
-                      onClick={() => locateFor('to')}
-                      disabled={toLocState === 'loading'}
-                      title="Use current location"
-                      aria-label="Use current location"
-                      className="icon-btn shrink-0 disabled:opacity-50"
-                    >
-                      <LocateFixed aria-hidden className={cx('h-[18px] w-[18px]', toLocState === 'loading' && 'animate-pulse')} />
-                    </button>
-                  </div>
-                  {toLocState === 'denied' && (
-                    <span className="text-micro text-danger block">Location permission denied</span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* When chips + line filter trigger, same row */}
-          <div>
-            <div className="flex flex-wrap items-center gap-1.5 mb-2">
-              {(['now', '+15', '+30', '+1h', 'arriveBy', 'custom'] as WhenPreset[]).map(p => (
-                <button key={p} onClick={() => setDraftWhen(p)}
-                  className={`text-meta px-3 py-2 rounded-control border transition-colors duration-150 min-h-[44px] ${
-                    draftWhen === p
-                      ? 'bg-accent-500 text-on-accent border-accent-500'
-                      : 'text-fg-2 border-line hover:border-accent-500/40'
-                  }`}>
-                  {p === 'now' ? 'Now' : p === 'arriveBy' ? 'Arrive by…' : p === 'custom' ? 'Custom…' : p}
-                </button>
-              ))}
-
-              {!showLineFilter ? (
-                <button onClick={() => setShowLineFilter(true)}
-                  className="text-meta px-3 py-2 rounded-control border border-dashed border-line text-fg-muted hover:text-fg-2 hover:border-line-strong transition-colors duration-150 min-h-[44px]">
-                  + Line №
-                </button>
-              ) : (
-                <div className="flex items-center gap-1">
-                  <input value={draftLine} onChange={e => setDraftLine(e.target.value)}
-                    placeholder="e.g. 68" autoFocus
-                    aria-label="Line number" className="input w-20" />
-                  <IconButton label="Clear line filter" onClick={() => { setDraftLine(''); setShowLineFilter(false) }}><X /></IconButton>
-                </div>
-              )}
-            </div>
-
-            {draftWhen === 'arriveBy' && (
-              <div className="space-y-1">
-                <select value={draftTime} onChange={e => setDraftTime(e.target.value)}
-                  className="select w-full">
-                  {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-                <p className="text-micro text-fg-muted">Arrive by this time today</p>
-              </div>
-            )}
-
-            {draftWhen === 'custom' && (
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  {(['departAt', 'arriveBy'] as TripMode[]).map(m => (
-                    <button key={m} onClick={() => setDraftMode(m)}
-                      className={`flex-1 text-meta py-2 rounded-control border transition-colors duration-150 min-h-[44px] ${
-                        draftMode === m ? 'bg-fg text-surface border-fg' : 'text-fg-muted border-line hover:border-line-strong'
-                      }`}>
-                      {m === 'departAt' ? 'Leave at' : 'Arrive by'}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <DateInput value={draftDate} onChange={setDraftDate} min={todayString()}
-                    className="input min-w-0 flex-1" />
-                  <select value={draftTime} onChange={e => setDraftTime(e.target.value)} aria-label="Time"
-                    className="select min-w-0 flex-1">
-                    {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Plan button — only shown once both stops are picked */}
-          {canPlan && (
-            <Button variant="primary" block onClick={handlePlan}>Plan route</Button>
-          )}
-
-          {/* Save as favorite — available as soon as both stops are NSR stops */}
-          {draftCanSave && !draftAlreadySaved && !showSaveForm && (
-            <button title="Favourite — save as a favourite route"
-              onClick={() => {
-                setSaveLabel(suggestLabel(draftFrom!, draftTo!))
-                setShowSaveForm(true)
-              }}
-              className="text-micro text-accent-600 hover:text-accent-700 transition-colors duration-150 min-h-[44px] flex items-center"
-            >
-              <Save aria-hidden className="mr-1 h-3.5 w-3.5" /> Favourite
-            </button>
-          )}
-          {draftCanSave && !draftAlreadySaved && showSaveForm && (
-            <SaveRouteForm
-              label={saveLabel} onLabelChange={setSaveLabel}
-              onSave={handleSaveRoute} onCancel={() => { setShowSaveForm(false); setSaveLabel('') }}
-              saving={saving} placeholder="e.g. Work to home" heading="Name this route"
-            />
-          )}
+      {/* Results: the best trip's route on the left, other routes on the right (one
+          column on an upright phone, in the same order); with no other route the
+          best route's trips fill both columns. */}
+      {isLoading && (
+        <div className={twoColumns}>
+          <div className="space-y-2">{[0, 1].map(i => <Skeleton key={i} className="h-20 w-full" rounded="rounded-row" />)}</div>
         </div>
       )}
-
-      {/* Results */}
-      {isLoading && <div className="space-y-2">{[0, 1].map(i => <Skeleton key={i} className="h-20 w-full" rounded="rounded-row" />)}</div>}
 
       {error && (
         <div className="flex flex-wrap items-center gap-2 py-1 text-meta text-danger">
@@ -727,49 +763,81 @@ export function RoutesTab({ active, now, pendingRouteId, onRouteConsumed, pendin
         </div>
       )}
 
-      {filteredData && search && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-micro tabular-nums text-fg-muted">{dataUpdatedAt ? `Updated ${fmtLastUpdated(dataUpdatedAt)}` : ''}</span>
-            {canSave && !alreadySaved && !showSaveForm && (
-              <button title="Save this route" onClick={() => { setSaveLabel(suggestLabel(search.from, search.to)); setShowSaveForm(true) }}
-                className="text-micro text-accent-600 hover:text-accent-700 transition-colors duration-150 min-h-[44px] flex items-center">
-                + Save
-              </button>
+      {filteredData && search && (() => {
+        // + Save on the left, "Updated HH:MM" right-aligned: above the left column,
+        // or above both when the best route fills them.
+        const head = (
+          <div className="min-w-0 space-y-2">
+            <div className="flex items-center gap-2">
+              {canSave && !alreadySaved && !showSaveForm && (
+                <button title="Save this route" onClick={() => { setSaveLabel(suggestLabel(search.from, search.to)); setShowSaveForm(true) }}
+                  className="text-micro text-accent-600 hover:text-accent-700 transition-colors duration-150 min-h-[44px] flex items-center">
+                  + Save
+                </button>
+              )}
+              <span className="ml-auto text-micro tabular-nums text-fg-muted">{dataUpdatedAt ? `Updated ${fmtLastUpdated(dataUpdatedAt)}` : ''}</span>
+            </div>
+
+            {lineFilterActive && (
+              <div className="text-micro px-3 py-2 rounded-control bg-accent-50 border border-accent-500/20 text-accent-700">
+                {lineMatchCount > 0
+                  ? `Showing ${lineMatchCount} trip${lineMatchCount !== 1 ? 's' : ''} using line ${search.preferredLine}`
+                  : `No trips found with line ${search.preferredLine} — showing all`}
+              </div>
+            )}
+
+            {canSave && !alreadySaved && showSaveForm && (
+              <SaveRouteForm
+                label={saveLabel} onLabelChange={setSaveLabel}
+                onSave={handleSaveRoute} onCancel={() => { setShowSaveForm(false); setSaveLabel('') }}
+                saving={saving} placeholder="Name this route…"
+              />
             )}
           </div>
+        )
+        const bestShown = groups.best.slice(0, bestSteps * step)
+          .map((trip, i) => <TripCard key={tripKey(trip)} trip={trip} now={now} tag={i === 0 ? 'Best' : undefined} />)
+        const bestMore = <ShowMore total={groups.best.length} shown={bestSteps * step} step={step} onMore={() => setBestSteps(n => n + 1)} />
 
-          {lineFilterActive && (
-            <div className="text-micro px-3 py-2 rounded-control bg-accent-50 border border-accent-500/20 text-accent-700">
-              {lineMatchCount > 0
-                ? `Showing ${lineMatchCount} trip${lineMatchCount !== 1 ? 's' : ''} using line ${search.preferredLine}`
-                : `No trips found with line ${search.preferredLine} — showing all`}
-            </div>
-          )}
-
-          {canSave && !alreadySaved && showSaveForm && (
-            <SaveRouteForm
-              label={saveLabel} onLabelChange={setSaveLabel}
-              onSave={handleSaveRoute} onCancel={() => { setShowSaveForm(false); setSaveLabel('') }}
-              saving={saving} placeholder="Name this route…"
-            />
-          )}
-
-          {filteredData.length === 0
-            ? <p className="text-body text-fg-muted">{search.via ? 'No trips found via that stop' : 'No trips found'}</p>
-            : filteredData.slice(0, visibleCount).map((trip, i) => <TripCard key={i} trip={trip} now={now} isBest={i === 0} />)
-          }
-
-          {filteredData.length > visibleCount && (
-            <button
-              onClick={() => setVisibleCount(c => c + 4)}
-              className="min-h-[44px] w-full border-t border-line pt-2 text-meta font-medium text-fg-muted transition-colors duration-150 hover:text-accent-600"
-            >
-              Show {Math.min(4, filteredData.length - visibleCount)} more
-            </button>
-          )}
-        </div>
-      )}
+        if (!hasOther) return (
+          <div className="space-y-2">
+            {head}
+            {groups.best.length === 0
+              ? <p className="text-body text-fg-muted">{search.via ? 'No trips found via that stop' : 'No trips found'}</p>
+              : <section aria-label="Trips" className={twoColumns}>{bestShown}</section>}
+            {bestMore}
+          </div>
+        )
+        return (
+          <div className={twoColumns}>
+            <div className="@[44rem]:col-start-1 @[44rem]:row-start-1">{head}</div>
+            <section aria-label="Fastest trips" className="min-w-0 space-y-2 @[44rem]:col-start-1 @[44rem]:row-start-2">
+              {bestShown}
+              {bestMore}
+            </section>
+            {/* The first Alternative tag is the column's label (owner). */}
+            <section aria-label="Other routes" className="min-w-0 space-y-2 @[44rem]:col-start-2 @[44rem]:row-start-2">
+              {groups.other.slice(0, otherSteps * step).map((trip, i) => <TripCard key={tripKey(trip)} trip={trip} now={now} tag={i === 0 ? 'Alternative' : undefined} />)}
+              <ShowMore total={groups.other.length} shown={otherSteps * step} step={step} onMore={() => setOtherSteps(n => n + 1)} />
+            </section>
+          </div>
+        )
+      })()}
     </div>
+  )
+}
+
+function ShowMore({ total, shown, step, onMore }: { total: number; shown: number; step: number; onMore: () => void }) {
+  if (total <= shown) return null
+  const more = Math.min(step, total - shown)
+  return (
+    <button
+      type="button"
+      title={`Show ${more} more trip${more !== 1 ? 's' : ''}`}
+      onClick={onMore}
+      className="min-h-[44px] w-full border-t border-line pt-2 text-meta font-medium text-fg-muted transition-colors duration-150 hover:text-accent-600"
+    >
+      Show {more} more
+    </button>
   )
 }

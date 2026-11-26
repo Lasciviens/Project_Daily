@@ -5,9 +5,10 @@ import { Truncate, cx } from '../../../../shared/ui'
 import { fmtTime, fmtDuration, fmtDistance, lineStyle, modeFallbackStyle, situationTone } from './transitUtils'
 
 interface TripCardProps {
-  trip:    TripPattern
-  now:     number
-  isBest?: boolean
+  trip: TripPattern
+  now:  number
+  /** Best: the first trip. Alternative: the first trip on another route. */
+  tag?: 'Best' | 'Alternative'
 }
 
 function isDelayed(leg: TripLeg): boolean {
@@ -151,7 +152,7 @@ function TransferMarker({ waitMins }: { waitMins: number | null }) {
   )
 }
 
-export function TripCard({ trip, now, isBest = false }: TripCardProps) {
+export function TripCard({ trip, now, tag }: TripCardProps) {
   const [expanded, setExpanded] = useState(false)
 
   const depMs    = new Date(trip.departure).getTime()
@@ -167,7 +168,7 @@ export function TripCard({ trip, now, isBest = false }: TripCardProps) {
   return (
     <div className={cx(
       'overflow-hidden rounded-row border transition-shadow duration-150',
-      isPast ? 'border-line opacity-40' : isBest ? 'border-accent-500/40' : 'border-line',
+      isPast ? 'border-line opacity-40' : tag === 'Best' ? 'border-accent-500/40' : 'border-line',
     )}>
       {/* Summary row — tap to expand */}
       <button
@@ -184,7 +185,7 @@ export function TripCard({ trip, now, isBest = false }: TripCardProps) {
           <span className={`text-body font-semibold flex-shrink-0 ${
             isNow ? 'text-danger' : isPast ? 'text-fg-muted' : 'text-accent-700'
           }`}>
-            {isBest && <span className="mr-1.5 rounded bg-accent-50 px-1.5 py-0.5 text-micro font-semibold uppercase tracking-wider text-accent-600">Best</span>}
+            {tag && <span className="mr-1.5 rounded bg-accent-50 px-1.5 py-0.5 text-micro font-semibold uppercase tracking-wider text-accent-600">{tag}</span>}
             {isNow ? 'Leaving now' : diffMin <= 90 ? `Leave in ${diffMin} min` : `Leave at ${fmtTime(trip.departure)}`}
           </span>
           <ChevronDown aria-hidden className={cx('h-4 w-4 shrink-0 text-fg-faint transition-transform duration-150', expanded && 'rotate-180')} />

@@ -30,7 +30,8 @@ export function TransitPanel({ active, initialTab = 'routes', planToStopId = nul
 
   return (
     <div className="min-w-0">
-      <div className="mb-4 flex max-w-2xl flex-wrap items-center gap-x-2 gap-y-1">
+      {/* Tabs on the left, the location's age on the right of the same row (owner's canvas, 26.11.2026). */}
+      <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1">
         <div role="tablist" aria-label="Transit views" className="flex items-center gap-1">
           {TABS.map(t => (
             <button
@@ -59,7 +60,8 @@ export function TransitPanel({ active, initialTab = 'routes', planToStopId = nul
         {tab === 'routes' && <LocationAge now={now} />}
       </div>
 
-      <div className="max-w-2xl">
+      {/* Routes lays out on the popup's whole width (two columns when it is wide); the other tabs keep their measure. */}
+      <div className={tab === 'routes' ? undefined : 'max-w-2xl'}>
         {tab === 'routes' && (
           <RoutesTab active={active} now={now}
             pendingRouteId={pendingRouteId} onRouteConsumed={() => setPendingRouteId(null)}

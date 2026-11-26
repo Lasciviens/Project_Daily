@@ -100,3 +100,31 @@ export function situationTone(severity: string): 'danger' | 'warn' | 'neutral' {
   if (severity === 'slight' || severity === 'normal') return 'warn'
   return 'neutral'
 }
+
+// The owner's short form for a direction on a compact chip (owner's canvas,
+// 26.11.2026: "Tw Økern, Oslo"): every "Toward" becomes "Tw". Display only —
+// the saved text keeps the full word, shown in the chip's tooltip.
+export function shortToward(text: string): string {
+  return text.replace(/\bToward\b/g, 'Tw')
+}
+
+/**
+ * A saved stop's direction (quayLabel's text: "<description> · Toward A, B",
+ * "Toward A, B", "<description>" or "Platform X") as a compact chip shows it:
+ * the direction alone, in the owner's short form ("Tw Økern, Oslo"), and the
+ * platform's own code apart for a small badge — so two chips for one stop stay
+ * told apart. The full text stays the chip's tooltip and accessible name.
+ */
+export function stopChipLine(text: string | null | undefined): { direction: string | null; platform: string | null } {
+  let platform: string | null = null
+  let toward: string | null = null
+  const rest: string[] = []
+  for (const part of (text ?? '').split(' · ').map(p => p.trim()).filter(Boolean)) {
+    const code = /^Platform (\S+)$/.exec(part)
+    if (code) platform = code[1]
+    else if (/^Toward\b/.test(part)) toward = part
+    else rest.push(part)
+  }
+  const direction = toward ?? (rest.length > 0 ? rest.join(' · ') : null)
+  return { direction: direction ? shortToward(direction) : null, platform }
+}
