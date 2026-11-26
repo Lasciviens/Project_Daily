@@ -1,6 +1,6 @@
 import { Skeleton } from '../../../shared/ui'
-import { DragReorderList } from '../dragReorder/DragReorderList'
-import { moveItem } from '../dragReorder/dragReorderModel'
+import { DragReorderList } from '../../../shared/ui/dragReorder/DragReorderList'
+import { moveItem } from '../../../shared/ui/dragReorder/dragReorderModel'
 import { useLibraryEntries, useLibraryIndex } from '../hooks/useLibraryIndex'
 import { usePlanThis } from '../../items/usePlanThis'
 import { libraryKey } from '../listModel'

@@ -3,9 +3,10 @@ import { Link, useParams } from 'react-router-dom'
 import { ChevronLeft, FolderKanban } from 'lucide-react'
 import { Button, EmptyState, PageBoard, PageContainer, PageHeader, Skeleton, useBoardStep } from '../../../shared/ui'
 import { ErrorNotice } from '../../../shared/components/ErrorNotice'
+import { DragReorderList } from '../../../shared/ui/dragReorder/DragReorderList'
 import type { Task } from '../../todo/types'
-import { useAllPhases, useBlocks, useEntries, useProjectTasks, useProjects } from '../hooks/useProjects'
-import { inSortOrder, isOpenQuestion, orderPhases, projectSummary, tableSettings } from '../projectModel'
+import { useAllPhases, useBlocks, useEntries, useMoveBlock, useProjectTasks, useProjects } from '../hooks/useProjects'
+import { inSortOrder, isOpenQuestion, orderPhases, projectSummary, reorderPlan, tableSettings } from '../projectModel'
 import { blockTrack, projectLayout, type ProjectSection } from '../projectBoard'
 import { BlockCard } from '../components/BlockCard'
 import { ProjectHeaderCard } from '../components/ProjectHeaderCard'
@@ -128,7 +129,7 @@ function MainTrack({ project, phases, tasks, blocks, entriesOf, currentId, focus
         <SectionChips sections={[{ id: 'plan', label: 'Plan' }, ...blocks.map(b => ({ id: `block-${b.id}`, label: b.title }))]} />
       )}
       <ProjectPlan project={project} phases={phases} tasks={tasks} currentId={currentId} focusAdd={focusAdd} />
-      {here.map(b => <BlockCard key={b.id} block={b} entries={entriesOf(b)} blocks={blocks} />)}
+      <BlockList blocks={blocks} here={here} entriesOf={entriesOf} />
     </>
   )
 }
@@ -139,8 +140,28 @@ function SideTrack({ blocks, entriesOf }: { blocks: ProjectBlock[]; entriesOf: (
   const here = blocks.filter(isSide)
   if (step === 1 || here.length === 0) return null
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      {here.map(b => <BlockCard key={b.id} block={b} entries={entriesOf(b)} blocks={blocks} />)}
-    </div>
+    <BlockList blocks={blocks} here={here} entriesOf={entriesOf} className="flex min-w-0 flex-col gap-4" />
+  )
+}
+
+/**
+ * One track's blocks in their order: drag one by its header into place, or ⋯
+ * Move up / down, or Alt+↑ / Alt+↓. A move lands at the place of the block it
+ * went to in the project's whole order (the other track's blocks keep theirs).
+ */
+function BlockList({ blocks, here, entriesOf, className = 'flex min-w-0 flex-col gap-3 sm:gap-4' }: {
+  blocks: ProjectBlock[]; here: ProjectBlock[]; entriesOf: (b: ProjectBlock) => ProjectEntry[]; className?: string
+}) {
+  const move = useMoveBlock(blocks[0]?.project_id ?? '')
+  if (here.length === 0) return null
+  const reorder = (from: number, to: number) => {
+    const plan = reorderPlan(blocks, blocks.indexOf(here[from]), blocks.indexOf(here[to]))
+    if (plan) move.save(plan)
+  }
+  return (
+    <DragReorderList as="div" ids={here.map(b => b.id)} onMove={reorder} label="Blocks" className={className}
+      nameOf={id => here.find(b => b.id === id)?.title ?? 'The block'}>
+      {here.map(b => <BlockCard key={b.id} block={b} entries={entriesOf(b)} />)}
+    </DragReorderList>
   )
 }

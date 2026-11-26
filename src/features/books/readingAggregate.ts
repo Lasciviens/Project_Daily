@@ -204,15 +204,9 @@ export function upNext(books: readonly Book[]): Book[] {
     .sort((a, b) => (a.queue_order ?? 1e9) - (b.queue_order ?? 1e9) || a.created_at.localeCompare(b.created_at))
 }
 
-/** New queue_order values after moving `id` by `delta` (−1 up, +1 down): every row renumbered 1…n. */
-export function moveInQueue(queue: readonly Book[], id: string, delta: number): { id: string; queue_order: number }[] {
-  const ids = queue.map(b => b.id)
-  const i = ids.indexOf(id)
-  const j = i + delta
-  if (i < 0 || j < 0 || j >= ids.length) return []
-  ;[ids[i], ids[j]] = [ids[j], ids[i]]
-  return ids.map((bid, k) => ({ id: bid, queue_order: k + 1 }))
-    .filter(r => queue.find(b => b.id === r.id)?.queue_order !== r.queue_order)
+/** The queue_order writes for the queue in a new order: every row numbered 1…n, only what changed. */
+export function queueOrderWrites(order: readonly Book[]): { id: string; queue_order: number }[] {
+  return order.flatMap((b, k) => (b.queue_order === k + 1 ? [] : [{ id: b.id, queue_order: k + 1 }]))
 }
 
 /**

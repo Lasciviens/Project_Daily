@@ -107,7 +107,7 @@ export async function updateQuickGuessItem(id: string, patch: Partial<QuickGuess
     .single())
 }
 
-/** Writes new places (quickGuess.moveGuess gives the rows that change). */
+/** Writes new places (quickGuess.guessOrderWrites gives the rows that change). */
 export async function reorderQuickGuessItems(changes: readonly { id: string; sort_order: number }[]): Promise<void> {
   const user = await requireUser()
   const results = await Promise.all(changes.map(c => supabase

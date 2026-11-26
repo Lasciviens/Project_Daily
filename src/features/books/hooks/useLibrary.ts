@@ -3,11 +3,12 @@ import { qk } from '../../../shared/query/keys'
 import { STALE } from '../../../shared/query/stale'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
+import { useOrderSave } from '../../../shared/hooks/useOrderSave'
 import {
   createBook, fetchBooks, fetchReadingEvents, fetchReadingSettings, lookupBookMeta, mergeBooks,
   READING_DEFAULTS, saveQueueOrder, saveReadingSettings, updateBook,
 } from '../api/libraryApi'
-import { addDays, localDay, windowStreak, type Streak } from '../readingAggregate'
+import { addDays, localDay, queueOrderWrites, windowStreak, type Streak } from '../readingAggregate'
 import type { Book, BookPatch, ReadingSettings } from '../types'
 
 const libraryQuery = { queryKey: qk.books.library(), queryFn: fetchBooks, staleTime: STALE.default }
@@ -123,12 +124,17 @@ export function useDeleteBook() {
   })
 }
 
+/** Up next in a new order (a drag, ↑ ↓): shown at once, saved as queue_order 1…n (the shared useOrderSave). */
 export function useSaveQueueOrder() {
-  return useMutationWithFeedback({
+  return useOrderSave<Book[], Book[]>({
     action: 'book_queue_order',
     successMessage: 'Up next order saved',
-    mutationFn: (rows: { id: string; queue_order: number }[]) => saveQueueOrder(rows),
-    invalidates: [qk.books.library()],
+    queryKey: qk.books.library(),
+    show: (rows, order) => {
+      const place = new Map(order.map((b, k) => [b.id, k + 1]))
+      return rows?.map(b => (place.has(b.id) ? { ...b, queue_order: place.get(b.id)! } : b))
+    },
+    send: order => saveQueueOrder(queueOrderWrites(order)),
   })
 }
 

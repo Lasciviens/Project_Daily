@@ -1,4 +1,4 @@
-import { memo, type KeyboardEvent, type PointerEvent } from 'react'
+import { memo, type KeyboardEvent } from 'react'
 import { CalendarPlus, ChevronDown, ChevronUp, GripVertical, Play, X } from 'lucide-react'
 import { formatPlaytime } from '../../api/playtimeFormat'
 import {
@@ -8,20 +8,15 @@ import {
 import { TgCover } from './TgCover'
 import { TgStatusIcon } from './TgStatusIcon'
 import { Truncate } from '../../../../shared/ui/Truncate'
+import { useDragReorderRow } from '../../../../shared/ui/dragReorder/dragReorderRow'
 
 interface Props {
   game: TgGame
-  /** 1-based place in the whole queue (a search can show a subset). */
-  position: number
+  /** The 1-based places in the whole queue, in list order (a search can show a subset). */
+  slots: readonly number[]
   selected: boolean
-  /** This row is the one being dragged. */
-  dragging: boolean
-  canMoveUp: boolean
-  canMoveDown: boolean
   onSelect: (id: string) => void
-  onMove: (id: string, dir: -1 | 1) => void
   onRemove: (id: string) => void
-  onDragStart: (e: PointerEvent<HTMLElement>, id: string) => void
   /** Start playing it now (stamps the start date) — absent when it already is. */
   onPlay?: (id: string) => void
   /** Plan a session in the calendar. */
@@ -31,14 +26,16 @@ interface Props {
 const ICON = { size: 18, strokeWidth: 2 } as const
 const CONTROL = 'tg-icon-btn disabled:opacity-30 disabled:pointer-events-none'
 
-/** A move re-inserts the row's node, which can drop focus: hand it back. */
-function keepFocus(el: HTMLElement) {
-  requestAnimationFrame(() => { if (el.isConnected && document.activeElement !== el) el.focus({ preventScroll: true }) })
-}
-
 export const TgQueueViewRow = memo(function TgQueueViewRow({
-  game, position, selected, dragging, canMoveUp, canMoveDown, onSelect, onMove, onRemove, onDragStart, onPlay, onPlan,
+  game, slots, selected, onSelect, onRemove, onPlay, onPlan,
 }: Props) {
+  // A row of the shared drag (DragReorderList), by its grip: a mouse drags once it moves, a finger holds, then drags.
+  const row = useDragReorderRow(game.id, { handle: true })
+  const { index, count, dragging } = row
+  const canMoveUp = index > 0
+  const canMoveDown = index < count - 1
+  // While a row is dragged every row shows the place it gets if it drops now.
+  const position = slots[row.place] ?? row.place + 1
   const seconds = playSeconds(game)
   const last = lastPlayedIso(game)
   const status = (game.play_status ?? 'backlog') as TgStatusFilter
@@ -47,30 +44,31 @@ export const TgQueueViewRow = memo(function TgQueueViewRow({
 
   // Alt+↑/↓ anywhere in the row; plain ↑/↓ on the grip, which owns no other keys.
   function onKeyDown(e: KeyboardEvent<HTMLLIElement>) {
+    if (e.defaultPrevented) return // the grip's Alt+↑/↓ (the shared row) already moved it
     const dir = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0
     const onGrip = (e.target as HTMLElement).dataset.queueGrip != null
     if (!dir || !(e.altKey || onGrip) || (dir < 0 ? !canMoveUp : !canMoveDown)) return
     e.preventDefault()
-    onMove(game.id, dir)
-    keepFocus(e.target as HTMLElement)
+    row.move(index + dir, e.target as HTMLElement)
   }
 
   return (
     <li
+      {...row.rowProps}
       data-queue-id={game.id}
       onKeyDown={onKeyDown}
-      className={`@container/qrow relative flex items-center gap-1 @[30rem]/qrow:gap-2 rounded-xl pr-1 transition-colors ${
+      className={`${row.rowClassName} @container/qrow flex items-center gap-1 @[30rem]/qrow:gap-2 rounded-xl pr-1 transition-colors ${
         dragging ? 'is-dragged' : ''
       } ${selected ? 'bg-[var(--tg-accent-soft)]' : 'hover:bg-[var(--tg-hover)]'}`}
     >
       <button
         type="button"
         data-queue-grip=""
-        onPointerDown={e => onDragStart(e, game.id)}
+        {...row.handleProps}
         onClick={e => e.preventDefault()}
         aria-label={`Reorder ${game.title}, #${position}. Drag, or use the up and down arrow keys`}
         title="Drag to reorder"
-        className="tg-icon-btn tg-queue-grip -mr-1 shrink-0 touch-none select-none @[30rem]/qrow:mr-0"
+        className={`${row.handleClassName} tg-icon-btn tg-queue-grip -mr-1 shrink-0 @[30rem]/qrow:mr-0`}
       >
         <GripVertical {...ICON} />
       </button>
@@ -130,11 +128,11 @@ export const TgQueueViewRow = memo(function TgQueueViewRow({
           </button>
         )}
         <button type="button" className={`${CONTROL} !hidden @[30rem]/qrow:!inline-flex`} disabled={!canMoveUp}
-          onClick={e => { onMove(game.id, -1); keepFocus(e.currentTarget) }} aria-label={`Move ${game.title} up`} title="Move up">
+          onClick={e => row.move(index - 1, e.currentTarget)} aria-label={`Move ${game.title} up`} title="Move up">
           <ChevronUp {...ICON} />
         </button>
         <button type="button" className={`${CONTROL} !hidden @[30rem]/qrow:!inline-flex`} disabled={!canMoveDown}
-          onClick={e => { onMove(game.id, 1); keepFocus(e.currentTarget) }} aria-label={`Move ${game.title} down`} title="Move down">
+          onClick={e => row.move(index + 1, e.currentTarget)} aria-label={`Move ${game.title} down`} title="Move down">
           <ChevronDown {...ICON} />
         </button>
         <button type="button" className={`${CONTROL} hover:!text-[var(--tg-red)]`} onClick={() => onRemove(game.id)}

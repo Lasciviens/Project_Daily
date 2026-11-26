@@ -3,6 +3,7 @@ import { qk } from '../../../shared/query/keys'
 import { STALE } from '../../../shared/query/stale'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
+import { useOrderSave } from '../../../shared/hooks/useOrderSave'
 import {
   deleteSleepImage, fetchAiNotes, fetchKoboConfig, fetchKoboDeviceState, fetchSleepImages, saveKoboConfig,
   sleepImageUrls, uploadBookCover, uploadSleepImage,
@@ -50,6 +51,23 @@ export function useSaveKoboConfig() {
       qc.setQueryData(qk.books.koboConfig(), c?.prev ?? null)
     },
     invalidates: [qk.books.koboConfig()],
+  })
+}
+
+/**
+ * The KOReader menu order (every drag, ↑ ↓, Move…, Undo and Reset of Menu
+ * order): the whole `menu_order` per save, shown at once; moves during a
+ * save wait and only the newest order is sent (the shared useOrderSave).
+ */
+export function useSaveMenuOrder() {
+  return useOrderSave<KoboDeviceConfig['menu_order'], KoboDeviceConfig | null>({
+    action: 'kobo_menu_order_save',
+    successMessage: 'Saved for the Kobo',
+    queryKey: qk.books.koboConfig(),
+    show: (old, menu_order) => ({
+      settings: {}, sleep_image_id: null, rev: 0, updated_at: new Date().toISOString(), ...(old ?? {}), menu_order,
+    }),
+    send: menu_order => saveKoboConfig({ menu_order }),
   })
 }
 

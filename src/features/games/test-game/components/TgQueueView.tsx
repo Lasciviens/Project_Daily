@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useRemoveFromQueue, useReorderQueue, useSetPlayStatus } from '../../hooks/useGames'
 import type { TgGame } from '../testGameModel'
 import { displayRanks, effectiveOrder, moveUpdates, withOrderOverrides } from './TgQueueViewOrder'
-import { useQueueDrag } from './TgQueueViewDrag'
+import { DragReorderList } from '../../../../shared/ui/dragReorder/DragReorderList'
 import { TgQueueViewRow } from './TgQueueViewRow'
 
 interface Props {
@@ -30,7 +30,7 @@ export function TgQueueView({ games, ranks, selectedId, onSelect, fill, onPlan }
   const writes = useRef<{ queued: number; failed: boolean; chain: Promise<void> }>({
     queued: 0, failed: false, chain: Promise.resolve(),
   })
-  const listRef = useRef<HTMLOListElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
   const ordered = useMemo(() => withOrderOverrides(games, overrides), [games, overrides])
   const shownRanks = useMemo(() => displayRanks(games, ranks, overrides), [games, ranks, overrides])
@@ -43,7 +43,7 @@ export function TgQueueView({ games, ranks, selectedId, onSelect, fill, onPlan }
     row?.scrollIntoView({ block: 'nearest' })
   }, [selectedId])
 
-  // Drag and drop and Move up / Move down share one write path. The overrides
+  // Drag and drop (the shared DragReorderList), Move up / Move down and the arrow keys share one write path. The overrides
   // put the rows in their new order at once; the writes follow in the background.
   const reorderTo = useCallback((from: number, to: number) => {
     const updates = moveUpdates(effectiveOrder(ordered, overrides), from, to)
@@ -70,40 +70,35 @@ export function TgQueueView({ games, ranks, selectedId, onSelect, fill, onPlan }
       })
   }, [ordered, overrides, reorder, qc])
 
-  const move = useCallback((id: string, dir: -1 | 1) => {
-    const from = ordered.findIndex(g => g.id === id)
-    if (from !== -1) reorderTo(from, from + dir)
-  }, [ordered, reorderTo])
-  const { dragId, onPointerDown } = useQueueDrag(listRef, reorderTo)
+  // The place numbers the rows show (a search shows a subset: its places in the whole queue), in list order.
+  const slots = useMemo(() => ordered.map((g, i) => shownRanks.get(g.id) ?? i + 1), [ordered, shownRanks])
 
   const remove = useCallback((id: string) => removeFromQueue(id), [removeFromQueue])
   // Through the status write that stamps started_at (not a bare update).
   const play = useCallback((id: string) => setPlayStatus({ id, status: 'playing' }), [setPlayStatus])
 
   return (
-    <ol
+    // The wrapper holds the scroll and the Tg panel; the list inside is the shared drag's.
+    <div
       ref={listRef}
-      aria-label="Play queue"
       // Capped: on a monitor a full-width row put a title ~1400px from its own buttons.
-      className={`tg-queue tg-panel w-full max-w-[72rem] space-y-1 p-1.5 sm:p-2 ${fill ? 'tg-scroll-y h-full' : ''} ${dragId ? 'is-dragging' : ''}`}
+      className={`tg-queue tg-panel w-full max-w-[72rem] p-1.5 sm:p-2 ${fill ? 'tg-scroll-y h-full' : ''}`}
     >
-      {ordered.map((g, i) => (
-        <TgQueueViewRow
-          key={g.id}
-          game={g}
-          position={shownRanks.get(g.id) ?? i + 1}
-          selected={g.id === selectedId}
-          dragging={g.id === dragId}
-          canMoveUp={i > 0}
-          canMoveDown={i < ordered.length - 1}
-          onSelect={onSelect}
-          onMove={move}
-          onRemove={remove}
-          onDragStart={onPointerDown}
-          onPlay={play}
-          onPlan={onPlan}
-        />
-      ))}
-    </ol>
+      <DragReorderList ids={ordered.map(g => g.id)} onMove={reorderTo} label="Play queue" className="space-y-1"
+        nameOf={id => ordered.find(g => g.id === id)?.title ?? 'The game'}>
+        {ordered.map(g => (
+          <TgQueueViewRow
+            key={g.id}
+            game={g}
+            slots={slots}
+            selected={g.id === selectedId}
+            onSelect={onSelect}
+            onRemove={remove}
+            onPlay={play}
+            onPlan={onPlan}
+          />
+        ))}
+      </DragReorderList>
+    </div>
   )
 }

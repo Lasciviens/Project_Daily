@@ -1,10 +1,13 @@
-import { useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, ChevronDown, ListTree, RotateCcw } from 'lucide-react'
-import { Button, Card, CardHeader, IconButton, SegmentedControl, Truncate, cx } from '../../../../shared/ui'
+import { useMemo, useState, type ReactNode } from 'react'
+import { ChevronDown, ListTree, RotateCcw } from 'lucide-react'
+import { Button, Card, CardHeader, SegmentedControl, Truncate, cx } from '../../../../shared/ui'
+import { DragReorderList } from '../../../../shared/ui/dragReorder/DragReorderList'
+import { useDragReorderRow } from '../../../../shared/ui/dragReorder/dragReorderRow'
+import { ReorderControls } from '../../../../shared/ui/dragReorder/ReorderControls'
 import { useEntityModal } from '../../../../shared/modals'
-import { useKoboConfig, useKoboDeviceState, useSaveKoboConfig } from '../../hooks/useKoboControl'
+import { useKoboConfig, useKoboDeviceState, useSaveMenuOrder } from '../../hooks/useKoboControl'
 import { MENU_SEPARATOR, menuTabs, moveMenuItem, type MenuSide } from '../../koboSettings'
-import { MIN_LABEL_COVERAGE, effectiveOrder, inside, labelCoverage, listName, moveTargets, rowsToShow, stepItem, visibleItems } from '../../kobo/menuView'
+import { MIN_LABEL_COVERAGE, effectiveOrder, inside, labelCoverage, listName, moveShownRow, moveTargets, rowsToShow } from '../../kobo/menuView'
 import { HelpTip } from '../../../../shared/components/HelpTip'
 
 const SIDES = [{ value: 'filemanager', label: 'Library' }, { value: 'reader', label: 'While reading' }] as const
@@ -15,7 +18,7 @@ export function MenuOrderCard() {
   const [open, setOpen] = useState<string | null>('tools')
   const device = useKoboDeviceState()
   const config = useKoboConfig()
-  const save = useSaveKoboConfig()
+  const save = useSaveMenuOrder()
   const modal = useEntityModal()
   const report = device.data?.report?.menus?.[side]
   const overrides = config.data?.menu_order?.[side]
@@ -28,13 +31,13 @@ export function MenuOrderCard() {
 
   const write = (changed: Record<string, string[]>) => {
     const menu_order = { ...(config.data?.menu_order ?? {}), [side]: { ...(overrides ?? {}), ...changed } }
-    save.mutate({ menu_order })
+    save.save(menu_order)
   }
   async function reset() {
     if (!await modal.confirm({ title: 'Go back to KOReader’s own menu order?', confirmLabel: 'Reset' })) return
     const menu_order = { ...(config.data?.menu_order ?? {}) }
     delete menu_order[side]
-    save.mutate({ menu_order })
+    save.save(menu_order)
   }
   function resetList(tab: string) {
     const rest = { ...(overrides ?? {}) }
@@ -42,7 +45,7 @@ export function MenuOrderCard() {
     const menu_order = { ...(config.data?.menu_order ?? {}) }
     if (Object.keys(rest).length) menu_order[side] = rest
     else delete menu_order[side]
-    save.mutate({ menu_order })
+    save.save(menu_order)
   }
 
   return (
@@ -73,8 +76,10 @@ export function MenuOrderCard() {
         <ul className="mt-3 flex flex-col divide-y divide-line">
           {tabs.map(tab => {
             const list = order[tab] ?? []
-            const visible = new Set(visibleItems(list, labels, order))
             const rows = rowsToShow(list, labels, order)
+            // A divider appears more than once: each row's own id is its id and which one it is.
+            const seen = new Map<string, number>()
+            const keys = rows.map(r => { const k = seen.get(r.id) ?? 0; seen.set(r.id, k + 1); return `${r.id}#${k}` })
             const expanded = open === tab
             return (
               <li key={tab}>
@@ -86,34 +91,28 @@ export function MenuOrderCard() {
                   <ChevronDown aria-hidden className={cx('h-4 w-4 text-fg-muted transition-transform', expanded && 'rotate-180')} />
                 </button>
                 {expanded && (
-                  <ol className="flex flex-col gap-0.5 pb-2">
+                  <div className="@container pb-2">
                     {overrides?.[tab] && (
-                      <li className="pb-1"><Button size="sm" icon={<RotateCcw />} disabled={save.isPending} onClick={() => resetList(tab)} tip="Undo my changes to this list">Undo</Button></li>
+                      <div className="pb-1"><Button size="sm" icon={<RotateCcw />} onClick={() => resetList(tab)} tip="Undo my changes to this list">Undo</Button></div>
                     )}
-                    {rows.map(({ id, index: i }) => (
-                      <li key={`${id}-${i}`} className="flex items-center gap-1">
-                        {id === MENU_SEPARATOR ? (
-                          <span aria-label="Divider line" className="mx-2 h-px flex-1 bg-line" />
-                        ) : (
-                          <Truncate className="min-w-0 flex-1 px-2 text-body text-fg">
-                            {listName(id, labels)}{order[id] ? ' ›' : ''}
-                          </Truncate>
-                        )}
-                        <IconButton label={`Move ${listName(id, labels)} up`} disabled={save.isPending || !complete}
-                          onClick={() => { const n = stepItem(list, i, -1, visible, id); if (n) write({ [tab]: n }) }}><ArrowUp /></IconButton>
-                        <IconButton label={`Move ${listName(id, labels)} down`} disabled={save.isPending || !complete}
-                          onClick={() => { const n = stepItem(list, i, 1, visible, id); if (n) write({ [tab]: n }) }}><ArrowDown /></IconButton>
-                        {id !== MENU_SEPARATOR && (
-                          <select aria-label={`Move ${listName(id, labels)} to another tab`} value="" disabled={save.isPending || !complete}
-                            className="input min-h-[44px] w-24 text-meta"
-                            onChange={e => { if (e.target.value) write(moveMenuItem(order, id, e.target.value, 0)) }}>
-                            <option value="">Move…</option>
-                            {targets.filter(t => t.id !== tab && !inside(order, id, t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                          </select>
-                        )}
-                      </li>
-                    ))}
-                  </ol>
+                    <DragReorderList ids={keys} label={listName(tab, labels)} disabled={!complete} className="flex flex-col gap-0.5"
+                      nameOf={k => { const r = rows[keys.indexOf(String(k))]; return r && r.id !== MENU_SEPARATOR ? listName(r.id, labels) : 'The divider line' }}
+                      onMove={(from, to) => { const n = moveShownRow(list, rows, from, to); if (n) write({ [tab]: n }) }}>
+                      {rows.map(({ id }, i) => (
+                        <MenuRow key={keys[i]} rowId={keys[i]} name={id === MENU_SEPARATOR ? 'Divider line' : listName(id, labels)} divider={id === MENU_SEPARATOR}
+                          submenu={!!order[id]} disabled={!complete}>
+                          {id !== MENU_SEPARATOR && (
+                            <select aria-label={`Move ${listName(id, labels)} to another tab`} value="" disabled={!complete}
+                              className="input min-h-[44px] w-24 text-meta"
+                              onChange={e => { if (e.target.value) write(moveMenuItem(order, id, e.target.value, 0)) }}>
+                              <option value="">Move…</option>
+                              {targets.filter(t => t.id !== tab && !inside(order, id, t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            </select>
+                          )}
+                        </MenuRow>
+                      ))}
+                    </DragReorderList>
+                  </div>
                 )}
               </li>
             )
@@ -121,5 +120,25 @@ export function MenuOrderCard() {
         </ul>
       )}
     </Card>
+  )
+}
+
+/** One item (or divider) of a KOReader menu list: it drags by itself, never from its buttons or Move…. */
+function MenuRow({ rowId, name, divider, submenu, disabled, children }: {
+  rowId: string; name: string; divider: boolean; submenu: boolean; disabled: boolean; children: ReactNode
+}) {
+  const row = useDragReorderRow(rowId)
+  return (
+    <li {...row.rowProps} className={cx(row.rowClassName, 'flex min-h-[44px] items-center gap-1 rounded-control', row.dragging && 'bg-surface shadow-menu')}>
+      {divider ? (
+        <span aria-label="Divider line" className="mx-2 h-px flex-1 bg-line" />
+      ) : (
+        <Truncate className="min-w-0 flex-1 px-2 text-body text-fg">{name}{submenu ? ' ›' : ''}</Truncate>
+      )}
+      <div data-no-drag="" className="flex shrink-0 cursor-auto items-center gap-1">
+        <ReorderControls name={name} index={row.index} count={row.count} onMove={row.move} disabled={disabled} />
+        {children}
+      </div>
+    </li>
   )
 }

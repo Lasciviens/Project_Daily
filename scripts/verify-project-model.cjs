@@ -100,7 +100,7 @@ console.log('Entries')
   const items = [at('a', 0), at('b', 1), at('c', 2)]
   check('movePlan: distinct places swap with the neighbour, null at the ends',
     eq(M.movePlan(items, 'b', -1), { moved: items[1], writes: [{ id: 'b', sort_order: 0 }, { id: 'a', sort_order: 1 }] })
-    && eq(M.movePlan(items, 'b', 1).writes, [{ id: 'b', sort_order: 2 }, { id: 'c', sort_order: 1 }])
+    && eq(M.movePlan(items, 'b', 1).writes, [{ id: 'c', sort_order: 1 }, { id: 'b', sort_order: 2 }])
     && M.movePlan(items, 'a', -1) === null && M.movePlan(items, 'c', 1) === null && M.movePlan(items, 'z', 1) === null)
   // Probe 28.10.2026: the assistant adds a phase without a sort order (the default 0).
   const apply = (list, plan) => M.inSortOrder(list.map(x => {
@@ -122,6 +122,15 @@ console.log('Entries')
   const older = [at('p', 0, '2026-10-02T00:00:00Z'), at('t', 0, '2026-10-03T00:00:00Z'), at('b', 1, '2026-10-01T00:00:00Z')]
   check('a tie elsewhere in the list: a plain swap would jump two places, the renumber moves one',
     eq(apply(older, M.movePlan(older, 'b', -1)), ['p', 'b', 't']))
+  // A drag moves a phase or block any number of places (the shared drag, owner 25.11.2026: "Yes, all lists").
+  const spaced = [at('a', 0), at('b', 10), at('c', 20), at('d', 30)]
+  check('reorderPlan: a drag from the bottom to the top keeps the list\'s numbers, rewriting only what moved',
+    eq(apply(spaced, M.reorderPlan(spaced, 3, 0)), ['d', 'a', 'b', 'c'])
+    && eq(M.reorderPlan(spaced, 3, 0).writes, [{ id: 'd', sort_order: 0 }, { id: 'a', sort_order: 10 }, { id: 'b', sort_order: 20 }, { id: 'c', sort_order: 30 }])
+    && M.reorderPlan(spaced, 3, 0).moved.id === 'd')
+  check('reorderPlan: with ties, numbered 0, 1, 2… in the new order', eq(apply(tied, M.reorderPlan(tied, 0, 3)), ['f0', 'a9', 'b5', 'plan']))
+  check('reorderPlan: nothing moves in place or off the list', M.reorderPlan(spaced, 1, 1) === null && M.reorderPlan(spaced, 1, 9) === null)
+  check('applyMovePlan: the list shows the new order at once', eq(M.inSortOrder(M.applyMovePlan(spaced, M.reorderPlan(spaced, 0, 2))).map(x => x.id), ['b', 'c', 'a', 'd']))
 }
 
 console.log('A project\'s numbers')

@@ -7,6 +7,7 @@ import { BooksHeroArt } from '../components/BooksHeroArt'
 import { DeliveryList } from '../components/DeliveryList'
 import { KoboSetupCard } from '../components/KoboSetupCard'
 import { LibraryTab } from '../components/LibraryTab'
+import { UpNextList } from '../components/library/upNextPart'
 import { SendToKoboCard } from '../components/SendToKoboCard'
 import { useDeliveries, useKoboFeedState } from '../hooks/useBooks'
 import { BOOK_BOARD } from '../booksBoard'
@@ -15,7 +16,7 @@ import { BOOK_BOARD } from '../booksBoard'
 // Kobo settings catalogue alone was two thirds of the page's code.
 const StatsTab = lazyPart('books-stats', () => import('../components/StatsTab').then(m => m.StatsTab))
 const KoboTab = lazyPart('books-kobo', () => import('../components/kobo/KoboTab').then(m => m.KoboTab))
-const OTHER_TABS = [StatsTab, KoboTab]
+const IDLE_PARTS = [StatsTab, KoboTab, UpNextList] // Up next's drag, too (upNextPart)
 
 type Tab = 'library' | 'stats' | 'send' | 'kobo'
 const TABS: { id: Tab; label: string }[] = [
@@ -33,7 +34,7 @@ export function BooksPage() {
   const tab: Tab = TABS.some(t => t.id === asked) ? asked as Tab : 'library'
   // A tab starts clean: the other tabs' own address parts (view, section, area…) are dropped.
   const select = (next: Tab) => setParams(() => new URLSearchParams({ tab: next }), { replace: true })
-  useIdlePreload(OTHER_TABS)
+  useIdlePreload(IDLE_PARTS)
   return (
     <PageContainer>
       <PageHeader title="Books" art={<BooksHeroArt />}>

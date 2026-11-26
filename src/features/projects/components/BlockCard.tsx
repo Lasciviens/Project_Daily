@@ -1,10 +1,10 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { ArrowDown, ArrowUp, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEntityModal } from '../../../shared/modals'
-import { Button, Card, CardHeader } from '../../../shared/ui'
+import { Button, Card, CardHeader, cx } from '../../../shared/ui'
+import { useDragReorderRow } from '../../../shared/ui/dragReorder/dragReorderRow'
 import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
-import { useDeleteBlock, useMoveBlock } from '../hooks/useProjects'
-import { movePlan } from '../projectModel'
+import { useDeleteBlock } from '../hooks/useProjects'
 import { BLOCK_ICON } from '../projectIcons'
 import { TableBlockBody } from './TableBlock'
 import { DecisionsBody, LinksBody, LogBody, PagesBody } from './EntryBlocks'
@@ -12,24 +12,28 @@ import type { ProjectBlock, ProjectEntry } from '../types'
 
 const ADD_LABEL: Record<ProjectBlock['kind'], string> = { table: 'Row', log: 'Entry', decisions: 'Question', pages: 'Page', links: 'Link' }
 
-/** One block: its name, an add button and its ⋯ (edit, move, delete), then what it holds. */
-export function BlockCard({ block, entries, blocks }: { block: ProjectBlock; entries: ProjectEntry[]; blocks: ProjectBlock[] }) {
+/**
+ * One block: its name, an add button and its ⋯ (edit, move, delete), then
+ * what it holds. A row of its track's `DragReorderList` (ProjectPage): it
+ * drags by its header (on touch: hold, then drag), never from its body.
+ */
+export function BlockCard({ block, entries }: { block: ProjectBlock; entries: ProjectEntry[] }) {
   const modal = useEntityModal()
-  const move = useMoveBlock()
+  const row = useDragReorderRow(block.id, { handle: true })
   const del = useDeleteBlock(block.project_id)
   const Icon = BLOCK_ICON[block.kind]
-  const up = movePlan(blocks, block.id, -1)
-  const down = movePlan(blocks, block.id, 1)
   const add = () => modal.open({ kind: 'project-entry', projectId: block.project_id, blockId: block.id })
 
   return (
+    <div {...row.rowProps} className={cx(row.rowClassName, 'rounded-card', row.dragging && 'shadow-menu')}>
     <Card id={`block-${block.id}`} className="@container scroll-mt-24">
+      <div {...row.handleProps} className={row.handleClassName}>
       <CardHeader
         variant="label"
         icon={<Icon />}
         title={block.title}
         action={
-          <div className="flex items-center">
+          <div data-no-drag="" className="flex cursor-auto items-center">
             <Button variant="ghost" size="sm" icon={<Plus />} onClick={add} aria-label={`Add a ${ADD_LABEL[block.kind].toLowerCase()} to ${block.title}`}>
               <span className="sr-only @[26rem]:not-sr-only">{ADD_LABEL[block.kind]}</span>
             </Button>
@@ -43,16 +47,16 @@ export function BlockCard({ block, entries, blocks }: { block: ProjectBlock; ent
                     <Pencil aria-hidden className="h-4 w-4" /> {block.kind === 'table' ? 'Columns' : 'Rename'}
                   </button>
                 </MenuItem>
-                {up && (
+                {row.index > 0 && (
                   <MenuItem>
-                    <button type="button" className="menu-item" onClick={() => move.mutate(up)}>
+                    <button type="button" className="menu-item" onClick={() => row.move(row.index - 1)}>
                       <ArrowUp aria-hidden className="h-4 w-4" /> Move up
                     </button>
                   </MenuItem>
                 )}
-                {down && (
+                {row.index < row.count - 1 && (
                   <MenuItem>
-                    <button type="button" className="menu-item" onClick={() => move.mutate(down)}>
+                    <button type="button" className="menu-item" onClick={() => row.move(row.index + 1)}>
                       <ArrowDown aria-hidden className="h-4 w-4" /> Move down
                     </button>
                   </MenuItem>
@@ -74,6 +78,7 @@ export function BlockCard({ block, entries, blocks }: { block: ProjectBlock; ent
           </div>
         }
       />
+      </div>
       {/* The settings and rows come from the database as JSON: one odd value stays inside this card. */}
       <ErrorBoundary label={block.title}>
         {block.kind === 'table' ? <TableBlockBody block={block} rows={entries} onAdd={add} />
@@ -83,5 +88,6 @@ export function BlockCard({ block, entries, blocks }: { block: ProjectBlock; ent
           : <LinksBody block={block} entries={entries} onAdd={add} />}
       </ErrorBoundary>
     </Card>
+    </div>
   )
 }

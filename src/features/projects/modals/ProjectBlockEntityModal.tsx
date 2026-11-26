@@ -1,9 +1,13 @@
-import { useState } from 'react'
-import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { GripVertical, Plus, Trash2, X } from 'lucide-react'
 import type { EntityModalProps } from '../../../shared/modals/types'
 import { EntityModalPending, useFirstLoaded } from '../../../shared/modals'
 import { ModalShell } from '../../../shared/modals/ModalShell'
 import { Button, IconButton, cx } from '../../../shared/ui'
+import { DragReorderList } from '../../../shared/ui/dragReorder/DragReorderList'
+import { moveItem } from '../../../shared/ui/dragReorder/dragReorderModel'
+import { useDragReorderRow } from '../../../shared/ui/dragReorder/dragReorderRow'
+import { ReorderControls } from '../../../shared/ui/dragReorder/ReorderControls'
 import { SHOP_CURRENCIES } from '../../shop/shopModel'
 import { useBlocks, useCreateBlock, useDeleteBlock, useEntries, useUpdateBlock } from '../hooks/useProjects'
 import {
@@ -106,13 +110,8 @@ function BlockSheet({ projectId, block, siblings, initialKind, onClose }: {
   }
 
   const setColumn = (i: number, patch: Partial<ColumnDraft>) => setColumns(cs => cs.map((c, j) => (j === i ? { ...c, ...patch } : c)))
-  const moveColumn = (i: number, dir: -1 | 1) => setColumns(cs => {
-    const j = i + dir
-    if (j < 0 || j >= cs.length) return cs
-    const next = [...cs]
-    ;[next[i], next[j]] = [next[j], next[i]]
-    return next
-  })
+  // The new order is part of the form: Save stores it with the columns.
+  const moveColumn = (from: number, to: number) => setColumns(cs => moveItem(cs, from, to))
   const addColumn = () => setColumns(cs => [...cs, { key: newColumnKey(cs, `new ${cs.length + 1}`), label: '', type: 'text', options: '', fresh: true }])
   const groupable = columns.filter(c => (c.type === 'text' || c.type === 'status') && c.label.trim())
 
@@ -167,28 +166,26 @@ function BlockSheet({ projectId, block, siblings, initialKind, onClose }: {
         {isTable && (
           <fieldset className="flex flex-col gap-2">
             <legend className="field-label">Columns</legend>
-            {columns.map((c, i) => (
-              <div key={c.key} className="flex flex-col gap-1.5 rounded-row border border-line p-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <input aria-label={`Column ${i + 1} name`} value={c.label} onChange={e => setColumn(i, { label: e.target.value })}
-                    maxLength={40} placeholder="Name" className="input input-sm min-w-0 flex-1 basis-32" />
-                  <select aria-label={`Column ${i + 1} kind`} value={c.type} onChange={e => setColumn(i, { type: e.target.value as ColumnType })}
-                    className="select input-sm w-auto">
-                    {COLUMN_TYPES.map(t => <option key={t} value={t}>{COLUMN_TYPE_LABEL[t]}</option>)}
-                  </select>
-                  <span className="flex items-center">
-                    <IconButton label="Move up" disabled={i === 0} onClick={() => moveColumn(i, -1)}><ArrowUp /></IconButton>
-                    <IconButton label="Move down" disabled={i === columns.length - 1} onClick={() => moveColumn(i, 1)}><ArrowDown /></IconButton>
-                    <IconButton label={`Remove ${c.label || 'column'}`} onClick={() => setColumns(cs => cs.filter((_, j) => j !== i))}
-                      className="hover:text-danger"><X /></IconButton>
-                  </span>
-                </div>
-                {c.type === 'status' && (
-                  <input aria-label={`${c.label || 'Column'} choices`} value={c.options} onChange={e => setColumn(i, { options: e.target.value })}
-                    placeholder="Choices, separated by commas: In hand, To buy, Ordered" className="input input-sm" />
-                )}
-              </div>
-            ))}
+            <DragReorderList as="div" ids={columns.map(c => c.key)} onMove={moveColumn} label="Columns" className="@container flex flex-col gap-2"
+              nameOf={k => columns.find(c => c.key === k)?.label || 'The column'}>
+              {columns.map((c, i) => (
+                <ColumnRow key={c.key} id={c.key} name={c.label || 'column'}
+                  onRemove={() => setColumns(cs => cs.filter((_, j) => j !== i))}
+                  fields={<>
+                    <input data-no-drag="" aria-label={`Column ${i + 1} name`} value={c.label} onChange={e => setColumn(i, { label: e.target.value })}
+                      maxLength={40} placeholder="Name" className="input input-sm min-w-0 flex-1 basis-24" />
+                    <select data-no-drag="" aria-label={`Column ${i + 1} kind`} value={c.type} onChange={e => setColumn(i, { type: e.target.value as ColumnType })}
+                      className="select input-sm w-auto">
+                      {COLUMN_TYPES.map(t => <option key={t} value={t}>{COLUMN_TYPE_LABEL[t]}</option>)}
+                    </select>
+                  </>}>
+                  {c.type === 'status' && (
+                    <input aria-label={`${c.label || 'Column'} choices`} value={c.options} onChange={e => setColumn(i, { options: e.target.value })}
+                      placeholder="Choices, separated by commas: In hand, To buy, Ordered" className="input input-sm" />
+                  )}
+                </ColumnRow>
+              ))}
+            </DragReorderList>
             <Button variant="ghost" size="sm" icon={<Plus />} onClick={addColumn} className="self-start">Column</Button>
             {block && (
               <p className="text-meta text-fg-muted">
@@ -217,5 +214,29 @@ function BlockSheet({ projectId, block, siblings, initialKind, onClose }: {
         )}
       </form>
     </ModalShell>
+  )
+}
+
+/**
+ * One column of a table block while it is edited: it drags by its top line
+ * (on touch: hold, then drag), never from its fields or buttons; ↑ ↓ (⋯ when
+ * the popup is narrow) move it too.
+ */
+function ColumnRow({ id, name, fields, onRemove, children }: {
+  id: string; name: string; fields: ReactNode; onRemove: () => void; children: ReactNode
+}) {
+  const row = useDragReorderRow(id, { handle: true })
+  return (
+    <div {...row.rowProps} className={cx(row.rowClassName, 'flex flex-col gap-1.5 rounded-row border bg-surface p-2', row.dragging ? 'border-accent-500/40 shadow-menu' : 'border-line')}>
+      <div {...row.handleProps} className={cx(row.handleClassName, 'flex flex-wrap items-center gap-1.5')}>
+        <GripVertical aria-hidden className="-mx-0.5 h-4 w-4 shrink-0 text-fg-faint" />
+        {fields}
+        <span data-no-drag="" className="flex cursor-auto items-center">
+          <ReorderControls name={name} index={row.index} count={row.count} onMove={row.move} wide="26rem" />
+          <IconButton label={`Remove ${name}`} onClick={onRemove} className="hover:text-danger"><X /></IconButton>
+        </span>
+      </div>
+      {children}
+    </div>
   )
 }

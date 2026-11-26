@@ -104,11 +104,12 @@ check('the row to write: text trimmed, empty text null, empty macros 0, the plac
   { name: 'Kebab', icon: null, portion: 'a whole one', calories: 700, protein_g: 35, carbs_g: 0, fat_g: 0, sugar_g: 0, sort_order: 4, options: [] })
 check('a new preset goes last', [Q.nextSortOrder([{ sort_order: 0 }, { sort_order: 8 }, { sort_order: 3 }]), Q.nextSortOrder([])], [9, 0])
 const order = [{ id: 'a', sort_order: 0 }, { id: 'b', sort_order: 1 }, { id: 'c', sort_order: 2 }]
-check('moving one up swaps it with the one above (two rows change)', Q.moveGuess(order, 'c', -1), [{ id: 'c', sort_order: 1 }, { id: 'b', sort_order: 2 }])
-check('moving one down', Q.moveGuess(order, 'a', 1), [{ id: 'b', sort_order: 0 }, { id: 'a', sort_order: 1 }])
-check('nothing above the first, nothing below the last, nothing for an unknown id', [Q.moveGuess(order, 'a', -1), Q.moveGuess(order, 'c', 1), Q.moveGuess(order, 'x', 1)], [[], [], []])
+const [A, B, C] = order
+check('moving one up swaps it with the one above (two rows change)', Q.guessOrderWrites([A, C, B]), [{ id: 'c', sort_order: 1 }, { id: 'b', sort_order: 2 }])
+check('a drag from the bottom to the top renumbers every row that moved', Q.guessOrderWrites([C, A, B]), [{ id: 'c', sort_order: 0 }, { id: 'a', sort_order: 1 }, { id: 'b', sort_order: 2 }])
+check('the same order writes nothing', Q.guessOrderWrites(order), [])
 check('rows sharing a number are renumbered on the way (a 0, b 0, c 5: c up → a 0, c 1, b 2)',
-  Q.moveGuess([{ id: 'a', sort_order: 0 }, { id: 'b', sort_order: 0 }, { id: 'c', sort_order: 5 }], 'c', -1),
+  Q.guessOrderWrites([{ id: 'a', sort_order: 0 }, { id: 'c', sort_order: 5 }, { id: 'b', sort_order: 0 }]),
   [{ id: 'c', sort_order: 1 }, { id: 'b', sort_order: 2 }])
 
 console.log('options: read where they enter (migration 159)')

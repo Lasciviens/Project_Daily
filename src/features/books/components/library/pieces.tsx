@@ -1,12 +1,14 @@
-import { useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, BookOpen, Copy, ListOrdered, Plus, Tablet } from 'lucide-react'
-import { Button, Card, CardHeader, IconButton, Skeleton, Truncate } from '../../../../shared/ui'
+import { Suspense, useMemo, useState } from 'react'
+import { BookOpen, Copy, ListOrdered, Plus } from 'lucide-react'
+import { Button, Card, CardHeader, Skeleton, Truncate } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
-import { useCreateBook, useMergeBooks, useSaveQueueOrder } from '../../hooks/useLibrary'
-import { duplicatePairs, formatDuration, moveInQueue, upNext } from '../../readingAggregate'
+import { useCreateBook, useMergeBooks } from '../../hooks/useLibrary'
+import { duplicatePairs, formatDuration, upNext } from '../../readingAggregate'
 import type { Book } from '../../types'
 import { BookCover } from '../BookCover'
+import { UpNextBook } from './UpNextBook'
+import { UpNextList } from './upNextPart'
 
 /** Reading now shows the four read last. */
 export const READING_NOW_MAX = 4
@@ -66,44 +68,34 @@ export function ReadingNowSkeleton({ books }: { books: number }) {
   )
 }
 
-/** The reading queue: want-to-read books in the order you will read them. */
+/**
+ * The reading queue: want-to-read books in the order you will read them.
+ * Drag a book into place (on touch: hold, then drag), or ↑ ↓ (⋯ on a narrow
+ * card), or Alt+↑ / Alt+↓ — every move is one save of the order. The drag
+ * (@dnd-kit) is its own chunk, loaded in idle time once Books shows; until
+ * then the same rows show without it (nothing moves when it lands).
+ */
 export function UpNext({ books, limit = 12, title = 'Up next' }: { books: Book[]; limit?: number; title?: string }) {
   const modal = useEntityModal()
   const queue = useMemo(() => upNext(books), [books])
-  const save = useSaveQueueOrder()
-  const move = (id: string, delta: number) => {
-    const rows = moveInQueue(queue, id, delta)
-    if (rows.length) save.mutate(rows)
-  }
+  const shown = queue.slice(0, limit)
+  const open = (b: Book) => modal.open({ kind: 'book', id: b.id })
   return (
     <Card>
       <CardHeader title={title} variant="label" icon={<ListOrdered />} subtitle={queue.length ? `${queue.length} want to read` : undefined} />
       {queue.length === 0 ? (
         <p className="text-meta text-fg-muted">Mark a book “Want to read” and it lines up here.</p>
       ) : (
-        <ol className="flex flex-col gap-1">
-          {queue.slice(0, limit).map((b, i) => (
-            <li key={b.id} className="flex items-center gap-2">
-              <span className="w-5 shrink-0 text-right text-meta tabular-nums text-fg-faint">{i + 1}</span>
-              <button type="button" onClick={() => modal.open({ kind: 'book', id: b.id })}
-                className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2 rounded-control px-1 text-left hover:bg-surface-hover">
-                <BookCover book={b} size="sm" className="w-8 shrink-0" />
-                <span className="min-w-0">
-                  <Truncate as="span" className="block text-body font-medium text-fg">{b.title}</Truncate>
-                  <span className="flex flex-wrap items-center gap-x-2 text-micro text-fg-muted">
-                    {b.author && <Truncate as="span" className="min-w-0 max-w-full">{b.author}</Truncate>}
-                    {b.on_device
-                      ? <span className="inline-flex items-center gap-0.5 text-success"><Tablet className="h-3 w-3" aria-hidden />On the Kobo</span>
-                      : <span>Not on the Kobo</span>}
-                  </span>
-                </span>
-              </button>
-              <IconButton label={`Move ${b.title} up`} disabled={i === 0 || save.isPending} onClick={() => move(b.id, -1)}><ArrowUp /></IconButton>
-              <IconButton label={`Move ${b.title} down`} disabled={i === queue.length - 1 || save.isPending} onClick={() => move(b.id, 1)}><ArrowDown /></IconButton>
-            </li>
-          ))}
-          {queue.length > limit && <li className="pl-7 text-micro text-fg-muted">+{queue.length - limit} more under Want to read</li>}
-        </ol>
+        <div className="@container">
+          <Suspense fallback={
+            <ol className="flex flex-col gap-1">
+              {shown.map((b, i) => <li key={b.id} className="flex items-center gap-2"><UpNextBook book={b} place={i} onOpen={() => open(b)} /></li>)}
+            </ol>
+          }>
+            <UpNextList queue={queue} shown={shown} title={title} onOpen={open} />
+          </Suspense>
+          {queue.length > limit && <p className="pl-7 pt-1 text-micro text-fg-muted">+{queue.length - limit} more under Want to read</p>}
+        </div>
       )}
     </Card>
   )

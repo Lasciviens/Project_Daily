@@ -9,6 +9,7 @@
 // every one can be renamed, moved or removed later.
 
 import { formatDate } from '../../shared/utils/dateFormat'
+import { moveItem } from '../../shared/ui/dragReorder/dragReorderModel'
 import { formatMoney } from '../settings/subscriptionRules'
 import { isOpenTask } from '../todo/taskRules'
 import type { TaskStatus } from '../todo/types'
@@ -331,25 +332,30 @@ export interface MovePlan<T> {
   writes: Array<{ id: string; sort_order: number }>
 }
 
-/** What moving `id` one place up or down in the order shown writes (null at an end).
- *  Two different sort orders swap. When two items share one (a row added with the
- *  default 0), the list is numbered 0, 1, 2… in its new order, writing only what changes. */
-export function movePlan<T extends SortKeys>(items: readonly T[], id: string, dir: -1 | 1): MovePlan<T> | null {
+/** What moving the item at place `from` to place `to` of the order shown writes
+ *  (a drag, ↑ ↓; null when nothing moves). With distinct sort orders the items
+ *  keep the list's numbers in their new order (a swap writes two). When two
+ *  items share one (a row added with the default 0), the list is numbered
+ *  0, 1, 2… in its new order. Either way only what changes is written. */
+export function reorderPlan<T extends SortKeys>(items: readonly T[], from: number, to: number): MovePlan<T> | null {
   const shown = inSortOrder(items)
-  const i = shown.findIndex(x => x.id === id)
-  const j = i + dir
-  if (i < 0 || j < 0 || j >= shown.length) return null
-  const [a, b] = [shown[i], shown[j]]
-  if (new Set(shown.map(x => x.sort_order)).size === shown.length) {
-    return { moved: a, writes: [{ id: a.id, sort_order: b.sort_order }, { id: b.id, sort_order: a.sort_order }] }
-  }
-  const next = [...shown]
-  next[i] = b
-  next[j] = a
-  return {
-    moved: a,
-    writes: next.flatMap((x, k) => (x.sort_order === k ? [] : [{ id: x.id, sort_order: k }])),
-  }
+  if (from === to || !shown[from] || !shown[to]) return null
+  const next = moveItem(shown, from, to)
+  const distinct = new Set(shown.map(x => x.sort_order)).size === shown.length
+  const place = (k: number) => (distinct ? shown[k].sort_order : k)
+  return { moved: shown[from], writes: next.flatMap((x, k) => (x.sort_order === place(k) ? [] : [{ id: x.id, sort_order: place(k) }])) }
+}
+
+/** What moving `id` one place up or down in the order shown writes (null at an end). */
+export function movePlan<T extends SortKeys>(items: readonly T[], id: string, dir: -1 | 1): MovePlan<T> | null {
+  const i = inSortOrder(items).findIndex(x => x.id === id)
+  return i < 0 ? null : reorderPlan(items, i, i + dir)
+}
+
+/** The items with a plan's writes applied (what the list shows at once). */
+export function applyMovePlan<T extends SortKeys>(items: readonly T[], plan: MovePlan<T>): T[] {
+  const to = new Map(plan.writes.map(w => [w.id, w.sort_order]))
+  return items.map(x => (to.has(x.id) ? { ...x, sort_order: to.get(x.id)! } : x))
 }
 
 /** A new decision from a question: answered today unless it already has a day. */

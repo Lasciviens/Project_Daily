@@ -1,24 +1,17 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, Plus } from 'lucide-react'
 import { ModalShell } from '../../../shared/modals'
-import { Button, IconButton, Skeleton, Truncate } from '../../../shared/ui'
-import { useDeleteQuickGuess, useMoveQuickGuess, useQuickGuessItems, useSaveQuickGuess } from '../hooks/useQuickGuess'
+import { Button } from '../../../shared/ui'
+import { useDeleteQuickGuess, useQuickGuessItems, useSaveQuickGuess } from '../hooks/useQuickGuess'
 import {
-  DEFAULT_GUESSES, draftProblem, draftToInput, EMPTY_DRAFT, itemToDraft, moveGuess, nextSortOrder,
+  draftProblem, draftToInput, EMPTY_DRAFT, itemToDraft, nextSortOrder,
   type GuessDraft, type QuickGuessItem,
 } from '../quickGuess'
 import { DecimalInput } from './foodLogKit'
 import { foodEmoji } from './foodLogUtils'
 import { QuickGuessOptionsField } from './QuickGuessOptionsField'
+import { BUILT_IN } from './quickGuessBuiltIn'
 
 const FORM_ID = 'quick-guess-form'
-// Before migration 152 the editor shows the built-in presets; their ids are
-// not rows, so a save adds a row and the api names the missing migration.
-const BUILT_IN = 'built-in:'
-const BUILT_IN_ITEMS: QuickGuessItem[] = DEFAULT_GUESSES.map((g, i) => ({
-  id: `${BUILT_IN}${g.key}`, name: g.title, icon: g.icon, portion: g.portion,
-  calories: g.kcal, protein_g: g.protein, carbs_g: g.carbs, fat_g: g.fat, sugar_g: g.sugar, sort_order: i, options: [],
-}))
 
 const MACROS = [
   { key: 'kcal', label: 'Kcal' },
@@ -111,74 +104,6 @@ export function QuickGuessSheet({ item, sortOrder, initial, onClose }: {
         <QuickGuessOptionsField draft={draft} onChange={options => set('options', options)} />
         {problem && <p role="alert" className="text-meta text-danger">{problem}</p>}
       </form>
-    </ModalShell>
-  )
-}
-
-/**
- * Settings → Food → Quick guess: the presets Food · Today's Quick guess card
- * offers (quick_guess_items, migration 152). Tap one to edit it (delete is in
- * there, with Undo), move it with the arrows, add one at the end.
- */
-export function QuickGuessEditor({ onClose }: { onClose: () => void }) {
-  const q = useQuickGuessItems()
-  const move = useMoveQuickGuess()
-  const [editing, setEditing] = useState<QuickGuessItem | 'new' | null>(null)
-  const migrated = q.data !== null
-  const items = q.data ?? (q.data === null ? BUILT_IN_ITEMS : [])
-
-  function step(item: QuickGuessItem, dir: -1 | 1) {
-    const changes = moveGuess(items, item.id, dir)
-    if (changes.length) move.mutate(changes)
-  }
-
-  return (
-    <ModalShell
-      onClose={onClose}
-      size="sm"
-      title="Quick guess"
-      subtitle="The one-tap chips on Food · Today"
-      footer={
-        <div className="flex justify-between gap-2">
-          <Button icon={<Plus />} onClick={() => setEditing('new')} disabled={q.isLoading || q.isError}>Add</Button>
-          <Button variant="primary" onClick={onClose}>Done</Button>
-        </div>
-      }
-    >
-      {!migrated && (
-        <p className="mb-2 text-meta text-fg-muted">These are the built-in presets. Saving your own needs migration 152 — until it runs, a save says so.</p>
-      )}
-      {q.isError && (
-        <p className="text-meta text-fg-muted">Your presets didn't load. <button type="button" onClick={() => { void q.refetch() }} className="font-semibold text-accent-600">Try again</button></p>
-      )}
-      {q.isLoading && <div className="flex flex-col gap-1.5">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-11" />)}</div>}
-      {q.data?.length === 0 && <p className="text-meta text-fg-muted">No presets. Add the things you often eat but can't weigh.</p>}
-      <ul className="-mx-2 flex flex-col">
-        {items.map((item, i) => (
-          <li key={item.id} className="flex items-center gap-0.5 rounded-row pr-1 hover:bg-surface-hover">
-            <button type="button" onClick={() => setEditing(item)} aria-label={`Edit ${item.name}`}
-              className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2.5 px-2 py-1 text-left">
-              <span aria-hidden className="w-6 shrink-0 text-center text-base leading-none">{item.icon || foodEmoji(item.name)}</span>
-              <span className="min-w-0 flex-1">
-                <Truncate className="text-body font-medium text-fg">{item.name}</Truncate>
-                {/* One line: kcal and protein (what the chip shows), then its option groups, or carbs and fat where the popup is wider. */}
-                <p className="whitespace-nowrap text-meta tabular-nums text-fg-muted">
-                  {item.calories} kcal · {item.protein_g} g protein
-                  {item.options.length > 0
-                    ? <> · <span className="text-fg-2">{item.options.length === 1 ? '1 option group' : `${item.options.length} option groups`}</span></>
-                    : <span className="hidden sm:inline"> · {item.carbs_g} g carbs · {item.fat_g} g fat</span>}
-                </p>
-              </span>
-            </button>
-            <IconButton label={`Move ${item.name} up`} disabled={i === 0 || move.isPending} onClick={() => step(item, -1)} className="shrink-0 text-fg-muted disabled:opacity-30"><ChevronUp /></IconButton>
-            <IconButton label={`Move ${item.name} down`} disabled={i === items.length - 1 || move.isPending} onClick={() => step(item, 1)} className="shrink-0 text-fg-muted disabled:opacity-30"><ChevronDown /></IconButton>
-          </li>
-        ))}
-      </ul>
-      {editing && (
-        <QuickGuessSheet key={editing === 'new' ? 'new' : editing.id} item={editing === 'new' ? null : editing}
-          sortOrder={nextSortOrder(items)} onClose={() => setEditing(null)} />
-      )}
     </ModalShell>
   )
 }
