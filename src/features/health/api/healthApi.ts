@@ -16,6 +16,11 @@ export interface HealthWorkoutSummary {
   avg_heart_rate:   number | null
   min_heart_rate:   number | null
   max_heart_rate:   number | null
+  /** The Hevy workout this row is (211, worked out by the database); undefined on a database before 211. */
+  hevy_workout_id?: string | null
+  /** Who wrote it to Apple Health: raw.source.identifier ('com.hevyapp.hevy', 'com.apple.health.…'); null on an
+   *  older row. Never the source's name (the Watch's device name is never stored or shown). */
+  source_app?:      string | null
 }
 
 export interface HealthWorkout extends HealthWorkoutSummary {
@@ -42,7 +47,10 @@ export interface HealthMetric {
 // Only what the aggregation reads. `select('*')` also pulled user_id,
 // synced_at and source_family on every one of tens of thousands of rows.
 const METRIC_COLUMNS = 'id,metric_name,date,recorded_at,unit,source,value'
-const WORKOUT_SUMMARY_COLUMNS = 'id,name,start_time,end_time,duration_seconds,active_energy_kj,total_energy_kj,active_energy_raw:raw->activeEnergyBurned,avg_heart_rate,min_heart_rate,max_heart_rate'
+const WORKOUT_SUMMARY_COLUMNS = 'id,name,start_time,end_time,duration_seconds,active_energy_kj,total_energy_kj,active_energy_raw:raw->activeEnergyBurned,avg_heart_rate,min_heart_rate,max_heart_rate,hevy_workout_id,source_app:raw->source->>identifier'
+/** Before 211 (no hevy_workout_id): the readers fall back to the overlap rule. Remove once 211 has been live a while. */
+const WORKOUT_SUMMARY_COLUMNS_BEFORE_211 = WORKOUT_SUMMARY_COLUMNS.replace(',hevy_workout_id', '')
+const isBefore211 = (e: unknown) => !!e && typeof e === 'object' && ['42703', 'PGRST204'].includes((e as { code?: string }).code ?? '')
 
 // Supabase/PostgREST caps every response at this many rows server-side
 // (confirmed: an explicit Range header asking for more still comes back
@@ -194,10 +202,19 @@ function localMidnightIso(date: string, addDays = 0): string {
  *  even while collapsed (H-07). Every page: a `.limit(200)` over every kind
  *  left a year's "Other workouts (N)" short once strength sessions filled it. */
 export async function fetchHealthWorkoutSummaries(fromDate: string, toDate: string): Promise<HealthWorkoutSummary[]> {
+  try {
+    return await fetchWorkoutSummaryPages(WORKOUT_SUMMARY_COLUMNS, fromDate, toDate)
+  } catch (e) {
+    if (!isBefore211(e)) throw e
+    return fetchWorkoutSummaryPages(WORKOUT_SUMMARY_COLUMNS_BEFORE_211, fromDate, toDate)
+  }
+}
+
+function fetchWorkoutSummaryPages(columns: string, fromDate: string, toDate: string): Promise<HealthWorkoutSummary[]> {
   return fetchAllPages<HealthWorkoutSummary>((from, to, withCount) =>
     supabase
       .from('health_workouts')
-      .select(WORKOUT_SUMMARY_COLUMNS, withCount ? { count: 'exact' } : undefined)
+      .select(columns, withCount ? { count: 'exact' } : undefined)
       .gte('start_time', localMidnightIso(fromDate))
       .lt('start_time', localMidnightIso(toDate, 1))
       .order('start_time', { ascending: false })
@@ -212,6 +229,11 @@ export async function fetchHealthWorkout(id: string): Promise<HealthWorkout | nu
     .select(`${WORKOUT_SUMMARY_COLUMNS},raw`)
     .eq('id', id)
     .maybeSingle()
+  if (error && isBefore211(error)) {
+    const again = await supabase.from('health_workouts').select(`${WORKOUT_SUMMARY_COLUMNS_BEFORE_211},raw`).eq('id', id).maybeSingle()
+    if (again.error) throw again.error
+    return (again.data as HealthWorkout | null) ?? null
+  }
   if (error) throw error
   return (data as HealthWorkout | null) ?? null
 }

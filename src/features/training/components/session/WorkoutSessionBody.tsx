@@ -24,7 +24,7 @@ function Exercises({ workout, stats }: { workout: HevyWorkout; stats: ReturnType
  *  row's heart rate and the collapsed "Heart rate & energy" section. */
 function TimedBody({ workout, start, end }: { workout: HevyWorkout; start: string; end: string }) {
   const stats = useMemo(() => summarizeWorkout(workout.exercises ?? []), [workout.exercises])
-  const apple = useSessionAppleWorkout(start, end)
+  const apple = useSessionAppleWorkout(workout.id, start, end)
   return (
     <>
       <SessionStatsRow startTime={start} endTime={end} stats={stats} avgHeartRate={apple.match?.avg_heart_rate ?? null} heartRateLoading={apple.isLoading} />
