@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Card, CardHeader, PageBoard } from '../../../shared/ui'
-import { AccentSwatches, DisplaySizeSwitch, NotificationsControl, ThemeSwitch } from '../../../shared/components/SettingsMenu'
+import { AccentSwatches, DisplaySizeSwitch, ThemeSwitch } from '../../../shared/components/SettingsMenu'
 import { APPEARANCE_BOARD, type AppearanceSection } from '../settingsBoards'
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -23,12 +23,6 @@ export function AppearanceTab() {
         <Row label="Display size" hint="Scales the whole app. Smaller fits more on screen — on a monitor 90 % shows the next wider layout. Saved on this device.">
           <DisplaySizeSwitch />
         </Row>
-      </Card>
-    ),
-    notifications: (
-      <Card>
-        <CardHeader title="Notifications" />
-        <div className="-mx-2.5"><NotificationsControl className="menu-item min-h-[44px]" /></div>
       </Card>
     ),
   }

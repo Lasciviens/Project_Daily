@@ -16,12 +16,12 @@ export const PLACES_BOARD: BoardLayouts<PlacesSection> = {
 }
 
 // ── Appearance ───────────────────────────────────────────────────────────
-// Two bounded cards: the look (theme, accent, animations, display size) and
-// notifications. From the laptop they sit side by side; wider pages stop there.
-export type AppearanceSection = 'look' | 'notifications'
+// One bounded card: the look (theme, accent, animations, display size), a
+// 42rem-capped list at every width. The device's push switch moved to the
+// Notifications tab (212), beside where each kind of notification goes.
+export type AppearanceSection = 'look'
 export const APPEARANCE_BOARD: BoardLayouts<AppearanceSection> = {
-  1: ['look', 'notifications'],
-  2: { main: '42rem', columns: [['look'], ['notifications']] },
+  1: ['look'],
 }
 
 // ── Profile ──────────────────────────────────────────────────────────────

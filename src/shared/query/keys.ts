@@ -37,8 +37,19 @@ export const qk = {
     /** The thing a task plans, for the item screen's Linked chip (211). */
     linkedThing: (kind: string, id: string) => ['tasks', 'linked-thing', kind, id] as const,
   },
-  /** Server-written notices (211's notifications): Shop's Needs a look shows them for now. */
-  notifications: { all: ['notifications'] as const },
+  /** Server-written notices (211/212's notifications): the bell, the Notifications page, Shop's Needs a look. */
+  notifications: {
+    all: ['notifications'] as const,
+    /** The newest notices: the bell's few, or the page's list (all or unread only). */
+    feed: (mode: 'dropdown' | 'page', unreadOnly: boolean) => ['notifications', 'feed', mode, unreadOnly] as const,
+    unread: () => ['notifications', 'unread'] as const,
+    /** Shop's Needs a look: its own kind, unread. */
+    shop: () => ['notifications', 'shop'] as const,
+    /** Where each kind goes (212's notification_prefs). */
+    prefs: () => ['notifications', 'prefs'] as const,
+    /** The Claude API key's dates (212's integration_expiry). */
+    keyDates: () => ['notifications', 'key-dates'] as const,
+  },
   googleTaskLists: { all: ['google-task-lists'] as const },
   googleTasks: {
     all: ['google-tasks'] as const,

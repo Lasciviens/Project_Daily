@@ -5,9 +5,9 @@ import { qk } from '../../../shared/query/keys'
 import { STALE } from '../../../shared/query/stale'
 import { fetchShopNotices, setNoticeRead } from '../api/noticesApi'
 
-/** The server's unread notices for the Shop (211): Needs a look shows them for now (the bell comes later). */
+/** The server's unread notices for the Shop (211): Needs a look shows them; the bell shows them too (212). */
 export function useShopNotices() {
-  return useQuery({ queryKey: qk.notifications.all, queryFn: fetchShopNotices, staleTime: STALE.short })
+  return useQuery({ queryKey: qk.notifications.shop(), queryFn: fetchShopNotices, staleTime: STALE.short })
 }
 
 /** Got it on a notice: read, with "Put away · Undo" (Undo makes it unread again). */

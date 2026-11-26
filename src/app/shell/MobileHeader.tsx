@@ -3,6 +3,7 @@ import { Search, Sparkles, ClipboardList } from 'lucide-react'
 import { useUIStore } from '../store'
 import { routeTitle } from '../navigation'
 import { SettingsMenu } from '../../shared/components/SettingsMenu'
+import { NotificationBell } from '../../features/notifications/components/NotificationBell'
 import { IconButton, Truncate, cx } from '../../shared/ui'
 
 /**
@@ -40,6 +41,7 @@ export function MobileHeader() {
         <IconButton label="Requests" aria-pressed={isDevRequestsOpen} onClick={toggleDevRequests} className={isDevRequestsOpen ? 'bg-accent-50 !text-accent-700' : undefined}>
           <ClipboardList strokeWidth={1.9} aria-hidden />
         </IconButton>
+        <NotificationBell />
         <SettingsMenu />
       </div>
     </header>

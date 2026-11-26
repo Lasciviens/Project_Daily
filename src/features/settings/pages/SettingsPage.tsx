@@ -8,20 +8,22 @@ import { ProfileTab } from '../components/ProfileTab'
 import { ApisTab } from '../components/ApisTab'
 import { CalendarTab } from '../components/CalendarTab'
 import { SettingsHeroArt } from '../components/SettingsHeroArt'
+import { NotificationSettingsTab } from '../../notifications/components/NotificationSettings'
 
-type Tab = 'places' | 'profile' | 'appearance' | 'food' | 'calendar' | 'subscriptions' | 'apis'
+type Tab = 'places' | 'profile' | 'appearance' | 'notifications' | 'food' | 'calendar' | 'subscriptions' | 'apis'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'places', label: 'Places' },
   { id: 'profile', label: 'Profile' },
   { id: 'appearance', label: 'Appearance' },
+  { id: 'notifications', label: 'Notifications' },
   { id: 'food', label: 'Food' },
   { id: 'calendar', label: 'Calendar' },
   { id: 'subscriptions', label: 'Subscriptions' },
   { id: 'apis', label: 'Integrations and APIs' },
 ]
 
-/** /settings — Places · Profile · Appearance · Food · Calendar · Subscriptions · Integrations and APIs, the tab kept in ?tab=.
+/** /settings — Places · Profile · Appearance · Notifications · Food · Calendar · Subscriptions · Integrations and APIs, the tab kept in ?tab=.
  *  The old `?tab=integrations` (the Subscriptions tab's earlier id) still opens Subscriptions. */
 export function SettingsPage() {
   const [params, setParams] = useSearchParams()
@@ -49,6 +51,7 @@ export function SettingsPage() {
       {tab === 'places' && <PlacesTab />}
       {tab === 'profile' && <ProfileTab />}
       {tab === 'appearance' && <AppearanceTab />}
+      {tab === 'notifications' && <NotificationSettingsTab />}
       {tab === 'food' && <FoodTab />}
       {tab === 'calendar' && <CalendarTab />}
       {tab === 'subscriptions' && <ConnectionsTab />}

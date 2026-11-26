@@ -1,6 +1,6 @@
 import {
   Home, CalendarDays, UtensilsCrossed, ShoppingBag, Clapperboard, Dumbbell, HeartPulse, Star, Gamepad2,
-  Briefcase, FolderKanban, Code2, Settings, BookOpen, Trophy, type LucideIcon,
+  Briefcase, FolderKanban, Code2, Settings, BookOpen, Trophy, Bell, type LucideIcon,
 } from 'lucide-react'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,6 +69,8 @@ export const NAV: NavEntry[] = [
   { id: 'projects', label: 'Projects', path: '/projects', icon: FolderKanban, group: 'work', more: true, match: ['/projects', '/projects/*'], keywords: ['phases', 'plan', 'parts', 'log'] },
   // Reached from the avatar menu, the More sheet and the sidebar footer (not a nav group).
   { id: 'settings', label: 'Settings', path: '/settings', icon: Settings, group: 'system', keywords: ['places', 'home', 'work', 'appearance', 'theme', 'display size', 'zoom', 'integrations', 'connections', 'subscriptions'] },
+  // Reached from the bell next to the avatar (its "See all"); a page of its own, no nav row (212).
+  { id: 'notifications', label: 'Notifications', path: '/notifications', icon: Bell, group: 'system', parent: 'settings', keywords: ['bell', 'alerts', 'unread', 'push', 'warnings'] },
   { id: 'developer', label: 'Developer', path: '/developer', icon: Code2, group: 'system', more: true, keywords: ['activity', 'errors', 'memory', 'audit'] },
 ]
 

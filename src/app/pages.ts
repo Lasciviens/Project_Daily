@@ -20,18 +20,19 @@ export const ProjectPage  = lazyPage('project-page',   () => import('../features
 export const WishesPage   = lazyPage('wishes-page',    () => import('../features/wishes/pages/WishesPage').then(m => m.WishesPage))
 export const BooksPage    = lazyPage('books-page',     () => import('../features/books/pages/BooksPage').then(m => m.BooksPage))
 export const DeveloperPage = lazyPage('developer-page', () => import('../features/developer/pages/DeveloperPage').then(m => m.DeveloperPage))
+export const NotificationsPage = lazyPage('notifications-page', () => import('../features/notifications/pages/NotificationsPage').then(m => m.NotificationsPage))
 export const SettingsPage = lazyPage('settings-page',  () => import('../features/settings/pages/SettingsPage').then(m => m.SettingsPage))
 
 // Most used first: the tab-bar pages, then the rest.
 const PRELOAD_ORDER = [
   HomePage, DailyPage, RecipesPage, MediaPage, TrainingPage, HealthPage, ShopPage,
-  WishesPage, BooksPage, FootballPage, WorkPage, ProjectsPage, ProjectPage, SettingsPage, DeveloperPage,
+  WishesPage, BooksPage, FootballPage, WorkPage, ProjectsPage, ProjectPage, SettingsPage, NotificationsPage, DeveloperPage,
 ]
 
 const BY_PATH: Record<string, { preload: () => Promise<void> }> = {
   '': HomePage, home: HomePage, daily: DailyPage, shop: ShopPage, recipes: RecipesPage, media: MediaPage,
   football: FootballPage, work: WorkPage, training: TrainingPage, health: HealthPage, projects: ProjectsPage,
-  wishes: WishesPage, books: BooksPage, developer: DeveloperPage, settings: SettingsPage,
+  wishes: WishesPage, books: BooksPage, developer: DeveloperPage, settings: SettingsPage, notifications: NotificationsPage,
 }
 
 /**
