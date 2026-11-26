@@ -100,3 +100,10 @@ export function situationTone(severity: string): 'danger' | 'warn' | 'neutral' {
   if (severity === 'slight' || severity === 'normal') return 'warn'
   return 'neutral'
 }
+
+// The owner's short form for a direction on a compact chip (owner's canvas,
+// 26.11.2026: "Tw Økern, Oslo"): every "Toward" becomes "Tw". Display only —
+// the saved text keeps the full word, shown in the chip's tooltip.
+export function shortToward(text: string): string {
+  return text.replace(/\bToward\b/g, 'Tw')
+}

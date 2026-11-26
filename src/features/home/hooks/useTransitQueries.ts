@@ -70,6 +70,10 @@ interface TripSearch {
   version: number
 }
 
+/** How many trips to ask Entur for: enough that Routes has a few on the best route
+ *  and a few on other lines or stops (two columns); Home's card shows the first 3. */
+const TRIP_COUNT = 8
+
 /** Trip plans with the saved travel profile applied. Results never go stale by themselves — refresh is explicit. */
 export function useTrips(search: TripSearch | null, { enabled = true }: { enabled?: boolean } = {}) {
   const { profile } = useTravelProfile()
@@ -79,7 +83,7 @@ export function useTrips(search: TripSearch | null, { enabled = true }: { enable
   const via = search?.via ?? null
   return useQuery({
     queryKey: via ? qk.external.tripVia([placeKey(search!.from), placeKey(via), placeKey(search!.to), search!.version, profile]) : qk.external.trip(parts),
-    queryFn:  () => fetchTrips(search!.from, search!.to, undefined, search!.dateTime, search!.arriveBy ?? false, {
+    queryFn:  () => fetchTrips(search!.from, search!.to, TRIP_COUNT, search!.dateTime, search!.arriveBy ?? false, {
       walkSpeed:            WALK_SPEED_MPS[profile.walkPace],
       maximumTransfers:     profile.maximumTransfers,
       wheelchairAccessible: profile.wheelchairAccessible,
