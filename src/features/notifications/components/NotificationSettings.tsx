@@ -9,9 +9,10 @@ import { useNoticePrefs, useSaveNoticePref } from '../hooks/useNotifications'
 // watches. A kind with no choice saved goes where its default says.
 
 type NotificationSettingsSection = 'device' | 'kinds'
-// Two bounded cards: on a phone one list; from the laptop the device beside the (longer) list of kinds.
+// Two bounded cards: on a phone the device's switch first (a push needs it), then the kinds; from the laptop the
+// device beside the (longer) list of kinds.
 const NOTIFICATION_SETTINGS_BOARD: BoardLayouts<NotificationSettingsSection> = {
-  1: ['kinds', 'device'],
+  1: ['device', 'kinds'],
   2: { main: '42rem', columns: [['kinds'], ['device']] },
 }
 
@@ -20,7 +21,7 @@ export function NotificationSettingsTab() {
     device: (
       <Card>
         <CardHeader title="This device" />
-        <div className="-mx-2.5"><NotificationsControl className="menu-item min-h-[44px]" /></div>
+        <div className="-mx-2.5"><NotificationsControl className="menu-item" /></div>
         <p className="mt-2 text-meta text-fg-muted">
           A push reaches the app installed on the iPhone home screen, with notifications turned on. Every push shows on the
           lock screen, and it can arrive a few minutes late.

@@ -53,6 +53,10 @@ check('several: one push with the first four and a count, to the Notifications p
 check('none: no push', K.noticePush([], 'now', today), null)
 check('the morning line: two titles and a count, or nothing', [K.noticeMorningLine([], today), K.noticeMorningLine([f('sign_in_failed', { service: 'trakt' }), f('claude_key_rejected'), f('follow_trailer')], today)],
   ['', ' · 🔔 Trakt needs you to sign in again, Anthropic rejected the Claude API key +1'])
+check('a name in a push: printable only (no control, bidi or line-break characters), spaces folded, at most 60',
+  [K.noticePushSubject('Dune\u202E\u0007\nPart\u2028Two\u200F'), K.noticePushSubject('x'.repeat(80)).length, K.noticePushSubject('x'.repeat(80)).endsWith('…'),
+    K.noticePushSubject('\u202E\u0000 '), K.noticePushSubject(null), K.noticePushSubject('Jernbanetorget 🎬')],
+  ['Dune Part Two', 60, true, null, null, 'Jernbanetorget 🎬'])
 check('every kind has a channel the database knows', K.NOTICE_KINDS.every(k => K.isNoticeChannel(k.defaultChannel)), true)
 
 console.log('every row is checked before it shows')
@@ -73,6 +77,8 @@ check('12 months across a year; out of range or not a day: none', [E.keyEndDay('
 check('the last 4: 4 key characters, nothing, or refused', [E.keyHint('Ab3_'), E.keyHint('  '), E.keyHint('sk-ant-api03'), E.keyHint('a b!')], ['Ab3_', null, undefined, undefined])
 
 console.log('the producers')
+check('Strava: only a 401 refresh answer is "sign in again" (a 400\'s body is not documented — docs/integrations/strava.md)',
+  /if \(res\.status === 401\) await notifySignInFailed\(supabase, userId\)/.test(read('supabase/functions/strava-activities/index.ts')) && !/res\.status === 400/.test(read('supabase/functions/strava-activities/index.ts')), true)
 const producers = [['trakt-api', 'trakt'], ['strava-activities', 'strava'], ['google-tasks-sync', 'google'], ['calendar-token', 'google'], ['icloud-calendar', 'icloud']]
 check('each sync function tells the database which service refused its sign-in (a code, never text)',
   producers.map(([fn, svc]) => new RegExp(`rpc\\('notify_service_problem', \\{ p_user: userId, p_service: '${svc}' \\}\\)`).test(read(`supabase/functions/${fn}/index.ts`))
@@ -90,6 +96,8 @@ check('push-send carries notificationKinds.ts\'s block verbatim', !!block(pushSe
 check('the notifications path is the cron\'s only, claims, sends one push, puts the stamps back when no device took it',
   [/body\.trigger === 'notifications'\) \{\n\s+if \(!viaCron\) return json\(\{ ok: false, error: 'forbidden' \}, 403\)/.test(pushSend), /rpc\('notifications_claim'/.test(pushSend),
     /res = await sendToAll\(userId, msg\)/.test(pushSend), /if \(res\.sent === 0 && res\.devices > 0\) await unclaimNotices\(userId, items, stamp\)/.test(pushSend)], [true, true, true, true])
+check('push-send cuts every name a push carries (the claim\'s subject goes through noticePushSubject)',
+  /subject: noticePushSubject\(typeof r\.subject === 'string' \? r\.subject : null\)/.test(pushSend) && !/r\.subject\.slice\(/.test(pushSend), true)
 check('the morning push carries the morning notices as one line (claimed only on the cron\'s run)',
   [/body\.trigger === 'morning' && viaCron \? await claimNotices\(userId, 'push_morning', morningStamp\)/.test(pushSend), /buildMorning\(userId, noticeMorningLine\(morningNotices, osloToday\(\)\)\)/.test(pushSend),
     /\$\{suppLine\}\$\{noticeLine\}/.test(pushSend)], [true, true, true])
@@ -103,6 +111,8 @@ check('the bell sits next to the avatar in the top bar and the phone header',
   ['src/app/shell/AppTopBar.tsx', 'src/app/shell/MobileHeader.tsx'].map(p => /<NotificationBell look="(bar|header)" \/>\n\s+<SettingsMenu \/>/.test(read(p))), [true, true])
 check('/notifications is a page of the registry and a lazy page', [/path: '\/notifications'/.test(read('src/app/navigation.ts')), /NotificationsPage = lazyPage\(/.test(read('src/app/pages.ts')),
   /path="\/notifications"/.test(read('src/app/router.tsx'))], [true, true, true])
+check('the drop-down\'s See all sits in its header next to Read all; the page\'s Read/Unread button shows the state (no dot there)',
+  [/\{!page && \(\n\s+<Link to="\/notifications"/.test(list), list.indexOf('Read all\n') < list.indexOf('to="/notifications"'), /\{unread && !page && /.test(list), !/CircleCheck/.test(list)], [true, true, true, true])
 check('a notice opens its thing by the kind\'s fixed way (a popup by id, else noticeRoute) — never an address from the row',
   [/navigate\(noticeRoute\(n\)\)/.test(list), !/href=\{n\./.test(list), !/navigate\(n\./.test(list)], [true, true, true])
 check('the Claude key\'s dates sit on the Anthropic card (connections live in one place)', /<ClaudeKeyDates \/>/.test(read('src/features/developer/components/ConnectionsTab.tsx')), true)

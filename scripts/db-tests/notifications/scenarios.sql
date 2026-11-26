@@ -224,6 +224,60 @@ select public.t_ok((select count(*) from net.sent where body ->> 'trigger' = 'no
 do $$ begin execute (select command from cron.job where jobname = 'lascis-notifications-daily'); end $$;
 select public.t_ok(true, 'the nightly timer''s command runs');
 
+-- ── Film news has one "read" (seen_at ⇄ read_at) ─────────────────────────────
+insert into public.media_follows (id, user_id, kind, tmdb_id, name) values
+  ('11900000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001', 'company', 3, 'A studio');
+insert into public.media_follow_events (id, user_id, follow_id, kind, tmdb_id, title) values
+  ('11900000-0000-0000-0000-0000000000e5', '00000000-0000-0000-0000-000000000001', '11900000-0000-0000-0000-000000000003', 'new_title', 55, 'Seen in Media'),
+  ('11900000-0000-0000-0000-0000000000e6', '00000000-0000-0000-0000-000000000001', '11900000-0000-0000-0000-000000000003', 'trailer', 56, 'Read in the bell');
+set role authenticated;
+update public.media_follow_events set seen_at = now() where id = '11900000-0000-0000-0000-0000000000e5';
+select public.t_ok((select read_at is not null from public.notifications where link_id = '11900000-0000-0000-0000-0000000000e5'),
+  'a film marked seen in What''s new puts its notice away');
+update public.notifications set read_at = now(), acted_at = now() where link_id = '11900000-0000-0000-0000-0000000000e6';
+select public.t_ok((select seen_at is not null from public.media_follow_events where id = '11900000-0000-0000-0000-0000000000e6'),
+  'a film notice read (or opened) in the bell marks its event seen');
+update public.notifications set read_at = null where link_id = '11900000-0000-0000-0000-0000000000e6';
+select public.t_ok((select seen_at is null from public.media_follow_events where id = '11900000-0000-0000-0000-0000000000e6'),
+  'its Undo (unread again) makes the event new again');
+select public.t_ok(public.t_refused($q$select public.notifications_follow_seen()$q$) <> 'written', 'the sync is a trigger only, never callable');
+reset role;
+-- Another account's notice that names the owner's event (a forged link) never touches it.
+insert into public.notifications (user_id, kind, link_kind, link_id, dedupe_key)
+values ('00000000-0000-0000-0000-000000000002', 'follow_trailer', 'media_follow_event', '11900000-0000-0000-0000-0000000000e6', 'follow:forged');
+update public.notifications set read_at = now() where dedupe_key = 'follow:forged';
+select public.t_ok((select seen_at is null from public.media_follow_events where id = '11900000-0000-0000-0000-0000000000e6'),
+  'a notice of another account never marks the owner''s event seen');
+set role service_role;
+insert into public.media_follow_events (id, user_id, follow_id, kind, tmdb_id, title) values
+  ('11900000-0000-0000-0000-0000000000e7', '00000000-0000-0000-0000-000000000001', '11900000-0000-0000-0000-000000000003', 'new_title', 57, 'From the service role');
+reset role;
+select public.t_ok((select count(*) from public.notifications where link_id = '11900000-0000-0000-0000-0000000000e7') = 1, 'the service role is on the allow-list');
+
+-- ── Reconnecting settles the failure ─────────────────────────────────────────
+select public.notify_service_problem('00000000-0000-0000-0000-000000000002', s) from unnest(array['trakt', 'strava', 'google', 'icloud', 'anthropic']) s;
+insert into public.trakt_tokens values ('00000000-0000-0000-0000-000000000002', 'new');
+select public.t_ok((select read_at is not null from public.notifications where user_id = '00000000-0000-0000-0000-000000000002' and service = 'trakt'),
+  'connecting Trakt again puts its "sign in again" notice away');
+select public.t_ok((select count(*) from public.notifications where user_id = '00000000-0000-0000-0000-000000000002' and read_at is null) = 4,
+  'only that service''s');
+insert into public.strava_tokens values ('00000000-0000-0000-0000-000000000002', 'old');
+update public.strava_tokens set refresh_token = 'refreshed' where user_id = '00000000-0000-0000-0000-000000000002';
+insert into public.user_calendar_tokens values ('00000000-0000-0000-0000-000000000002', 'g');
+insert into public.icloud_credentials values ('00000000-0000-0000-0000-000000000002', 'sealed');
+select public.t_ok((select count(*) from public.notifications where user_id = '00000000-0000-0000-0000-000000000002' and read_at is null and kind = 'sign_in_failed') = 0,
+  'Strava, Google and Apple Calendar too (a connect or a refresh that worked)');
+select public.t_ok((select count(*) from public.notifications where user_id = '00000000-0000-0000-0000-000000000001' and kind = 'sign_in_failed' and service in ('google', 'icloud') and read_at is null) = 0
+  and (select count(*) from public.notifications where user_id = '00000000-0000-0000-0000-000000000001' and kind = 'sign_in_failed' and service = 'strava' and read_at is null) = 1,
+  'another account''s sign-in settles nothing of the owner''s');
+select public.t_ok(public.notify_service_settle('00000000-0000-0000-0000-000000000002', 'anthropic') = 1, 'Anthropic answering again settles one notice');
+select public.t_ok((select read_at is not null from public.notifications where user_id = '00000000-0000-0000-0000-000000000002' and kind = 'claude_key_rejected'),
+  'and it is "key rejected", now read');
+select public.t_ok(public.notify_service_settle('00000000-0000-0000-0000-000000000002', 'evil') = 0, 'a service outside the list settles nothing');
+set role authenticated;
+select public.t_ok(public.t_refused($q$select public.notify_service_settle(auth.uid(), 'anthropic')$q$) = '42501', 'the browser cannot call the settle');
+reset role;
+
 -- ── The owner lock ───────────────────────────────────────────────────────────
 select public.notify_service_problem('00000000-0000-0000-0000-000000000003', 'google');
 set role authenticated;

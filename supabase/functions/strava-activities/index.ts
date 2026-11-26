@@ -71,9 +71,11 @@ async function refreshIfExpired(supabase: SupabaseClient, userId: string) {
     }),
   })
 
-  // 400/401: Strava no longer takes the refresh token (the access was revoked); anything else may pass.
+  // 401 only: Strava's docs say an invalidated token answers 401 Unauthorized. A 400 can be a refused refresh token too,
+  // but its error body for that case is not documented (checked 26.11.2026, docs/integrations/strava.md → Traps), so a
+  // 400 is not read as "sign in again" until a live sample shows its shape.
   if (!res.ok) {
-    if (res.status === 400 || res.status === 401) await notifySignInFailed(supabase, userId)
+    if (res.status === 401) await notifySignInFailed(supabase, userId)
     return null
   }
 

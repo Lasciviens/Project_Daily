@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Bell, CheckCheck, Circle, CircleCheck, Clapperboard, Film, KeyRound, ShoppingBag, Sparkles, Settings2 } from 'lucide-react'
+import { Bell, CheckCheck, Circle, Clapperboard, Film, KeyRound, ShoppingBag, Sparkles, Settings2 } from 'lucide-react'
 import { Button, Card, IconButton, SegmentedControl, Skeleton, ToneDot, Truncate, cx } from '../../../shared/ui'
 import { useEntityModal } from '../../../shared/modals'
 import { formatDateTime } from '../../../shared/utils/dateFormat'
@@ -47,11 +47,18 @@ export function NotificationList({ mode, onDone }: { mode: NotificationListMode;
         {page
           ? <SegmentedControl size="sm" label="Show" value={filter} onChange={setFilter}
               options={[{ value: 'all', label: 'All', tip: 'All notifications' }, { value: 'unread', label: 'Unread', tip: 'Unread notifications only' }]} />
-          : <p className="flex-1 text-ui font-semibold text-fg">Notifications</p>}
+          : <p className="min-w-0 flex-1 truncate text-ui font-semibold text-fg">Notifications</p>}
         <Button size="sm" variant="ghost" icon={<CheckCheck />} className={page ? 'ml-auto' : undefined}
           tip="Read all: mark every unread notification read" loading={readAll.isPending} onClick={() => readAll.mutate()}>
           Read all
         </Button>
+        {/* In the header, so it shows however short the screen is (the phone held sideways). */}
+        {!page && (
+          <Link to="/notifications" onClick={onDone} title="See all: every notification on its own page" aria-label="See all: every notification on its own page"
+            className="btn-ghost btn-sm text-accent-600">
+            See all
+          </Link>
+        )}
         <Link to="/settings?tab=notifications" onClick={onDone} aria-label="Settings: where each notification goes" title="Settings: where each notification goes"
           className="icon-btn h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [&_svg]:h-[18px] [&_svg]:w-[18px]">
           <Settings2 aria-hidden />
@@ -81,11 +88,6 @@ export function NotificationList({ mode, onDone }: { mode: NotificationListMode;
       {page && paged.hasNextPage && (
         <Button size="sm" className="self-start" loading={paged.isFetchingNextPage} onClick={() => void paged.fetchNextPage()}
           tip="More: show older notifications">More</Button>
-      )}
-      {!page && (
-        <Link to="/notifications" onClick={onDone} className="menu-item justify-center font-semibold text-accent-600">
-          See all
-        </Link>
       )}
     </div>
   )
@@ -120,15 +122,19 @@ function NoticeRow({ n, today, page, onDone }: { n: Notice; today: string; page:
         </span>
         <span className="min-w-0 flex-1">
           <Truncate className={cx('text-body', unread ? 'font-semibold text-fg' : 'font-medium text-fg-2')}>{noticeTitle(n, today)}</Truncate>
-          <Truncate className="text-meta text-fg-muted">{noticeDetail(n)}</Truncate>
-          <span className="text-micro tabular-nums text-fg-faint">{formatDateTime(n.created_at)}</span>
+          {/* Two lines: the title, then the detail and when (the date stays whole, the detail is cut). */}
+          <span className="flex min-w-0 items-baseline gap-1 text-meta text-fg-muted">
+            <Truncate className="min-w-0">{noticeDetail(n)}</Truncate>
+            <span className="shrink-0 tabular-nums">· {formatDateTime(n.created_at)}</span>
+          </span>
         </span>
-        {unread && <span className="mt-2 shrink-0" title="Unread"><ToneDot tone="info" /><span className="sr-only">Unread</span></span>}
+        {/* The drop-down marks unread with a dot; on the page the Read/Unread button shows it. */}
+        {unread && !page && <span className="mt-2 shrink-0" title="Unread"><ToneDot tone="info" /><span className="sr-only">Unread</span></span>}
       </button>
       {page && (
-        <IconButton size="sm" label={unread ? 'Read: mark this notification read' : 'Unread: mark this notification unread'}
+        <IconButton size="sm" label={unread ? 'Unread: mark it read' : 'Read: mark it unread'}
           onClick={() => mark.mutate({ id: n.id, read: unread })}>
-          {unread ? <CircleCheck /> : <Circle />}
+          {unread ? <span data-tone="info" className="tone-text"><Circle className="fill-current" /></span> : <Circle />}
         </IconButton>
       )}
     </li>

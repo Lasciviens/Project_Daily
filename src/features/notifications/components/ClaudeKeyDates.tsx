@@ -42,10 +42,7 @@ function KeyDatesForm({ stored }: { stored: KeyDates | null }) {
 
   return (
     <div className="flex flex-col gap-2.5 border-t border-line pt-3">
-      <p className="text-meta text-fg-2">
-        When the key ends: the app warns you 14, 7 and 1 days before, and when Anthropic rejects it.
-        Only these dates are kept, never the key.
-      </p>
+      <p className="text-meta text-fg-2">Warns 14, 7 and 1 days before it ends. The key itself is never stored.</p>
       <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
         <label className="flex flex-col items-start gap-1">
           <span className="text-micro font-semibold text-fg-muted">Made on</span>

@@ -8,12 +8,14 @@ table itself is `211`'s.
 
 - **The bell** sits next to the avatar in the top bar and in the phone header (`NotificationBell`). A red count shows
   the unread notifications (99+ above 99); it is read again every 5 minutes and when the app comes back to the front.
-  Tapping it opens a drop-down (Headless UI Popover) with the newest 8: **Read all** (with Undo), a ⚙ link to
-  Settings → Notifications, and **See all**. The drop-down is at most the screen's height less the phone's bars and
+  Tapping it opens a drop-down (Headless UI Popover) with the newest 8; its header holds **Read all** (with Undo),
+  **See all** and a ⚙ link to Settings → Notifications, so they show however short the screen is. Each row is two lines:
+  the title, then the detail and when ("Laptop · 23.11.2026 19:20"); an unread one has a dot. The drop-down is at most the screen's height less the phone's bars and
   scrolls inside (the phone held sideways). In the top bar the bell is bordered like Ask AI and Requests; in the phone
   header it is a plain icon button like its neighbours.
 - **/notifications** (`NotificationsPage`, in `navigation.ts` and `pages.ts`; no nav row of its own) is the full list:
-  **All | Unread**, each row's **Read / Unread** button (with Undo), **More** for older ones (30 at a time), in a card.
+  **All | Unread**, each row's **Read / Unread** button (with Undo; a filled dot while unread, an empty circle once read —
+  the page has no separate dot), **More** for older ones (30 at a time), in a card.
   Both modes have **Read all** and a ⚙ link to Settings → Notifications.
 - The drop-down and the page are **one component**, `NotificationList`, with the modes `dropdown` and `page` (owner,
   12.11.2026: "same job, one component"). A mode hides a part (the filter, the per-row button, More), never copies it.
@@ -21,7 +23,7 @@ table itself is `211`'s.
   popup by id, a followed film its film popup by its TMDB id, everything else its page (`noticeRoute`). Nothing is
   ever opened from an address stored in a row — there is none.
 - **Settings → Notifications** (`?tab=notifications`, `NotificationSettingsTab`): this device's push switch (moved
-  here from Appearance) and **What the app tells you** — every kind with a picker: **In app** (only the bell),
+  here from Appearance; first on the phone) and **What the app tells you** — every kind with a picker: **In app** (only the bell),
   **Now** (a push within 15 minutes), **Morning** (one line in the morning push), **Weekly** (Monday's 08:00 digest).
   The list is the code registry, so it is also how the owner sees what the app watches. A kind with no choice saved
   goes where its default says.
@@ -38,7 +40,7 @@ table itself is `211`'s.
 
 | Kind | Made by | Default | Opens |
 |---|---|---|---|
-| `sign_in_failed` | Trakt (401 / `invalid_grant`), Strava (refresh refused), Google (`google-tasks-sync`, `calendar-token`: `invalid_grant`), Apple Calendar (the iCloud timer: Apple refused the password) — through `notify_service_problem` | Now | Settings → Subscriptions |
+| `sign_in_failed` | Trakt (401 / `invalid_grant`), Strava (a 401 to the refresh — a 400's body is undocumented, `docs/integrations/strava.md`), Google (`google-tasks-sync`, `calendar-token`: `invalid_grant`), Apple Calendar (the iCloud timer: Apple refused the password) — through `notify_service_problem` | Now | Settings → Subscriptions |
 | `sign_in_expiring` | The nightly job: PlayStation's `psn_tokens.npsso_expires_at`, 14, 7 and 1 days before | Morning | Settings → Subscriptions |
 | `claude_key_rejected` | `claude` when Anthropic rejects the key | Now | Settings → Subscriptions |
 | `claude_key_expiring` | The nightly job: the key's end day as typed, 14, 7 and 1 days before | Morning | Settings → Subscriptions |
@@ -76,14 +78,23 @@ block (`<notification-text>`: titles, second lines, routes, the push and the mor
 ## What makes a notice
 
 - **Followed films:** a trigger on `media_follow_events` makes one notice per event — only when the server wrote the
-  event (`current_user` is not `authenticated`/`anon`): the browser can write that table (119's policy), and a row it
-  writes must not become a notice. A removed event (the follow check's clean-up, an unfollow) takes its notice along.
+  event (an allow-list: `current_user` is `service_role`, `postgres` or `supabase_admin`): the browser can write that
+  table (119's policy), and a row it writes must not become a notice. A removed event (the follow check's clean-up, an
+  unfollow) takes its notice along.
+- **Film news has one "read"** (owner-critic, 26.11.2026): marking an event seen in Media → What's new reads its
+  notice, and reading or opening the notice marks the event seen; making the notice unread again (its Undo) makes the
+  event new again. The notice → event direction is a SECURITY DEFINER trigger that touches only the one event the notice
+  links to, of the notice's own user.
 - **The nightly job** `notifications_daily` (pg_cron `lascis-notifications-daily`, 05:40 UTC — before the morning
   push): for every PlayStation sign-in and Claude key that ends within 14 days, one notice per end day and mark
   (14, 7 or 1; days are Oslo's). A missed night gives only the current mark, never a burst; a passed day gives none.
 - **A refused sign-in or key:** `notify_service_problem(user, service)` (service role only; the service is an
   allow-list) writes at most one per service and Oslo day, and none while an unread one about that service is there.
   The functions call it best effort: a failure there never changes their answer.
+- **Reconnecting settles it:** a fresh sign-in written to `trakt_tokens`, `strava_tokens`, `user_calendar_tokens` or
+  `icloud_credentials` (a connect, or a refresh that worked) reads that service's unread failure notice; `claude` calls
+  `notify_service_settle(user, 'anthropic')` after a call Anthropic answered, which reads "key rejected" (never a
+  trigger on the ledger, 194's rule).
 
 ## Delivery (B3)
 
@@ -113,7 +124,8 @@ block (`<notification-text>`: titles, second lines, routes, the push and the mor
   the event's title only as text.
 - **A sync function** passes only a service code; the database refuses any other value and builds the dedupe key
   itself.
-- **The push** text and address come from the registry; the thing's name is cut to 120 characters, and the address is
+- **The push** text and address come from the registry; the thing's name is cut to printable characters (no control,
+  bidi or line-break characters) and 60 characters (`noticePushSubject`; the bell shows up to 300), and the address is
   a fixed hash route per kind, never data from a row.
 - **The Claude key** is never read or stored; only the owner's dates and an optional 4-character hint.
 - Ask AI has no tool that reaches these tables.

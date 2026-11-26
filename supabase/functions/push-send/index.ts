@@ -341,6 +341,20 @@ export function noticePush(items: readonly NoticeFacts[], digest: 'now' | 'weekl
   }
 }
 
+/** The most of a thing's name a push shows (the bell shows up to 300). */
+export const NOTICE_PUSH_SUBJECT_MAX = 60
+
+/** A thing's name as a push may carry it (guardian, 26.11.2026): printable characters only — no control, format or
+ *  bidi characters, no line breaks —, spaces folded, at most NOTICE_PUSH_SUBJECT_MAX characters; null when nothing is left. */
+export function noticePushSubject(s: string | null): string | null {
+  if (!s) return null
+  // Line breaks and tabs become a space first; every other control, format (bidi) or private character goes.
+  const t = s.replace(/[\t\n\v\f\r\u0085\p{Zl}\p{Zp}]/gu, ' ').replace(/[\p{Cc}\p{Cf}\p{Co}\p{Cs}]/gu, '').replace(/\s+/g, ' ').trim()
+  if (!t) return null
+  const chars = [...t]
+  return chars.length > NOTICE_PUSH_SUBJECT_MAX ? `${chars.slice(0, NOTICE_PUSH_SUBJECT_MAX - 1).join('').trimEnd()}…` : t
+}
+
 /** The morning push's one line for the notices sent to the morning ('' when none). */
 export function noticeMorningLine(items: readonly NoticeFacts[], today: string): string {
   if (items.length === 0) return ''
@@ -360,7 +374,7 @@ async function claimNotices(userId: string, channel: NoticePush, stamp: string):
   }
   return ((data ?? []) as AnyRecord[]).map(r => ({
     id: String(r.id), kind: r.kind as NoticeKind, service: (r.service ?? null) as NoticeService | null,
-    due_on: typeof r.due_on === 'string' ? r.due_on : null, subject: typeof r.subject === 'string' ? r.subject.slice(0, 120) : null,
+    due_on: typeof r.due_on === 'string' ? r.due_on : null, subject: noticePushSubject(typeof r.subject === 'string' ? r.subject : null),
   }))
 }
 

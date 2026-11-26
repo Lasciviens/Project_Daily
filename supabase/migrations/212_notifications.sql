@@ -10,12 +10,16 @@
 --     push_weekly; no row = the kind's default (notification_default_channel, the same as the code registry —
 --     verify-db-notifications compares them). notification_feed(): the bell's read, with the thing's name.
 --     First producer: a followed film's new title or trailer (media_follow_events, 119) — only when the server wrote the
---     event (the browser can write that table; a row it writes makes no notice). A removed event takes its notice along.
+--     event (an allow-list of the server's roles: the browser can write that table, and a row it writes makes no notice). A
+--     removed event takes its notice along. Film news has one "read": What's new's seen_at and the notice's read_at follow
+--     each other both ways (the notice made unread again makes the event new again).
 -- B2. A nightly job (notifications_daily) warns 14, 7 and 1 days before a PlayStation sign-in (psn_tokens.npsso_expires_at)
 --     or the Claude API key (integration_expiry, typed by the owner) ends; the dedupe key holds the end day and the mark,
 --     so each warning comes once and a renewed sign-in starts over. notify_service_problem(): the sync functions (Trakt,
 --     Strava, Google, iCloud) and `claude` call it when the service rejects the stored sign-in or key — at most one per
---     service and Oslo day, and none while an unread one is there. integration_expiry keeps only the owner's dates and,
+--     service and Oslo day, and none while an unread one is there. Reconnecting settles it: a fresh sign-in written to
+--     trakt_tokens, strava_tokens, user_calendar_tokens or icloud_credentials puts that service's failure notice away, and
+--     `claude` calls notify_service_settle after a call Anthropic answered. integration_expiry keeps only the owner's dates and,
 --     if typed, the key's last 4 characters: never the key.
 -- B3. Delivery: notifications_claim / notifications_unclaim (push-send's, as 160's reminder claim); pg_cron
 --     'lascis-notifications-push' every 15 minutes calls push-send {trigger: 'notifications'} only when a push_now item
@@ -209,8 +213,9 @@ grant execute on function public.notification_feed(integer, timestamptz, boolean
 -- ── B1. First producer: a followed film's news ───────────────────────────────
 
 -- Only an event the server wrote (trakt-api's follow check, the service role) becomes a notice: the browser can write
--- media_follow_events (119's policy), and a row it writes must not make one. SECURITY INVOKER, so current_user is the
--- writer; notify_row is the service role's.
+-- media_follow_events (119's policy), and a row it writes must not make one. An allow-list of the server's roles (guardian,
+-- 26.11.2026: a role added later is refused until named here). SECURITY INVOKER, so current_user is the writer;
+-- notify_row is the service role's.
 create or replace function public.media_follow_events_notify()
 returns trigger
 language plpgsql
@@ -218,7 +223,7 @@ security invoker
 set search_path = ''
 as $$
 begin
-  if current_user in ('authenticated', 'anon') then return null; end if;
+  if current_user not in ('service_role', 'postgres', 'supabase_admin') then return null; end if;
   perform public.notify_row(new.user_id, case new.kind when 'trailer' then 'follow_trailer' else 'follow_new_title' end,
                             'media_follow_event', new.id, null, null, 'follow:' || new.id::text);
   return null;
@@ -248,6 +253,56 @@ drop trigger if exists trg_media_follow_events_unnotify on public.media_follow_e
 create trigger trg_media_follow_events_unnotify
   after delete on public.media_follow_events
   for each row execute function public.media_follow_events_unnotify();
+
+-- One "read" for film news (owner-critic, 26.11.2026): What's new's seen_at and the notice's read_at follow each other.
+-- An event marked seen (Media → Lists) puts its notice away (read). SECURITY INVOKER: the browser may set read_at on its
+-- own notices; the query names the event's own user.
+create or replace function public.media_follow_events_seen()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if new.seen_at is not null and old.seen_at is null then
+    update public.notifications n set read_at = new.seen_at
+     where n.user_id = new.user_id and n.link_kind = 'media_follow_event' and n.link_id = new.id and n.read_at is null;
+  end if;
+  return null;
+end
+$$;
+revoke all on function public.media_follow_events_seen() from public, anon, authenticated;
+drop trigger if exists trg_media_follow_events_seen on public.media_follow_events;
+create trigger trg_media_follow_events_seen
+  after update of seen_at on public.media_follow_events
+  for each row execute function public.media_follow_events_seen();
+
+-- A film notice read (or opened) marks its event seen; made unread again (its Undo), the event is new again. A trigger
+-- function (never callable on its own), SECURITY DEFINER so it works whatever the browser's rights on the events are:
+-- it touches only the one event the notice links to, and only the notice's own user's.
+create or replace function public.notifications_follow_seen()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.link_kind is distinct from 'media_follow_event' or new.link_id is null then return null; end if;
+  if new.read_at is not null and old.read_at is null then
+    update public.media_follow_events e set seen_at = new.read_at
+     where e.id = new.link_id and e.user_id = new.user_id and e.seen_at is null;
+  elsif new.read_at is null and old.read_at is not null then
+    update public.media_follow_events e set seen_at = null
+     where e.id = new.link_id and e.user_id = new.user_id and e.seen_at is not null;
+  end if;
+  return null;
+end
+$$;
+revoke all on function public.notifications_follow_seen() from public, anon, authenticated;
+drop trigger if exists trg_notifications_follow_seen on public.notifications;
+create trigger trg_notifications_follow_seen
+  after update of read_at on public.notifications
+  for each row execute function public.notifications_follow_seen();
 
 -- ── B2. The owner's dates for a key the app can't read ───────────────────────
 
@@ -423,6 +478,57 @@ end
 $$;
 revoke all on function public.notify_service_problem(uuid, text) from public, anon, authenticated;
 grant execute on function public.notify_service_problem(uuid, text) to service_role;
+
+-- Reconnecting settles the failure: a fresh sign-in written for Trakt, Strava, Google or Apple Calendar (a connect, or a
+-- refresh that worked) puts that service's unread "sign in again" notice away. SECURITY INVOKER: these tables are the
+-- service role's.
+create or replace function public.sign_in_settle()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_service text := case tg_table_name when 'trakt_tokens' then 'trakt' when 'strava_tokens' then 'strava'
+                      when 'user_calendar_tokens' then 'google' when 'icloud_credentials' then 'icloud' end;
+begin
+  if v_service is null then return null; end if;
+  update public.notifications n set read_at = now()
+   where n.user_id = new.user_id and n.service = v_service and n.read_at is null and n.kind = 'sign_in_failed';
+  return null;
+end
+$$;
+revoke all on function public.sign_in_settle() from public, anon, authenticated;
+drop trigger if exists trg_trakt_tokens_settle on public.trakt_tokens;
+create trigger trg_trakt_tokens_settle after insert or update of refresh_token on public.trakt_tokens
+  for each row execute function public.sign_in_settle();
+drop trigger if exists trg_strava_tokens_settle on public.strava_tokens;
+create trigger trg_strava_tokens_settle after insert or update of refresh_token on public.strava_tokens
+  for each row execute function public.sign_in_settle();
+drop trigger if exists trg_user_calendar_tokens_settle on public.user_calendar_tokens;
+create trigger trg_user_calendar_tokens_settle after insert or update of refresh_token on public.user_calendar_tokens
+  for each row execute function public.sign_in_settle();
+drop trigger if exists trg_icloud_credentials_settle on public.icloud_credentials;
+create trigger trg_icloud_credentials_settle after insert or update of app_password on public.icloud_credentials
+  for each row execute function public.sign_in_settle();
+-- Anthropic answering again: `claude` calls this after a call that went well (never a trigger on the ledger, 194's rule).
+-- The service is an allow-list; only that account's unread failure notice of the service is put away.
+create or replace function public.notify_service_settle(p_user uuid, p_service text)
+returns integer
+language sql
+security invoker
+set search_path = ''
+as $$
+  with settled as (
+    update public.notifications n set read_at = now()
+     where n.user_id = p_user and n.read_at is null
+       and p_service in ('trakt', 'strava', 'google', 'icloud', 'anthropic') and n.service = p_service
+       and n.kind = case p_service when 'anthropic' then 'claude_key_rejected' else 'sign_in_failed' end
+    returning 1)
+  select count(*)::integer from settled
+$$;
+revoke all on function public.notify_service_settle(uuid, text) from public, anon, authenticated;
+grant execute on function public.notify_service_settle(uuid, text) to service_role;
 
 -- ── B3. Delivery (push-send's) ───────────────────────────────────────────────
 

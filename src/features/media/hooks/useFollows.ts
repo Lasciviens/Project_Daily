@@ -22,7 +22,8 @@ export function useMarkFollowEventsSeen() {
     action: 'media_follow_seen',
     successMessage: (_r, ids) => `${ids.length} marked seen`,
     mutationFn: (ids: string[]) => markEventsSeen(ids),
-    invalidates: [qk.mediaFollows.events()],
+    // A seen event's notice is read too (212), so the bell refreshes with What's new.
+    invalidates: [qk.mediaFollows.events(), qk.notifications.all],
   })
 }
 

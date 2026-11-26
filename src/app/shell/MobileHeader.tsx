@@ -31,7 +31,8 @@ export function MobileHeader() {
         hidden && '-translate-y-full -mb-[calc(var(--app-header-h)+env(safe-area-inset-top))]',
       )}
     >
-      <div className="flex h-header items-center gap-1 pl-4 pr-1.5">
+      {/* At 430 px and below the icons sit tighter (40 px, no gap), so the longest page name, "Notifications", fits. */}
+      <div className="flex h-header items-center gap-1 pl-4 pr-1.5 max-[430px]:gap-0 max-[430px]:pl-3 max-[430px]:[&_.icon-btn]:w-10">
         <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="h-7 w-7 shrink-0" />
         <Truncate as="p" className="ml-1.5 flex-1 text-head font-bold tracking-tight text-fg">{routeTitle(pathname)}</Truncate>
         <IconButton label="Search" onClick={openCommandBar}><Search strokeWidth={1.9} aria-hidden /></IconButton>

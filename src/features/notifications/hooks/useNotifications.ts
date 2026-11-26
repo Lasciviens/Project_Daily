@@ -11,6 +11,9 @@ import { fetchClaudeKeyDates, saveClaudeKeyDates } from '../api/keyExpiryApi'
 import { NOTICE_KINDS, type NoticeChannel, type NoticeKind } from '../notificationKinds'
 import { formatDate } from '../../../shared/utils/dateFormat'
 
+// A film notice and its What's new event share one "read" (212's triggers), so a read refreshes both.
+const NOTICE_READS = [qk.notifications.all, qk.mediaFollows.events()] as const
+
 /** The bell's few newest notices. */
 export const DROPDOWN_LIMIT = 8
 /** One page of the Notifications page (older ones load with Show more). */
@@ -48,7 +51,7 @@ export function useMarkNotice() {
     action: 'notice_read_undo',
     successMessage: (_r: void, v: { id: string; read: boolean }) => (v.read ? 'Read' : 'Unread'),
     mutationFn: (v: { id: string; read: boolean }) => setNoticesRead([v.id], v.read),
-    invalidates: [qk.notifications.all],
+    invalidates: NOTICE_READS,
   })
   return useMutationWithFeedback({
     action: 'notice_read',
@@ -57,7 +60,7 @@ export function useMarkNotice() {
     onSuccess: (_r: void, v: { id: string; read: boolean }) => {
       toast.undo(v.read ? 'Marked read' : 'Marked unread', () => back.mutate({ id: v.id, read: !v.read }))
     },
-    invalidates: [qk.notifications.all],
+    invalidates: NOTICE_READS,
   })
 }
 
@@ -67,7 +70,7 @@ export function useMarkAllNoticesRead() {
     action: 'notice_all_read_undo',
     successMessage: 'Unread again',
     mutationFn: (ids: string[]) => setNoticesRead(ids, false),
-    invalidates: [qk.notifications.all],
+    invalidates: NOTICE_READS,
   })
   return useMutationWithFeedback({
     action: 'notice_all_read',
@@ -76,7 +79,7 @@ export function useMarkAllNoticesRead() {
     onSuccess: (ids: string[]) => {
       if (ids.length) toast.undo(`${ids.length} marked read`, () => back.mutate(ids))
     },
-    invalidates: [qk.notifications.all],
+    invalidates: NOTICE_READS,
   })
 }
 
@@ -86,7 +89,7 @@ export function useActOnNotice() {
     action: 'notice_acted',
     silent: 'opening the thing is the visible result',
     mutationFn: (id: string) => setNoticeActed(id),
-    invalidates: [qk.notifications.all],
+    invalidates: NOTICE_READS,
   })
 }
 
