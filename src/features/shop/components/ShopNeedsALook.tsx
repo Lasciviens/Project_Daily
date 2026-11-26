@@ -5,7 +5,8 @@ import { useNeedsALook } from '../hooks/useNeedsALook'
 import { useClearSignalState, useDismissSignal, useSnoozeSignal } from '../hooks/useShopSignals'
 import type { Look, RecordFact } from '../shopSuggestions'
 import { NeedsALookButton, type LookActions } from './NeedsALook'
-import type { ShopItem } from '../types'
+import type { ShopItem, ShopSignal } from '../types'
+import { usePutNoticeAway } from '../hooks/useShopNotices'
 
 /**
  * Needs a look's header button with its actions wired, the same on every Shop view (owner, 23.11.2026): a row opens
@@ -23,20 +24,25 @@ export function ShopNeedsALook({ items, isLoading, openThing }: {
   const snooze = useSnoozeSignal()
   const dismiss = useDismissSignal()
   const clear = useClearSignalState()
-  const at = (look: Look) => ({ item_id: look.itemId, signal: look.kind, subject: look.subject })
+  const putAway = usePutNoticeAway()
+  // A server notice (211) is not a signal: it is read, never snoozed or remembered by 190's states.
+  const at = (look: Look) => ({ item_id: look.itemId, signal: look.kind as ShopSignal, subject: look.subject })
+  const signal = (look: Look) => look.kind !== 'bought_draft'
 
   const actions: LookActions = {
     onOpen: look => {
-      if (look.itemId) openThing(look.itemId, look.action === 'value' ? 'value' : undefined)
+      // A purchase a plan bought: its record at the purchase, to check what the draft left for the owner.
+      if (look.kind === 'bought_draft' && look.itemId) modal.open({ kind: 'shop-item', id: look.itemId, section: 'purchase' })
+      else if (look.itemId) openThing(look.itemId, look.action === 'value' ? 'value' : undefined)
     },
     onBought: look => {
       const item = items.find(i => i.id === look.itemId)
       if (item) buy(item)
     },
     onClaim: look => { if (look.itemId) modal.open({ kind: 'shop-claim', id: look.itemId }) },
-    onSnooze: look => { if (look.snoozeTo) snooze.mutate({ ...at(look), until: look.snoozeTo }) },
-    onGotIt: look => dismiss.mutate({ ...at(look), signature: look.signature }),
-    onShowAgain: look => clear.mutate(at(look)),
+    onSnooze: look => { if (look.snoozeTo && signal(look)) snooze.mutate({ ...at(look), until: look.snoozeTo }) },
+    onGotIt: look => (signal(look) ? dismiss.mutate({ ...at(look), signature: look.signature }) : look.subject && putAway.mutate(look.subject)),
+    onShowAgain: look => { if (signal(look)) clear.mutate(at(look)) },
     onOpenThing: (id, fact) => openThing(id, fact),
   }
   return <NeedsALookButton {...data} today={todayStr()} actions={actions} />

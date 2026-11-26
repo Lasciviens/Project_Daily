@@ -1,6 +1,8 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { ArrowRight, CalendarPlus, Check, ExternalLink, MapPin, MoreHorizontal, Pencil, Trash2, Undo2, Ban } from 'lucide-react'
+import { ArrowRight, Check, ExternalLink, MapPin, MoreHorizontal, Pencil, Trash2, Undo2, Ban } from 'lucide-react'
 import { ToneDot, TonePill, Truncate } from '../../../shared/ui'
+import { PlanThingButton } from '../../items/components/LinkedPlanChips'
+import { useOpenPlan } from '../../items/usePlanThis'
 import { resolveWishWindow, wishPeriodLabel } from '../wishRules'
 import { SCHEDULED_TONE, WINDOW_TONE, WISH_PRIORITY_TONE } from '../wishTones'
 import type { WishItem, WishStatus } from '../types'
@@ -9,17 +11,18 @@ interface Props {
   wish:      WishItem
   today:     string
   onEdit:    () => void
-  onPlan:    () => void
   onStatus:  (status: WishStatus) => void
   onDelete:  () => void
 }
 
-export function WishCard({ wish, today, onEdit, onPlan, onStatus, onDelete }: Props) {
+export function WishCard({ wish, today, onEdit, onStatus, onDelete }: Props) {
   const state    = resolveWishWindow(wish, today)
   const period   = wishPeriodLabel(wish)
   const isDone   = wish.status === 'done'
   const isClosed = isDone || wish.status === 'dropped'
   const place    = [wish.city, wish.country].filter(Boolean).join(', ')
+  // The same read as the Plan button's (one query): while the plan is open its chip says "Planned …" already.
+  const planned  = !!useOpenPlan('wish', wish.id).data
 
   return (
     <div className={`card flex flex-col gap-2 p-3 ${isClosed ? 'opacity-60' : state === 'passed' ? 'opacity-80' : ''}`}>
@@ -60,7 +63,7 @@ export function WishCard({ wish, today, onEdit, onPlan, onStatus, onDelete }: Pr
 
       <div className="ml-4 flex flex-wrap items-center gap-1.5">
         {period && <TonePill tone={WINDOW_TONE[state]}>{period}</TonePill>}
-        {wish.status === 'planned' && (
+        {wish.status === 'planned' && !planned && (
           <span title="A task was created from this wish — the wish stays here as the memory">
             <TonePill tone={SCHEDULED_TONE}><ArrowRight aria-hidden className="h-3 w-3" /> scheduled</TonePill>
           </span>
@@ -81,10 +84,9 @@ export function WishCard({ wish, today, onEdit, onPlan, onStatus, onDelete }: Pr
           {isDone ? <><Undo2 aria-hidden className="h-4 w-4" /> Not done yet</> : <><Check aria-hidden className="h-4 w-4" /> Done</>}
         </button>
         {!isClosed && (
-          <button type="button" onClick={onPlan} title="Plan it — turn it into a real task — the wish stays on this list"
-            className="btn-ghost btn-sm flex-1 justify-center text-accent-600">
-            <CalendarPlus aria-hidden className="h-4 w-4" /> Plan it
-          </button>
+          // THE Plan helper: a new plan linked to the wish, or "Planned 28.11.2026" that opens its open plan.
+          <PlanThingButton thing={{ kind: 'wish', id: wish.id, title: wish.title }} label="Plan it" variant="ghost"
+            className="flex-1 justify-center text-accent-600" tip="Plan it — turn it into a real task — the wish stays on this list" />
         )}
       </div>
     </div>

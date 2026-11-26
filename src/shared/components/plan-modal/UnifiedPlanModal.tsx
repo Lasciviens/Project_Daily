@@ -21,6 +21,14 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-26 · v31 · Linked plans (Phase 3 A2–A5, migration 211): the
+//                    header shows a "Linked" chip for what the item plans
+//                    (its task's link column, or a new plan's source.link) —
+//                    a tap opens the thing (movie, show, shop thing, wish,
+//                    match, game, book, routine). Every Plan button builds
+//                    its request in items/planThis through usePlanThis; a
+//                    football match goes as {kind:'football', match} so its
+//                    record is written with the item in one transaction.
 //  2026-11-25 · v30 · A task's link (Phase 3 step A1, migration 210): a
 //                    caller's `source.link` ({kind, id[, season, episode]})
 //                    goes with the one save as app_save_item's p_link
@@ -698,6 +706,8 @@ import { parseQuickAdd, type QuickAddResult } from '../../../features/items/quic
 import { effectiveGoogleTarget, hasGoogleCalendar, hasGoogleTasks, itemFromRows, storedGoogleTarget } from '../../../features/items/sheetRules'
 import type { ItemInput, SavedItem } from '../../../features/items/itemTypes'
 import { ModalShell } from '../../modals/ModalShell'
+import { LinkedChip } from '../../../features/items/components/LinkedPlanChips'
+import { screenLinkOf } from '../../../features/items/linkKinds'
 import { entityModal } from '../../modals/useEntityModal'
 import { Button, SegmentedControl, Skeleton } from '../../ui'
 import { todayStr } from '../../utils/dateUtils'
@@ -1124,8 +1134,11 @@ export function UnifiedPlanModal({
   const scopeSwitch = scheduleBlock && occurrenceDate && !blocked
     ? <SegmentedControl size="xs" options={SCOPES} value={form.scope} onChange={switchTo} />
     : undefined
+  // What this item plans (210/211): the Linked chip opens the thing.
+  const linked = screenLinkOf(task, source?.link)
   const headerActions = (
     <>
+      {linked && <LinkedChip link={linked} />}
       {scopeSwitch}
       {!editMode && !blocked && (
         <Button variant="primary" size="sm" onClick={() => { void handleSave() }} loading={saving}

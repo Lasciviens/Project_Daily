@@ -1,6 +1,6 @@
 import type { RecordFact } from '../../shopSuggestions'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
-import { ArrowRight, Ban, CalendarPlus, Check, HandCoins, ListPlus, ListX, Plus, Sparkles, TriangleAlert, Undo2 } from 'lucide-react'
+import { Ban, CalendarCheck, CalendarClock, CalendarPlus, Check, HandCoins, ListPlus, ListX, Plus, ShieldAlert, Sparkles, TriangleAlert, Undo2 } from 'lucide-react'
 import { useEntityModal } from '../../../../shared/modals'
 import type { Tone } from '../../../../shared/ui'
 import { todayStr } from '../../../../shared/utils/dateUtils'
@@ -9,7 +9,9 @@ import { useBuyNow, useDeleteShopItems, useShopCategories, useShopItems, useUpda
 import { useFillRatesNow, useShopLinks, useShopMoney, useUndoSale } from '../../hooks/useShopMoney'
 import { useQuietCheck, useWatchMap } from '../../hooks/useShopPrices'
 import { useSaveCategory } from './useSaveCategory'
-import { categoryPath, listOf, planDefaults } from '../../shopModel'
+import { categoryPath, listOf } from '../../shopModel'
+import { useOpenPlan, usePlanThis } from '../../../items/usePlanThis'
+import type { ShopPlanPurpose } from '../../../items/planThis'
 import { DISPOSAL_LABEL, isPossession } from '../../ownModel'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { chainFor } from '../../chainModel'
@@ -48,6 +50,8 @@ export const STATE_PILL: Record<string, { label: string; tone: Tone }> = {
  */
 export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, onClose: () => void, openSection?: 'money' | 'purchase') {
   const modal = useEntityModal()
+  const planThis = usePlanThis()
+  const openPlan = useOpenPlan('shop_item', item.id).data
   const today = todayStr()
   const { data: items = [] } = useShopItems()
   const { data: categories = [] } = useShopCategories()
@@ -123,22 +127,21 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
     if (r === 'deleted' || r === 'gone') onClose()
   }
 
-  function plan() {
-    modal.open({
-      kind: 'task',
-      defaults: { ...planDefaults(item), domain: 'personal' },
-      // The task and its link in one save (210); the database keeps shop_items.task_id in step.
-      source: { link: { kind: 'shop_item', id: item.id } },
-    })
+  // THE Plan helper (usePlanThis): the thing's open plan, or a new one linked to it — to buy it, or a date of a thing
+  // you own (return by, complain by). While it has an open plan, one chip "Planned 28.11.2026" opens it instead.
+  const plan = (purpose: ShopPlanPurpose = 'buy', due?: string | null) => {
+    void planThis({ kind: 'shop_item', id: item.id, title: item.title, plannedDate: item.planned_date, notes: item.notes, purpose, due })
   }
+  const planned: RecordAction | null = openPlan
+    ? { key: 'planned', label: openPlan.day ? `Planned ${formatDate(openPlan.day)}` : 'Planned', tip: `Planned${openPlan.day ? ` ${formatDate(openPlan.day)}` : ''} — open “${openPlan.title}”`, icon: <CalendarCheck />,
+        onClick: () => modal.open({ kind: 'task', id: openPlan.taskId }) }
+    : null
 
   // One row of actions. Where the record is narrow it keeps one line: the first ones as buttons, the rest behind ⋯.
   const actions: RecordAction[] = []
   if (state === 'buy') {
     actions.push({ key: 'bought', label: 'Bought', tip: 'Bought — fill in how and where', icon: <Check />, primary: true, onClick: then(() => buy(item)) })
-    actions.push(item.task_id
-      ? { key: 'task', label: 'Task', tip: 'Task — open it', icon: <ArrowRight />, onClick: () => modal.open({ kind: 'task', id: item.task_id as string }) }
-      : { key: 'plan', label: 'Plan', tip: 'Plan it — a task in the calendar', icon: <CalendarPlus />, onClick: then(plan) })
+    actions.push(planned ?? { key: 'plan', label: 'Plan', tip: 'Plan it — a task in the calendar', icon: <CalendarPlus />, onClick: then(() => plan()) })
     if (!item.option_for && !item.accessory_of) {
       actions.push({ key: 'errand', label: 'Errand', tip: item.errand ? 'Errand — off the errand list' : 'Errand — on the next one', icon: item.errand ? <ListX /> : <ListPlus />, iconOnly: true, ghost: true, more: true,
         onClick: then(() => update.mutate({ id: item.id, patch: { errand: !item.errand }, quiet: true })) })
@@ -152,6 +155,16 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
   if (state === 'mine') {
     actions.push({ key: 'sell', label: 'Sell', tip: 'Sell or give away', icon: <HandCoins />, primary: true, onClick: then(() => modal.open({ kind: 'shop-sell', id: item.id })) })
     if (!item.accessory_of) actions.push({ key: 'acc', label: 'Accessory', tip: 'Accessory — add one', icon: <Plus />, onClick: () => modal.open({ kind: 'shop-accessory', itemId: item.id }) })
+    // A date of a thing you own, planned (owner, 26.11.2026): return by, complain by — while that day is still ahead.
+    if (planned) actions.push({ ...planned, more: true })
+    else {
+      if (item.return_by && item.return_by >= today) {
+        actions.push({ key: 'returnBy', label: 'Return by', tip: `Return by ${formatDate(item.return_by)} — plan it`, icon: <CalendarClock />, more: true, onClick: then(() => plan('return', item.return_by)) })
+      }
+      if (item.warranty_until && item.warranty_until >= today) {
+        actions.push({ key: 'complainBy', label: 'Complain by', tip: `Complain by ${formatDate(item.warranty_until)} — plan it`, icon: <ShieldAlert />, more: true, onClick: then(() => plan('complain', item.warranty_until)) })
+      }
+    }
     actions.push({ key: 'wrong', label: 'Problem', tip: 'Problem — something\'s wrong: complain or claim money back', icon: <TriangleAlert />, iconOnly: true, ghost: true, more: true, onClick: then(() => modal.open({ kind: 'shop-complaint', id: item.id })) })
   }
   if (state !== 'general') actions.push({ key: 'tidy', label: 'Tidy', tip: 'Tidy up info with AI — name, brand, model, category', icon: <Sparkles />, iconOnly: true, ghost: true, more: true, onClick: () => modal.open({ kind: 'shop-tidy', ids: [item.id] }) })

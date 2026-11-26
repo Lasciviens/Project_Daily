@@ -12,7 +12,7 @@ import { useTrainingPlanActions } from '../hooks/useTrainingPlanActions'
 import { useSessionFirstDay } from '../hooks/useTrainingPlans'
 import { movesPastWeek } from '../plan/sessionState'
 import { useSkipTrainingSession } from '../hooks/useTrainingSkips'
-import { openPlanRoutine } from '../planTraining'
+import { usePlanThis } from '../../items/usePlanThis'
 import { SKIP_REASON_CHIPS, SKIP_REASON_MAX, composeSkipReason, isValidSkipReason } from '../plan/skippedRoutines'
 import type { TrainingPlanRef } from '../api/trainingPlanApi'
 
@@ -105,6 +105,7 @@ export function TrainingPlanMoveModal({ request, onClose }: EntityModalProps<'tr
  */
 export function TrainingPlanSkipModal({ request, onClose }: EntityModalProps<'training-plan-skip'>) {
   const { plan, missed } = request
+  const planThis = usePlanThis()
   const actions = useTrainingPlanActions()
   const skipMissed = useSkipTrainingSession()
   const [chip, setChip] = useState<string | null>(null)
@@ -125,7 +126,7 @@ export function TrainingPlanSkipModal({ request, onClose }: EntityModalProps<'tr
   const instead = plan
     ? <Button block className="sm:w-auto" icon={<CalendarClock />} disabled={busy} onClick={() => { onClose(); actions.openMove(plan) }} tip="Move it instead">Move</Button>
     : missed
-      ? <Button block className="sm:w-auto" icon={<CalendarPlus />} disabled={busy} onClick={() => { onClose(); openPlanRoutine({ id: missed.routineId, title: missed.title }, { date: todayStr() }) }} tip="Plan it instead">Plan</Button>
+      ? <Button block className="sm:w-auto" icon={<CalendarPlus />} disabled={busy} onClick={() => { onClose(); void planThis({ kind: 'training', routine: { id: missed.routineId, title: missed.title }, date: todayStr() }) }} tip="Plan it instead">Plan</Button>
       : null
 
   return (

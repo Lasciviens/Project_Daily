@@ -2,6 +2,8 @@
 // a club, a player, a match. Each loads its own data by id from ESPN (cached) and
 // renders inside an ErrorBoundary — ESPN's shapes aren't guaranteed.
 import { useState, type ReactNode } from 'react'
+import { PlannedChip } from '../../items/components/LinkedPlanChips'
+import { useOpenPlan } from '../../items/usePlanThis'
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/react'
 import { CalendarCheck, CalendarPlus, ChevronDown, ExternalLink, Search } from 'lucide-react'
 import type { EntityModalProps } from '../../../shared/modals/types'
@@ -17,7 +19,7 @@ import {
 } from '../footballModel'
 import { isFollowed, scoreText, SUGGESTIONS } from '../footballView'
 import {
-  useFollow, useFollows, useFootballSearch, useMatchDetail, usePlanIt, usePlannedTasks, useRoster,
+  useFollow, useFollows, useFootballSearch, useMatchDetail, usePlanIt, usePlannedTasks, usePlans, useRoster,
   useTeamInfo, useTeamResults,
 } from '../hooks/useFootball'
 import type { NewFollowInput } from '../types'
@@ -245,6 +247,9 @@ export function FootballMatchModal({ request, onClose }: EntityModalProps<'footb
   const modal = useEntityModal()
   const planIt = usePlanIt()
   const taskId = usePlannedTasks().get(request.eventId)
+  // Its record (163): while its plan is open, the reverse chip "Planned 28.11.2026" (the plan's own day) opens it.
+  const planId = usePlans().data?.find(p => p.event_id === request.eventId && p.task_id)?.id ?? null
+  const openPlan = useOpenPlan('football', planId)
   const d = q.data
   if (!d) {
     if (q.isSuccess) return <ModalShell onClose={onClose} title="Can't open this match"><p className="text-body text-fg-2">ESPN has no details for this match.</p></ModalShell>
@@ -252,9 +257,9 @@ export function FootballMatchModal({ request, onClose }: EntityModalProps<'footb
   }
   const m = d.match
   const { date, time } = osloParts(m.kickoff)
-  const footer = taskId ? (
+  const footer = taskId ? (openPlan.data ? <PlannedChip kind="football" id={planId} /> : (
     <Button icon={<CalendarCheck />} onClick={() => modal.open({ kind: 'task', id: taskId })} tip="Planned — open it in your day">Planned</Button>
-  ) : m.state === 'pre' && m.league ? (
+  )) : m.state === 'pre' && m.league ? (
     <Button variant="primary" icon={<CalendarPlus />} onClick={() => { void planIt(m) }}>Plan it</Button>
   ) : undefined
   return (

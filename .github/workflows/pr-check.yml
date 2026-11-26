@@ -528,6 +528,14 @@ jobs:
         run: node scripts/verify-db-task-links.mjs
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      # Migration 211 (linked plans): each app-owned effect once and undone on reopen (only while unchanged), the
+      # syncs that close movie, book and game plans (a hand tick writes no record), one training identity (Hevy's
+      # Apple row linked, a Watch walk never), the notifications table (server-written, read_at only), football's
+      # Plan it in one save. 211 runs twice; no task hidden.
+      - name: Linked plans database scenarios
+        run: node scripts/verify-db-linked-plans.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
   # Every scripts/verify-*.cjs|mjs, several at a time, as its own job beside
   # the build above, so it adds no waiting time unless it is slower than the

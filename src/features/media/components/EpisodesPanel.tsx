@@ -11,9 +11,8 @@ import { useDeleteWatches, WAITS_FOR_TRAKT } from '../hooks/useWatches'
 import { useWatchPick } from '../hooks/useWatchPick'
 import type { WatchPickAnswer } from './WatchPickSheet'
 import { CalendarDays, CalendarPlus, CalendarRange, Check, History, Hourglass, ListChecks, RotateCcw, Undo2 } from 'lucide-react'
-import { useEntityModal } from '../../../shared/modals'
 import { Button, SectionLabel, Skeleton, TonePill, Truncate } from '../../../shared/ui'
-import { ceilToQuarter } from '../../../shared/components/plan-modal/planModal.config'
+import { usePlanThis } from '../../items/usePlanThis'
 import type { TMDBTVFull, WatchedEpisode } from '../types'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { todayStr } from '../../../shared/utils/dateUtils'
@@ -58,7 +57,7 @@ export function EpisodesPanel({ tv, tvEntryId, rewatch = null }: Props) {
   const unmark                          = useUnmarkEpisodes()
   // Placeholders (149's backfill) wait for Trakt's dates until Trakt's whole history has been read.
   const traktWaits                  = useWatchesWaitForTrakt()
-  const modal                           = useEntityModal()
+  const planThis                        = usePlanThis()
   const qc                              = useQueryClient()
   const { ask, askMany, dialog }        = useWatchedWhenPrompt()
   const pick$                           = useWatchPick()
@@ -270,34 +269,12 @@ export function EpisodesPanel({ tv, tvEntryId, rewatch = null }: Props) {
     })
   }
 
-  // Plan pre-fills from the selected episodes.
+  // Plan pre-fills from the selected episodes (items/planThis: title, summed runtimes, one episode's link).
   const selectedEpisodes = (seasonData?.episodes ?? []).filter(e => selected.has(e.episode_number))
-  const defaultRuntime = tv.episode_run_time?.[0] ?? 45
-  const planTitle = selectedEpisodes.length === 1
-    ? `📺 ${tv.name} · S${String(season).padStart(2, '0')}E${String(selectedEpisodes[0].episode_number).padStart(2, '0')} "${selectedEpisodes[0].name}"`
-    : `📺 ${tv.name} · S${String(season).padStart(2, '0')} (${selectedEpisodes.length} ep)`
-  // Sum real runtimes, then round UP to the next 15-min quarter (44→45, 91→105).
-  const rawDuration  = selectedEpisodes.reduce((sum, ep) => sum + (ep.runtime ?? defaultRuntime), 0) || defaultRuntime
-  const planDuration = ceilToQuarter(rawDuration)
-
   function openPlan() {
-    modal.open({
-      kind: 'time-block',
-      defaults: { title: planTitle, date: TODAY, duration: planDuration, category: 'media', color: 'blue' },
-      source: {
-        sourceType: 'tv_episode',
-        sourceId: tvEntryId,
-        taskSourceType: 'tv_series',
-        // Only one specific episode is auto-matched when marked watched; a
-        // "watch 3 episodes" block is deliberately left alone (migration 043).
-        episodeInfo: selectedEpisodes.length === 1
-          ? { seasonNumber: season, episodeNumber: selectedEpisodes[0].episode_number }
-          : undefined,
-        // The task's link (210): one episode, or the show for a batch.
-        link: selectedEpisodes.length === 1
-          ? { kind: 'tv', id: tvEntryId, season, episode: selectedEpisodes[0].episode_number }
-          : { kind: 'tv', id: tvEntryId },
-      },
+    void planThis({
+      kind: 'tv', id: tvEntryId, show: tv.name, season, date: TODAY, runtimeMinutes: tv.episode_run_time?.[0] ?? 45,
+      episodes: selectedEpisodes.map(e => ({ number: e.episode_number, name: e.name, runtime: e.runtime })),
     })
     setSelected(new Set())
   }

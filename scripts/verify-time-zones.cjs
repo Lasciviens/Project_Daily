@@ -82,7 +82,7 @@ eq([D.rowTimeZone({ item: { block } }), D.rowTimeZone({ item: { template: { time
   ok(/const abroad = !sameClock\(phone, SERVER_EVENT_TIME_ZONE\)/.test(chip) && /for \(const z of \[saved, phone, SERVER_EVENT_TIME_ZONE\]\)/.test(chip),
     'the item screen\'s Time Zone row shows while the phone is away from the home clock and offers the item\'s zone, the phone\'s and Oslo\'s (one per clock)')
 }
-ok(/timeZone: MATCH_TIME_ZONE/.test(src('src/features/football/hooks/useFootball.ts')) && (src('src/features/football/footballModel.ts').match(/timeZone: MATCH_TIME_ZONE/g) ?? []).length === 2,
+ok(/timeZone: MATCH_TIME_ZONE/.test(src('src/features/items/planThis.ts')) && (src('src/features/football/footballModel.ts').match(/timeZone: MATCH_TIME_ZONE/g) ?? []).length === 2,
   'a football plan (Plan it, a subscription, a moved kick-off) is on Oslo\'s clock and says so — its time is read there (osloParts)')
 ok(/zoneTag\(rowTimeZone\(row\)\)/.test(src('src/features/daily/components/DayAgendaRows.tsx')),
   'the time column shows the zone of a slot or plan whose clock isn\'t the phone\'s')

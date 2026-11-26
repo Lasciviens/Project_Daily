@@ -6,7 +6,8 @@ import {
 } from '../hooks/useGames'
 import { ConfirmDialog } from '../../../shared/components/ConfirmDialog'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
-import { ModalShell, entityModal } from '../../../shared/modals'
+import { ModalShell } from '../../../shared/modals'
+import { PlanThingButton } from '../../items/components/LinkedPlanChips'
 import { Button } from '../../../shared/ui'
 import { useTestGameStore } from '../test-game/testGameStore'
 import { TgLightbox } from '../test-game/components/TgLightbox'
@@ -524,7 +525,7 @@ export function GameDetailModal({ gameId, onClose, initialEditing = false, class
                   className={`text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg transition-colors ${game.play_order != null ? 'bg-danger-soft text-danger hover:brightness-95' : 'bg-accent-50 text-accent-700 hover:bg-accent-100'}`}>
                   {game.play_order != null ? `✕ Queue #${game.play_order}` : '🎮 Queue'}
                 </button>
-                <button onClick={() => entityModal.open({ kind: 'time-block', defaults: { title: game.title, category: 'games', color: 'blue' } })} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-accent-100 hover:bg-accent-200 text-accent-700 transition-colors">📅 Plan session</button>
+                <PlanThingButton thing={{ kind: 'game', id: game.id, title: game.title }} tip="Plan — a play session on a day" />
                 <button onClick={() => { onClose(); openScrape(game.id); if (location.pathname !== '/games') navigate('/games') }} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-ink-200 text-ink-700 transition-colors">✨ Scrape</button>
                 <button onClick={() => setConfirmDelete(true)} className="text-xs font-semibold px-3 py-1.5 min-h-[44px] rounded-lg bg-ink-100 hover:bg-danger-soft text-ink-500 hover:text-danger transition-colors">🗑 Delete</button>
               </div>

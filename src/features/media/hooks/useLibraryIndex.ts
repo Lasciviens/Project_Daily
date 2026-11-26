@@ -25,3 +25,15 @@ export function useLibraryIndex(): ReadonlyMap<string, LibraryItem> {
     return out
   }, [movies, tv, cinema])
 }
+
+/** A library title's own entry by `movie:<tmdb>` / `tv:<tmdb>` (its id and a movie's runtime): what a Plan links to. */
+export function useLibraryEntries(): ReadonlyMap<string, { entryId: string; runtime: number | null }> {
+  const { data: movies = [] } = useMovies()
+  const { data: tv = [] } = useTVSeries()
+  return useMemo(() => {
+    const out = new Map<string, { entryId: string; runtime: number | null }>()
+    for (const m of movies) if (m.movie?.tmdb_id) out.set(libraryKey('movie', m.movie.tmdb_id), { entryId: m.id, runtime: m.movie.runtime ?? null })
+    for (const s of tv) if (s.tv_series?.tmdb_id) out.set(libraryKey('tv', s.tv_series.tmdb_id), { entryId: s.id, runtime: null })
+    return out
+  }, [movies, tv])
+}

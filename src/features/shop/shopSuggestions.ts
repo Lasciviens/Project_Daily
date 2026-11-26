@@ -15,7 +15,7 @@ import type { DealAhead } from './dealDays'
 import type { ShopItem, ShopPriceWatch, ShopSignal, ShopSignalState } from './types'
 
 /** A row's kind is its signal (migration 190's allow-list): what Snooze and Got it are kept under. */
-export type LookKind = ShopSignal
+export type LookKind = ShopSignal | 'bought_draft'
 /** Danger: due today or tomorrow · warn: money to claim, ≤ 3 days, a "before" price never seen · success: good news · info: dates further out and tidy-up. */
 export type LookTone = 'danger' | 'warn' | 'success' | 'info'
 /** The row's one action: open the thing, mark it bought, open it at its "Could sell for", list the things it counts, or claim money back. */
@@ -94,7 +94,7 @@ export const SNOOZE_DAYS = 7
 const TONE_RANK: Record<LookTone, number> = { danger: 0, warn: 1, success: 2, info: 3 }
 const KIND_RANK: Record<LookKind, number> = {
   return_closing: 0, cheaper_returnable: 1, price_match: 2, at_target: 3, lowest_seen: 4, back_in_stock: 5, fake_before: 6, deal_day: 7,
-  complaint_ending: 8, old_value: 9, old_wish: 10, tidy_up: 11,
+  complaint_ending: 8, old_value: 9, old_wish: 10, tidy_up: 11, bought_draft: -1,
 }
 
 const money = (n: number, currency: string) => formatMoney(Math.round(n), currency)
@@ -386,7 +386,7 @@ export function splitLooks(looks: readonly Look[], states: readonly ShopSignalSt
   const shown: Look[] = [], hidden: Look[] = []
   let deal = false
   for (const l of looks) {
-    if (isSignalHidden(byKey.get(signalStateKey(l.itemId, l.kind, l.subject)), l.signature, today)) hidden.push(l)
+    if (l.kind !== 'bought_draft' && isSignalHidden(byKey.get(signalStateKey(l.itemId, l.kind, l.subject)), l.signature, today)) hidden.push(l)
     else if (l.kind !== 'deal_day' || !deal) { shown.push(l); deal ||= l.kind === 'deal_day' }
   }
   return { shown, hidden }
@@ -401,4 +401,28 @@ export function lookLine(looks: readonly Look[]): LookLine {
   for (const l of looks) if (l.claim) sums.set(l.claim.currency, (sums.get(l.claim.currency) ?? 0) + l.claim.amount)
   const claim = sums.size ? `${[...sums].map(([c, a]) => money(a, c)).join(' + ')} to claim` : null
   return { count: looks.length, tone: looks[0].tone, words: `${looks.length} need${looks.length === 1 ? 's' : ''} a look`, claim }
+}
+
+/** A server notice the Shop shows (211's notifications, `noticesApi.ShopNotice`): only what this list needs. */
+export interface LookNotice { id: string; link_id: string; created_at: string }
+
+/**
+ * The server's notices as Needs a look rows, on top (A5, owner 26.11.2026; the bell comes later): a plan ticked done
+ * bought this thing as a draft — "check the purchase" opens its record at the purchase. Only for a thing still bought
+ * (a draft the untick removed takes its notice with it); Got it reads the notice (`subject` is its id); no Snooze.
+ */
+export function noticeLooks(notices: readonly LookNotice[], items: readonly ShopItem[]): Look[] {
+  const byId = new Map(items.map(i => [i.id, i]))
+  const out: Look[] = []
+  for (const n of notices) {
+    const i = byId.get(n.link_id)
+    if (!i || i.status !== 'bought') continue
+    out.push({
+      key: `bought_draft:${n.id}`, kind: 'bought_draft', tone: 'info', itemId: i.id, subject: n.id, title: i.title,
+      facts: ['Bought through a plan', ...(i.bought_at ? [formatDate(localDay(i.bought_at))] : []), 'check the purchase'],
+      where: null, action: 'open', claim: null, daysLeft: null, order: 0, signature: signalSignature('bought_draft', n.id),
+      things: [], snoozeTo: null,
+    })
+  }
+  return out
 }

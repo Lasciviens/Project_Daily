@@ -5,6 +5,7 @@ import { useEntityModal } from '../../../shared/modals'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useRememberedFlag } from '../../../shared/hooks/useLayoutMemory'
 import { useTasksByIds } from '../../todo/hooks/useTodos'
+import { usePlanThis } from '../../items/usePlanThis'
 import { useFoldedFilters } from '../hooks/useFoldedFilters'
 import { useBuyNow, useDeleteShopItems, useShopItems, useUpdateShopItem } from '../hooks/useShop'
 import { useShopRates } from '../hooks/useShopRates'
@@ -13,7 +14,7 @@ import { useShopWatches } from '../hooks/useShopPrices'
 import { usePriceStats } from '../hooks/useShopSignals'
 import { useCategoryPictures } from '../hooks/useCategoryPictures'
 import {
-  NO_FILTERS, categoryPath, droppedItems, filterWishlist, filtersActive, groupByCategory, listOf, modelsByWish, planDefaults, sortItems, totalsIn, totalsLabel,
+  NO_FILTERS, categoryPath, droppedItems, filterWishlist, filtersActive, groupByCategory, listOf, modelsByWish, sortItems, totalsIn, totalsLabel,
   type CategoryGroup, type ShopSort, type WishlistFilters,
 } from '../shopModel'
 import { cashNeeded, chainsOf } from '../chainModel'
@@ -84,14 +85,9 @@ export function WishlistView({ items, categories, isLoading }: { items: ShopItem
   const { data: tasks = [] } = useTasksByIds(taskIds)
   const taskById = new Map(tasks.map(t => [t.id, t]))
 
-  function plan(item: ShopItem) {
-    modal.open({
-      kind: 'task',
-      defaults: { ...planDefaults(item), domain: 'personal' },
-      // The task and its link in one save (210); the database keeps shop_items.task_id in step.
-      source: { link: { kind: 'shop_item', id: item.id } },
-    })
-  }
+  // THE Plan helper: its open plan, or a new one linked to the thing (one save, 210).
+  const planThis = usePlanThis()
+  const plan = (item: ShopItem) => { void planThis({ kind: 'shop_item', id: item.id, title: item.title, plannedDate: item.planned_date, notes: item.notes }) }
 
   const topOf = (item: ShopItem) => categoryPath(item.category_id, categories).topId
   // A category's default picture (shopTaxonomy): the tile's face when it has no picture of its own.

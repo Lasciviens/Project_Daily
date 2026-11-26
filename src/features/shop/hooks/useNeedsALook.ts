@@ -6,7 +6,8 @@ import { useDealDays, usePriceStats, useSignalStates } from './useShopSignals'
 import { useShopCosts } from './useShopMoney'
 import { useStoreLooks } from './useStoreLooks'
 import { dealsAhead } from '../dealDays'
-import { DEAL_AHEAD_DAYS, needsALook, splitLooks, type Look } from '../shopSuggestions'
+import { DEAL_AHEAD_DAYS, needsALook, noticeLooks, splitLooks, type Look } from '../shopSuggestions'
+import { useShopNotices } from './useShopNotices'
 import { factsOf, watchedWishIds, type PriceFacts } from '../wishTile'
 import type { ShopItem } from '../types'
 
@@ -39,12 +40,21 @@ export function useNeedsALook(items: readonly ShopItem[], itemsLoading: boolean)
   const costsQ = useShopCosts()
   const store = useStoreLooks(items, watches, costsQ.data ?? NO_COSTS, today)
   const all = useMemo(() => needsALook(items, { watches, facts, deals, store: store.inputs }, today), [items, watches, facts, deals, store.inputs, today])
-  const { shown, hidden } = useMemo(() => splitLooks(all, statesQ.data ?? [], today), [all, statesQ.data, today])
-  const loading = itemsLoading || watchQ.isLoading || stats.loading || dealsQ.isLoading || statesQ.isLoading || costsQ.isLoading || store.loading
-  const failed = (!itemsLoading && itemsQ.isError) || (!watchQ.isLoading && watchQ.isError) || stats.failed
+  // The server's notices (211: a plan bought a thing as a draft) after the urgent rows; they are read, never snoozed.
+  const noticesQ = useShopNotices()
+  const notices = useMemo(() => noticeLooks(noticesQ.data ?? [], items), [noticesQ.data, items])
+  const split = useMemo(() => splitLooks(all, statesQ.data ?? [], today), [all, statesQ.data, today])
+  const shown = useMemo(() => {
+    const urgent = split.shown.filter(l => l.tone === 'danger' || l.tone === 'warn')
+    return [...urgent, ...notices, ...split.shown.filter(l => !urgent.includes(l))]
+  }, [notices, split.shown])
+  const hidden = split.hidden
+  const loading = itemsLoading || noticesQ.isLoading || watchQ.isLoading || stats.loading || dealsQ.isLoading || statesQ.isLoading || costsQ.isLoading || store.loading
+  const failed = (!itemsLoading && itemsQ.isError) || (!noticesQ.isLoading && noticesQ.isError) || (!watchQ.isLoading && watchQ.isError) || stats.failed
     || (!dealsQ.isLoading && dealsQ.isError) || (!statesQ.isLoading && statesQ.isError) || (!costsQ.isLoading && costsQ.isError) || store.failed
   const onRetry = () => {
     if (itemsQ.isError) void itemsQ.refetch()
+    if (noticesQ.isError) void noticesQ.refetch()
     if (watchQ.isError) void watchQ.refetch()
     if (stats.failed) stats.refetch()
     if (dealsQ.isError) void dealsQ.refetch()

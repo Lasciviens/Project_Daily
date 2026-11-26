@@ -14,7 +14,7 @@ import { useSessionAnchor, useSessionDay, type SessionRequest } from '../../hook
 import { matchRoutineToPlan } from '../../plan/nextSession'
 import { planFacts } from '../../plan/planFacts'
 import { SESSION_LABEL, SESSION_TONE, sessionNote, sessionStatus, type SessionStatus } from '../../plan/sessionState'
-import { openPlanRoutine } from '../../planTraining'
+import { usePlanThis } from '../../../items/usePlanThis'
 import { rememberShownWorkout } from '../../sessionLinks'
 import { WORKOUT_TONE } from '../calendar/calendarModel'
 import { planRoutineId, planStartHHMM, workoutStartHHMM } from '../calendar/calendarSessions'
@@ -86,6 +86,7 @@ interface PlanContext {
  */
 export function TrainingSessionView({ request, onClose }: { request: SessionRequest; onClose: () => void }) {
   const modal = useEntityModal()
+  const planThis = usePlanThis()
   const planActions = useTrainingPlanActions()
   const anchor = useSessionAnchor(request)
   const shown = anchor.request
@@ -198,7 +199,7 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
     // The plans this workout did: change or delete each (Delete asks and
     // offers Undo), and plan the routine again for another day.
     const items: SessionActionItem[] = []
-    if (routine) items.push({ key: 'again', label: 'Plan this routine again…', icon: <CalendarPlus />, onSelect: () => openPlanRoutine(routine) })
+    if (routine) items.push({ key: 'again', label: 'Plan this routine again…', icon: <CalendarPlus />, onSelect: () => { void planThis({ kind: 'training', routine }) } })
     for (const p of plans) {
       const suffix = plans.length > 1 ? ` · ${p.title}` : ''
       if (p.kind === 'recurring' && p.scheduleBlock) {

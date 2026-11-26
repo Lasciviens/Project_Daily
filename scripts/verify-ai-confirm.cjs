@@ -43,6 +43,19 @@ function checkClaudeConfirm() {
   const taskLinks = [...fs.readFileSync(`${migDir}/210_task_links.sql`, 'utf8').matchAll(/add column if not exists ([a-z_]+)/g)].map(m => m[1]).concat('hevy_routine_id')
   const linkHits = [...written, ...patched, ...taskPatch].filter(c => taskLinks.includes(c))
   check(`the columns a confirmed proposal writes include none of a task's links to the thing it plans (${taskLinks.length}, 210)`, taskLinks.length === 10 && !linkHits.length, linkHits.join(', '))
+  // 211: a done plan's effects (the ledger), the server's notices and an Apple workout's Hevy link are written only by the
+  // database — never by a confirmed proposal, and the assistant's code names none of them (a tick would fire an effect:
+  // a confirmed change never writes a task's status, below).
+  const m211 = fs.readFileSync(`${migDir}/211_linked_plans.sql`, 'utf8')
+  const serverOnly = ['task_link_effects', 'notifications', "from('health_workouts')", 'notify(']
+  const claudeSrc = fs.readdirSync(`${REPO}/supabase/claude-src`).map(f => fs.readFileSync(`${REPO}/supabase/claude-src/${f}`, 'utf8')).join('\n')
+  const named = serverOnly.filter(n => claudeSrc.includes(n))
+  check('the assistant never writes a plan\'s effect, a notification or an Apple workout\'s Hevy link (211: database-written only)',
+    /create table if not exists public\.task_link_effects/.test(m211) && /create table if not exists public\.notifications/.test(m211)
+    && /revoke all on public\.task_link_effects from anon, authenticated/.test(m211) && /revoke all on public\.notifications from anon, authenticated/.test(m211)
+    // A new task starts open (an effect fires only on a tick); a change never names a status or a close.
+    && !named.length && /status: 'open', priority: a\.priority/.test(apply) && ![...patched, ...taskPatch].includes('status')
+    && ![...written, ...patched, ...taskPatch].some(c => ['completed_at', 'hevy_workout_id'].includes(c)), named.join(', '))
   check('a confirmed change names only a food line\'s title and four figures, or a task\'s title — never its day, meal, status or a link', JSON.stringify(patched) === JSON.stringify(['custom_title', 'calories', 'protein_g', 'carbs_g', 'fat_g']) && taskPatch.length === 1)
   const updates = change.match(/\.update\(/g) || []
   check('the only writes in the assistant\'s tool part are a confirmed proposal\'s: one insert, and two updates (a food line, a task), each filtered by the row AND the verified user; no delete or upsert; no table outside tasks and food_log_entries', (apply.match(/\.insert\(/g) || []).length === 1 && updates.length === 2 && (tools.match(/\.update\(/g) || []).length === 2 && !/\.(delete|upsert)\(/.test(tools) && !/\.(insert|update)\(/.test(tools.slice(0, tools.indexOf('export async function applyProposal'))) && /const table = tool === 'add_task' \? 'tasks' : 'food_log_entries'/.test(apply)

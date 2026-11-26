@@ -45,13 +45,18 @@ const fail = msg => { console.error(`verify-db-task-links: ${msg}`); process.exi
     const hit = linkCols.find(c => new RegExp(`\\.(eq|is|not|neq|in)\\('${c}'`).test(text))
     if (hit) problems.push(`${f} filters tasks on ${hit} (NEVER_HIDES)`)
   }
-  // The callers that wrote a back-pointer after the save now send the link with it.
-  for (const [f, kind] of [['src/features/shop/components/WishlistView.tsx', 'shop_item'], ['src/features/shop/components/record/useShopRecord.tsx', 'shop_item'],
-    ['src/features/wishes/pages/WishesPage.tsx', 'wish'], ['src/features/media/components/PlanThisButton.tsx', 'movie'],
-    ['src/features/media/components/EpisodesPanel.tsx', 'tv'], ['src/features/training/planTraining.ts', 'training']]) {
-    const text = readFileSync(join(root, f), 'utf8')
-    if (!new RegExp(`link: [^\\n]*\\n?[^\\n]*\\{ kind: '${kind}'`).test(text)) problems.push(`${f} does not send its ${kind} link with the save`)
-    if (/patch: \{ (task_id|status: 'planned', \.\.\.\(result\.taskId \? \{ promoted_task_id)/.test(text)) problems.push(`${f} still writes the back-pointer in a second request`)
+  // The callers that wrote a back-pointer after the save now send the link with it — since 211 through THE Plan
+  // helper (items/planThis.ts builds every kind's link; verify-plan-this checks no screen builds one by hand).
+  {
+    const planThis = readFileSync(join(root, 'src/features/items/planThis.ts'), 'utf8')
+    for (const kind of ['shop_item', 'wish', 'movie', 'tv', 'training', 'game', 'football']) {
+      if (!new RegExp(`link: \\{ kind: '${kind}'|link = [^\\n]*\\{ kind: '${kind}'|ItemLink \\| undefined = [^\\n]*\\{ kind: '${kind}'`).test(planThis)
+          && !new RegExp(`\\{ kind: '${kind}', id: thing`).test(planThis)) problems.push(`items/planThis.ts does not send a ${kind} link with the save`)
+    }
+    for (const f of ['src/features/shop/components/WishlistView.tsx', 'src/features/shop/components/record/useShopRecord.tsx', 'src/features/wishes/pages/WishesPage.tsx']) {
+      const text = readFileSync(join(root, f), 'utf8')
+      if (/patch: \{ (task_id|status: 'planned', \.\.\.\(result\.taskId \? \{ promoted_task_id)/.test(text)) problems.push(`${f} still writes the back-pointer in a second request`)
+    }
   }
   if (problems.length) fail(`migration 210 has ${problems.join('; ')}`)
 }

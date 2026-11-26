@@ -1,7 +1,7 @@
 import { Fragment, type ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import type { LucideIcon } from 'lucide-react'
-import { ArrowRight, Ban, CalendarPlus, Check, ListPlus, MoreHorizontal, Pencil, Sparkles, Trash2 } from 'lucide-react'
+import { Ban, CalendarCheck, CalendarPlus, Check, ListPlus, MoreHorizontal, Pencil, Sparkles, Trash2 } from 'lucide-react'
 import { MetaLine, TonePill, Truncate, cx } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { approxOther, currencyOf, priceLabel } from '../shopModel'
@@ -118,7 +118,7 @@ export function WishTile({ item, topId, icon, task, today, rates, watch, facts, 
           deal && belt !== 'deal' && 'Deal on',
           item.wait_for_deal && !deal && item.planned_date && `Deal from ${formatDate(item.planned_date)}`,
           item.planned_date && !item.wait_for_deal && <span key="b" className={late ? 'text-warn' : undefined}>Buy on {formatDate(item.planned_date)}</span>,
-          item.task_id && (taskDone ? 'Task done' : `Task${task?.due_date ? ` ${formatDate(task.due_date)}` : ''}`),
+          item.task_id && (taskDone ? 'Plan done' : `Planned${task?.due_date ? ` ${formatDate(task.due_date)}` : ''}`),
           note && now && read && `read ${formatDate(read.last_ok_at ?? read.checked_at)}`,
           read && read.status === 'ok' && read.in_stock === false && <span key="s" className="text-warn">out of stock</span>,
         ]} /></Truncate>}
@@ -142,7 +142,7 @@ export function WishTile({ item, topId, icon, task, today, rates, watch, facts, 
             <MenuItem><button type="button" onClick={onOpen} title="Open and edit" className="menu-item"><Pencil aria-hidden className="h-4 w-4" /> Open</button></MenuItem>
             <MenuItem>
               {item.task_id
-                ? <button type="button" onClick={onOpenTask} title="Task — open the task" className="menu-item"><ArrowRight aria-hidden className="h-4 w-4" /> Task</button>
+                ? <button type="button" onClick={onOpenTask} title="Planned — open the plan" className="menu-item"><CalendarCheck aria-hidden className="h-4 w-4" /> Planned</button>
                 : <button type="button" onClick={onPlan} title="Plan it as a task" className="menu-item"><CalendarPlus aria-hidden className="h-4 w-4" /> Plan</button>}
             </MenuItem>
             <MenuItem><button type="button" onClick={onMoveToQuick} title="Quick list — move to the quick list" className="menu-item"><ListPlus aria-hidden className="h-4 w-4" /> Quick list</button></MenuItem>
