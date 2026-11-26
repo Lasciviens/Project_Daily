@@ -31,6 +31,7 @@ One file per feature: what it does, how it works and why it is built that way, i
 | Dev Requests (the backlog drawer) | Requests button | [dev-requests.md](dev-requests.md) | `dev-requests.md` |
 | Developer page (activity, errors, memory) | `/#/developer` | [developer.md](developer.md) | — |
 | Settings, connections and subscriptions | `/#/settings` | [settings.md](settings.md) | — |
+| Notifications (the bell, the page, where each kind goes, push now/morning/weekly) | `/#/notifications` | [notifications.md](notifications.md) | `database.md`, `edge-functions.md` |
 
 The shell, routes and iOS platform notes are in `docs/platform-shell.md`; edge functions and secrets in `docs/backend/`.
 

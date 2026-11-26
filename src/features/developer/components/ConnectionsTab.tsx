@@ -30,6 +30,7 @@ import { lazyPart } from '../../../shared/utils/lazyPage'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
 import { useICloudStatus } from '../../calendar/icloud/useICloud'
 import { useClaudeDescribe } from '../../ai/claude/hooks/useClaude'
+import { ClaudeKeyDates } from '../../notifications/components/ClaudeKeyDates'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  CONNECTIONS (Settings → Subscriptions) — the ONE place every external integration is connected,
@@ -324,6 +325,7 @@ function KoboCard() {
 /**
  * Anthropic: the key is a server secret (ANTHROPIC_API_KEY), so the card only says whether it is set — what
  * the claude function reports about itself. The same lines whatever the answer, so nothing moves when it lands.
+ * Below, the key's dates as the owner typed them (212): the app can't read the key, so it warns from these.
  */
 function AnthropicCard() {
   const about = useClaudeDescribe()
@@ -336,7 +338,9 @@ function AnthropicCard() {
       footer={<>
         The key is the server secret ANTHROPIC_API_KEY (Supabase → Edge Functions → Secrets): there is nothing to sign in to here.
         Cost, calls and settings are on <Link to="/developer?tab=ai" className="font-semibold text-accent-600">Developer → AI</Link>.
-      </>} />
+      </>}>
+      <ClaudeKeyDates />
+    </ConnectionCard>
   )
 }
 

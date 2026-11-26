@@ -592,7 +592,7 @@ export const API_REGISTRY: readonly ApiEntry[] = [
     auth: 'api-key', authNote: 'VAPID key pair; the cron authenticates with its own secret.',
     secrets: ['VITE_VAPID_PUBLIC_KEY', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT', 'PUSH_CRON_SECRET'],
     direction: 'write', cadence: 'Cron daily 07:00 UTC',
-    usedIn: [{ label: 'Notifications toggle', path: '/settings?tab=appearance' }],
+    usedIn: [{ label: 'Notifications toggle', path: '/settings?tab=notifications' }],
     tables: ['push_subscriptions'], migrations: ['068'],
     cost: 'free', caveats: ['iOS: only the installed home-screen app, iOS 16.4+, and every push must show a notification.', 'Delivery is best-effort.'],
     since: '23.07.2026', sinceFrom: 'supabase/functions/push-send/index.ts',

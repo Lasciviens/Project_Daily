@@ -99,7 +99,7 @@ export const TRANSIT_TOOL_NAMES = ['get_transit'] as const
  * "the app could show this" is never a guess and it does not suggest what exists. Kept equal to the navigation list by
  * `verify-ai-suggestions-ui`; a new page or Home card is added here in the same change.
  */
-export const APP_SCREENS = "Home (the day's brief with the day's list and schedule, training, food with the protein left, the weekly report, weather, transit, currency, news, media, books, games) · Personal (plan, tasks, calendar) · Food (diary, recipes, quick guess, targets) · Shop · Training (program, coach) · Health (sleep, steps, weight, trends) · Wishes · Media · Football · Books · Games · Work · Projects · Settings · Developer (activity, errors, memory, AI)"
+export const APP_SCREENS = "Home (the day's brief with the day's list and schedule, training, food with the protein left, the weekly report, weather, transit, currency, news, media, books, games) · Personal (plan, tasks, calendar) · Food (diary, recipes, quick guess, targets) · Shop · Training (program, coach) · Health (sleep, steps, weight, trends) · Wishes · Media · Football · Books · Games · Work · Projects · Settings · Notifications (the bell: warnings and news, where each kind goes) · Developer (activity, errors, memory, AI)"
 /**
  * The learning tools (owner, 23.11.2026: "The ai should keep learning"; chat-learn-tools.ts): the app's own docs, the
  * one strict way to PROPOSE a note (the "about you" profile is `get_about_me`, which also returns the person's notes that are on). None writes the

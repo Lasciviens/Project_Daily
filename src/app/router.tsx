@@ -7,7 +7,7 @@ import { LoginPage } from '../features/auth/pages/LoginPage'
 import { ResetPasswordPage } from '../features/auth/pages/ResetPasswordPage'
 import {
   HomePage, DailyPage, ShopPage, RecipesPage, MediaPage, FootballPage, WorkPage, TrainingPage, HealthPage,
-  ProjectsPage, ProjectPage, WishesPage, BooksPage, DeveloperPage, SettingsPage,
+  ProjectsPage, ProjectPage, WishesPage, BooksPage, DeveloperPage, SettingsPage, NotificationsPage,
 } from './pages'
 import { DevRequestComposerHost } from '../features/devRequests/composer/DevRequestComposerHost'
 import { lazyWithReload } from '../shared/utils/lazyWithReload'
@@ -71,6 +71,7 @@ export function Router() {
           />
           <Route path="/developer" element={<DeveloperPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -4,11 +4,12 @@ import { Search, Sparkles, ClipboardList } from 'lucide-react'
 import { useUIStore } from '../store'
 import { routeTitle } from '../navigation'
 import { SettingsMenu } from '../../shared/components/SettingsMenu'
+import { NotificationBell } from '../../features/notifications/components/NotificationBell'
 import { Truncate, cx } from '../../shared/ui'
 
 /**
  * Tablet/desktop top bar (≥768px). No background of its own — it sits on the
- * canvas. Page title · search trigger (opens ⌘K) · Ask AI · Requests · avatar.
+ * canvas. Page title · search trigger (opens ⌘K) · Ask AI · Requests · the notifications bell · avatar.
  */
 export function AppTopBar() {
   const { pathname } = useLocation()
@@ -37,6 +38,7 @@ export function AppTopBar() {
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         <ShellToggle label="Ask AI" icon={<Sparkles className="h-4 w-4" strokeWidth={2} aria-hidden />} on={isAIOpen} onClick={toggleAI} />
         <ShellToggle label="Requests" icon={<ClipboardList className="h-4 w-4" strokeWidth={2} aria-hidden />} on={isDevRequestsOpen} onClick={toggleDevRequests} />
+        <NotificationBell look="bar" />
         <SettingsMenu />
       </div>
     </header>

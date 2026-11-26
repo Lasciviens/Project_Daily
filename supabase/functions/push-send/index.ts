@@ -5,6 +5,12 @@
 //   • the pg_cron 'lascis-supplement-reminders' job (same secret, migration
 //     160, every 15 minutes and only when one is due) — { trigger: 'supplements' }
 //     sends the supplement doses not taken yet.
+//   • the pg_cron 'lascis-notifications-push' job (same secret, migration 212,
+//     every 15 minutes and only when one waits) — { trigger: 'notifications' }
+//     sends the push_now notifications as one push; 'lascis-notifications-weekly'
+//     ({ trigger: 'notifications', digest: 'weekly' }, Monday 08:00 Oslo) the
+//     push_weekly digest. The morning run carries the push_morning ones as one
+//     line of the morning push (no second push).
 //   • a browser (user JWT) with an explicit { title, body } — ad-hoc send.
 // verify_jwt = false (config.toml): the cron path is a shared secret, not a JWT.
 // Expired/gone subscriptions (404/410) are pruned automatically.
@@ -73,7 +79,7 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) webpush.setVapidDetails(VAPID_SUBJECT, VAPID_
 
 // Short, notification-sized morning summary (title + body). Deterministic — no
 // AI, so it's instant and reliable. User-scoped (service role bypasses RLS).
-async function buildMorning(userId: string): Promise<{ title: string; body: string }> {
+async function buildMorning(userId: string, noticeLine = ''): Promise<{ title: string; body: string }> {
   const today = todayUTC()
   let tasksLine = 'bugün planlı iş yok'
   try {
@@ -138,7 +144,7 @@ async function buildMorning(userId: string): Promise<{ title: string; body: stri
       suppLine = ` · 💊 ${names}${open.length > 3 ? ` +${open.length - 3}` : ''}`
     }
   } catch { /* skip */ }
-  return { title: '🌅 Günaydın', body: `${tasksLine}${trLine}${wishLine}${suppLine}` }
+  return { title: '🌅 Günaydın', body: `${tasksLine}${trLine}${wishLine}${suppLine}${noticeLine}` }
 }
 
 // ── Supplement reminders (migration 160) ───────────────────────────────────
@@ -241,6 +247,160 @@ async function unclaimReminders(userId: string, doses: ReminderDose[], stamp: st
   }
 }
 
+// ── Notifications (migration 212) ──────────────────────────────────────────
+// Hand-mirrored from src/features/notifications/notificationKinds.ts (Deno can't
+// import it; scripts/verify-notifications.cjs compares the two) — change both.
+// A notice row has no text and no URL: the words and the address come from here.
+// <notification-text>
+export type NoticeKind =
+  | 'shop_bought_draft' | 'follow_new_title' | 'follow_trailer' | 'sign_in_expiring' | 'sign_in_failed'
+  | 'claude_key_expiring' | 'claude_key_rejected'
+export type NoticeService = 'psn' | 'trakt' | 'strava' | 'google' | 'icloud' | 'anthropic'
+export type NoticePush = 'push_now' | 'push_morning' | 'push_weekly'
+
+/** What a notice says and where it leads come only from these facts (a row's codes and its thing's name). */
+export interface NoticeFacts {
+  kind: NoticeKind
+  service: NoticeService | null
+  /** The day a sign-in or key ends (YYYY-MM-DD). */
+  due_on: string | null
+  /** The thing's name, read from its own table (a Shop thing, a film); null when it is gone. */
+  subject: string | null
+}
+
+export const NOTICE_SERVICE_NAMES: Record<NoticeService, string> = {
+  psn: 'PlayStation', trakt: 'Trakt', strava: 'Strava', google: 'Google', icloud: 'Apple Calendar', anthropic: 'Anthropic',
+}
+
+const noticeDays = (today: string, day: string) =>
+  Math.round((Date.parse(`${day}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86_400_000)
+const noticeDate = (day: string) => `${day.slice(8, 10)}.${day.slice(5, 7)}.${day.slice(0, 4)}`
+
+/** "today", "tomorrow", "in 7 days" or "on 10.12.2026" (passed), from the day it ends. */
+export function noticeWhen(today: string, day: string): string {
+  const left = noticeDays(today, day)
+  if (left < 0) return `on ${noticeDate(day)}`
+  if (left === 0) return 'today'
+  if (left === 1) return 'tomorrow'
+  return `in ${left} days`
+}
+
+const serviceName = (s: NoticeService | null) => (s ? NOTICE_SERVICE_NAMES[s] ?? 'A service' : 'A service')
+
+/** The notice's one line, in English (`today` is the reader's day, YYYY-MM-DD). */
+export function noticeTitle(n: NoticeFacts, today: string): string {
+  switch (n.kind) {
+    case 'shop_bought_draft': return 'Bought through a plan: check the purchase'
+    case 'follow_new_title': return 'New film from a follow'
+    case 'follow_trailer': return 'New trailer from a follow'
+    case 'sign_in_expiring': return `${serviceName(n.service)} sign-in ends ${n.due_on ? noticeWhen(today, n.due_on) : 'soon'}`
+    case 'sign_in_failed': return `${serviceName(n.service)} needs you to sign in again`
+    case 'claude_key_expiring': return `Claude API key ends ${n.due_on ? noticeWhen(today, n.due_on) : 'soon'}`
+    case 'claude_key_rejected': return 'Anthropic rejected the Claude API key'
+    default: return 'Notification'
+  }
+}
+
+/** The second line: the thing's name, else what to do. */
+export function noticeDetail(n: NoticeFacts): string {
+  if (n.subject) return n.subject
+  switch (n.kind) {
+    case 'shop_bought_draft': return 'The thing is not on the list any more'
+    case 'follow_new_title': case 'follow_trailer': return 'The film is not in What’s new any more'
+    case 'sign_in_expiring': return n.due_on ? `Ends ${noticeDate(n.due_on)} · renew it in Settings → Subscriptions` : 'Renew it in Settings → Subscriptions'
+    case 'sign_in_failed': return 'Connect it again in Settings → Subscriptions'
+    case 'claude_key_expiring': return n.due_on ? `Ends ${noticeDate(n.due_on)} · make a new key in the Anthropic Console` : 'Make a new key in the Anthropic Console'
+    case 'claude_key_rejected': return 'Put a working key in ANTHROPIC_API_KEY (Supabase → Edge Functions → Secrets)'
+    default: return ''
+  }
+}
+
+/** The app address a notice leads to (a hash route without the '#'). Fixed per kind: never read from a row. */
+export function noticeRoute(n: Pick<NoticeFacts, 'kind'>): string {
+  switch (n.kind) {
+    case 'shop_bought_draft': return '/shop'
+    case 'follow_new_title': case 'follow_trailer': return '/media?view=lists'
+    default: return '/settings?tab=subscriptions'
+  }
+}
+
+/** One push for the notices a run claimed (now, or the weekly digest); null when there are none. */
+export function noticePush(items: readonly NoticeFacts[], digest: 'now' | 'weekly', today: string): { title: string; body: string; url: string; tag: string } | null {
+  if (items.length === 0) return null
+  if (items.length === 1 && digest === 'now') {
+    const n = items[0]
+    return { title: `🔔 ${noticeTitle(n, today)}`, body: noticeDetail(n), url: `#${noticeRoute(n)}`, tag: 'notifications' }
+  }
+  const lines = items.slice(0, 4).map(n => (n.subject ? `${noticeTitle(n, today)}: ${n.subject}` : noticeTitle(n, today)))
+  const more = items.length > 4 ? ` · +${items.length - 4} more` : ''
+  return {
+    title: digest === 'weekly' ? `🔔 This week: ${items.length} notification${items.length === 1 ? '' : 's'}` : `🔔 ${items.length} notifications`,
+    body: `${lines.join(' · ')}${more}`,
+    url: '#/notifications',
+    tag: digest === 'weekly' ? 'notifications-weekly' : 'notifications',
+  }
+}
+
+/** The most of a thing's name a push shows (the bell shows up to 300). */
+export const NOTICE_PUSH_SUBJECT_MAX = 60
+
+/** A thing's name as a push may carry it (guardian, 26.11.2026): printable characters only — no control, format or
+ *  bidi characters, no line breaks —, spaces folded, at most NOTICE_PUSH_SUBJECT_MAX characters; null when nothing is left. */
+export function noticePushSubject(s: string | null): string | null {
+  if (!s) return null
+  // Line breaks and tabs become a space first; every other control, format (bidi) or private character goes.
+  const t = s.replace(/[\t\n\v\f\r\u0085\p{Zl}\p{Zp}]/gu, ' ').replace(/[\p{Cc}\p{Cf}\p{Co}\p{Cs}]/gu, '').replace(/\s+/g, ' ').trim()
+  if (!t) return null
+  const chars = [...t]
+  return chars.length > NOTICE_PUSH_SUBJECT_MAX ? `${chars.slice(0, NOTICE_PUSH_SUBJECT_MAX - 1).join('').trimEnd()}…` : t
+}
+
+/** The morning push's one line for the notices sent to the morning ('' when none). */
+export function noticeMorningLine(items: readonly NoticeFacts[], today: string): string {
+  if (items.length === 0) return ''
+  const first = items.slice(0, 2).map(n => noticeTitle(n, today)).join(', ')
+  return ` · 🔔 ${first}${items.length > 2 ? ` +${items.length - 2}` : ''}`
+}
+// </notification-text>
+
+type ClaimedNotice = NoticeFacts & { id: string }
+
+/** The notices of a channel a run claimed (stamped as pushed; one run at a time). Missing RPC (before 212) → none. */
+async function claimNotices(userId: string, channel: NoticePush, stamp: string): Promise<ClaimedNotice[]> {
+  const { data, error } = await supabase.rpc('notifications_claim', { p_user: userId, p_channel: channel, p_now: stamp })
+  if (error) {
+    console.error(`push-send: notifications_claim failed (${error.code ?? 'error'})`)
+    return []
+  }
+  return ((data ?? []) as AnyRecord[]).map(r => ({
+    id: String(r.id), kind: r.kind as NoticeKind, service: (r.service ?? null) as NoticeService | null,
+    due_on: typeof r.due_on === 'string' ? r.due_on : null, subject: noticePushSubject(typeof r.subject === 'string' ? r.subject : null),
+  }))
+}
+
+/** Puts the stamps back when no device took the push, so the next run tries again (never when there is no device:
+ *  the bell has them). */
+async function unclaimNotices(userId: string, items: ClaimedNotice[], stamp: string): Promise<void> {
+  if (!items.length) return
+  const { error } = await supabase.rpc('notifications_unclaim', { p_user: userId, p_ids: items.map(n => n.id), p_stamp: stamp })
+  if (error) console.error(`push-send: notifications_unclaim failed (${error.code ?? 'error'})`)
+}
+
+/** The push_now notices (or the weekly digest) as ONE push. */
+async function sendNotices(userId: string, digest: 'now' | 'weekly'): Promise<{ sent: number; notices: number }> {
+  const stamp = new Date().toISOString()
+  const items = await claimNotices(userId, digest === 'weekly' ? 'push_weekly' : 'push_now', stamp)
+  const msg = noticePush(items, digest, osloToday())
+  if (!msg) return { sent: 0, notices: 0 }
+  let res = { sent: 0, pruned: 0, devices: 0 }
+  try {
+    res = await sendToAll(userId, msg)
+  } finally {
+    if (res.sent === 0 && res.devices > 0) await unclaimNotices(userId, items, stamp)
+  }
+  return { sent: res.sent, notices: items.length }
+}
+
 // ── Release reminders (migration 122) ──────────────────────────────────────
 // Hand-mirrored from src/features/media/reminders/reminderRules.ts (Deno can't
 // import it; scripts/verify-media-reminders.cjs checks that file) — change both.
@@ -309,7 +469,7 @@ function isPushService(endpoint: string): boolean {
   } catch { return false }
 }
 
-async function sendToAll(userId: string, payload: AnyRecord): Promise<{ sent: number; pruned: number }> {
+async function sendToAll(userId: string, payload: AnyRecord): Promise<{ sent: number; pruned: number; devices: number }> {
   const subs = (await liveSubscriptions(userId)).filter(s => {
     const ok = isPushService(String(s.endpoint ?? ''))
     if (!ok) console.error('push-send: skipped a subscription that is not a browser push service')
@@ -328,7 +488,7 @@ async function sendToAll(userId: string, payload: AnyRecord): Promise<{ sent: nu
       if (code === 404 || code === 410) { await supabase.from('push_subscriptions').delete().eq('id', s.id); pruned++ }
     }
   }
-  return { sent, pruned }
+  return { sent, pruned, devices: subs.length }
 }
 
 // Constant-time secret check (security review 26.10.2026): both sides are
@@ -376,14 +536,29 @@ Deno.serve(async (req) => {
     }
   }
 
+  // The notifications jobs (only the cron: a run stamps what it pushes).
+  if (body.trigger === 'notifications') {
+    if (!viaCron) return json({ ok: false, error: 'forbidden' }, 403)
+    try {
+      return json({ ok: true, ...(await sendNotices(userId, body.digest === 'weekly' ? 'weekly' : 'now')) })
+    } catch (e) {
+      return json({ ok: false, error: (e as Error).message }, 500)
+    }
+  }
+
+  // The morning push carries the push_morning notifications as one line (claimed here, put back if no device took it).
+  const morningStamp = new Date().toISOString()
+  const morningNotices = body.trigger === 'morning' && viaCron ? await claimNotices(userId, 'push_morning', morningStamp) : []
+
   // url is scope-relative — the service worker prepends registration.scope
   // (…/Project_Daily/), so the hash route resolves under the PWA base.
   const payload = body.trigger === 'morning'
-    ? { ...(await buildMorning(userId)), url: '#/home' }
+    ? { ...(await buildMorning(userId, noticeMorningLine(morningNotices, osloToday()))), url: '#/home' }
     : { title: String(body.title ?? 'Lasci\'s Board'), body: String(body.body ?? ''), url: String(body.url ?? '#/home') }
 
   try {
     const res = await sendToAll(userId, payload)
+    if (res.sent === 0 && res.devices > 0) await unclaimNotices(userId, morningNotices, morningStamp)
     // The morning run also delivers release reminders — each its own notification.
     const reminders = body.trigger === 'morning' ? await sendReleaseReminders(userId).catch(() => 0) : 0
     return json({ ok: true, ...res, reminders })
