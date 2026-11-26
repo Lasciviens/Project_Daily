@@ -96,8 +96,10 @@ export function AskAIPanel() {
   // The sheet lifts above the on-screen keyboard (iOS does not shrink the layout viewport).
   const phoneStyle = inset > 0 ? { bottom: inset, height: Math.min(visibleHeight - 8, window.innerHeight * 0.88) } : undefined
 
-  const send = (text: string) => {
-    if (!text.trim() || chat.busy || chat.wall === 'full') return
+  // Only a new chat goes on: the chat is full, or the function cannot continue it after an update.
+  const closed = chat.wall === 'full' || chat.wall === 'stale'
+  const deliver = (text: string) => {
+    if (!text.trim() || chat.busy) return
     speech.stop()
     const sentPhotos = photos
     setInput('')
@@ -105,7 +107,9 @@ export function AskAIPanel() {
     setView('chat')
     void chat.send(text, sentPhotos).then(r => { if (r === 'wall') { setInput(text); setPhotos(sentPhotos) } })
   }
-  const retry = () => { void chat.retry() }
+  const send = (text: string) => { if (!closed) deliver(text) }
+  // A retry the function refuses for good (a full chat, or one it cannot continue) puts the question back in the box.
+  const retry = () => { const asked = chat.lastText; void chat.retry().then(r => { if (r === 'wall' && asked) setInput(asked) }) }
   // After a refusal the same words would be refused again: the question comes back into the box to be changed.
   const editQuestion = () => { const q = chat.editLast(); if (q !== null) setInput(q) }
   // The delete flow: asks, deletes (softly: the function keeps the chat for 7 days), says "Chat deleted · Undo".
@@ -121,6 +125,8 @@ export function AskAIPanel() {
   const failedLast = !chat.busy && chat.turns.length > 0 && chat.turns[chat.turns.length - 1].error !== null
   // What was typed stays: starting a new chat is often the way out of a full one, with the question still to ask.
   const startNew = () => { chat.newChat(chat.mode); setPhotos([]); setView('chat') }
+  // A chat the function cannot continue: one tap starts a new chat (same kind) and sends the question that was kept.
+  const startNewAndSend = () => { const text = input; chat.newChat(chat.mode); setView('chat'); if (text.trim()) deliver(text) }
 
   return (
     <SideDrawer
@@ -183,8 +189,10 @@ export function AskAIPanel() {
           <div className="shrink-0 border-t border-line px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 sm:px-5 md:pb-3 [@media(max-height:500px)]:pb-[calc(0.5rem+env(safe-area-inset-bottom))] [@media(max-height:500px)]:pt-2">
             {chat.wall !== 'ok' && (
               <div data-tone="warn" className="tone-soft mb-2 flex items-center gap-2 rounded-row py-1.5 pl-3 pr-1.5 text-body">
-                <span className="tone-text min-w-0 flex-1 py-1">{chat.wall === 'full' ? 'This chat is full. Start a new chat to keep going.' : 'This chat is getting long. A new chat answers faster and cheaper.'}</span>
-                <Button size="sm" variant={chat.wall === 'full' ? 'primary' : 'secondary'} onClick={startNew}>New chat</Button>
+                <span className="tone-text min-w-0 flex-1 py-1">{chat.wall === 'stale' ? "This chat can't continue after an app update. Your question is kept." : chat.wall === 'full' ? 'This chat is full. Start a new chat to keep going.' : 'This chat is getting long. A new chat answers faster and cheaper.'}</span>
+                {chat.wall === 'stale'
+                  ? <Button size="sm" variant="primary" onClick={startNewAndSend} tip="New chat, with your question sent there">New chat</Button>
+                  : <Button size="sm" variant={chat.wall === 'full' ? 'primary' : 'secondary'} onClick={startNew}>New chat</Button>}
               </div>
             )}
             <PhotoStrip photos={photos} onRemove={i => setPhotos(list => list.filter((_, at) => at !== i))} firstInChat={photosInChat === 0} days={keptDays} />
@@ -198,16 +206,16 @@ export function AskAIPanel() {
                 value={input}
                 onChange={e => setInput(e.target.value.slice(0, CHAT_TEXT_MAX))}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !phone) { e.preventDefault(); send(input) } }}
-                placeholder={chat.wall === 'full' ? 'Start a new chat to ask more' : photos.length ? 'Say what to look at…' : coach ? 'Ask your coach…' : 'Ask anything…'}
+                placeholder={closed ? 'Start a new chat to ask more' : photos.length ? 'Say what to look at…' : coach ? 'Ask your coach…' : 'Ask anything…'}
                 aria-label="Message"
                 rows={1}
-                disabled={chat.wall === 'full'}
+                disabled={closed}
                 className="input max-h-32 flex-1 resize-none py-2.5 disabled:opacity-50"
               />
               {chat.busy ? (
                 <button type="button" onClick={chat.stop} aria-label="Stop" className="btn-secondary h-11 w-11 shrink-0 !px-0"><Square className="h-[16px] w-[16px]" aria-hidden /></button>
               ) : (
-                <button type="button" onClick={() => send(input)} disabled={!input.trim() || chat.wall === 'full'} aria-label="Send" className="btn-primary h-11 w-11 shrink-0 !px-0 disabled:opacity-40">
+                <button type="button" onClick={() => send(input)} disabled={!input.trim() || closed} aria-label="Send" className="btn-primary h-11 w-11 shrink-0 !px-0 disabled:opacity-40">
                   <SendHorizontal className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
                 </button>
               )}
@@ -215,8 +223,8 @@ export function AskAIPanel() {
             {/* Photo and voice sit under the box, so the words keep the full width on a phone. */}
             <div className="mt-1 flex items-center gap-1 [@media(max-height:500px)]:order-first [@media(max-height:500px)]:mt-0">
               <AttachPhoto onFile={f => { void photo.mutateAsync(f).then(p => setPhotos(list => (list.length < CHAT_IMAGES_PER_MESSAGE ? [...list, p] : list)), () => undefined) }}
-                loading={photo.isPending} disabled={photoRoom <= 0 || chat.busy || chat.wall === 'full'} why={photoWhy} />
-              {speech.supported && <MicButton listening={speech.listening} language={voiceLanguage} onLanguage={setVoiceLanguage} disabled={chat.busy || chat.wall === 'full'} onToggle={() => { if (!speech.listening) typedBeforeSpeech.current = input; speech.toggle() }} />}
+                loading={photo.isPending} disabled={photoRoom <= 0 || chat.busy || closed} why={photoWhy} />
+              {speech.supported && <MicButton listening={speech.listening} language={voiceLanguage} onLanguage={setVoiceLanguage} disabled={chat.busy || closed} onToggle={() => { if (!speech.listening) typedBeforeSpeech.current = input; speech.toggle() }} />}
             </div>
             </div>
             {/* Only where Enter sends (a phone's Enter is a new line). */}

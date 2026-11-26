@@ -616,8 +616,8 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
     ['403 not allowed', () => answerWith(403, errorBody('permission_error', 'Not allowed')), /ANTHROPIC_API_KEY/, false],
     ['402 billing', () => answerWith(402, errorBody('billing_error', 'Your credit balance is too low.')), /billing reason/, false],
     ['400 Console spend limit', () => answerWith(400, errorBody('invalid_request_error', 'You have reached your specified API usage limits. You will regain access on 2026-12-01 at 00:00 UTC.')), /monthly spend limit in Anthropic's Console is reached/, false],
-    ['400 bad request', () => answerWith(400, errorBody('invalid_request_error', 'max_tokens: too large')), /did not accept the request/, false],
-    ['404 no such model', () => answerWith(404, errorBody('not_found_error', 'model: claude-x')), /did not accept the request/, false],
+    ['400 bad request', () => answerWith(400, errorBody('invalid_request_error', 'max_tokens: too large')), /Anthropic refused this request \(an app problem\)\. Try again; if it repeats, Developer → AI → Calls has the reason/, false],
+    ['404 no such model', () => answerWith(404, errorBody('not_found_error', 'model: claude-x')), /Anthropic refused this request \(an app problem\)\. Try again; if it repeats, Developer → AI → Calls has the reason/, false],
   ]
   for (const [name, make, words, billed] of failures) {
     r = await go(runBody(), { network: pretendNetwork(async () => make()) })

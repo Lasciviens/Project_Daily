@@ -59,9 +59,9 @@ export function chatCitations(messages: readonly { content: Block[] }[]): Search
   return seen.has('unset') ? 'unset' : 'on'
 }
 
-/** A tool's result blocks with every search result set to `cite` (built again by `searchResultBlock`); other blocks unchanged. */
+/** A tool's result blocks with every search result set to `cite` (built again by `searchResultBlock`); one with no source is dropped (nothing to cite or label); other blocks unchanged. */
 export function withCitations(blocks: readonly Block[], cite: SearchCitations): Block[] {
-  return blocks.map(block => {
+  return blocks.filter(block => block.type !== 'search_result' || (typeof block.source === 'string' && block.source.trim() !== '')).map(block => {
     if (block.type !== 'search_result') return block
     const inner = Array.isArray(block.content) ? block.content as Block[] : []
     const text = inner.filter(b => b.type === 'text' && typeof b.text === 'string').map(b => b.text as string).join('\n')

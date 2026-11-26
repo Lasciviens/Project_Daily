@@ -609,9 +609,9 @@ function chatCitations(messages: readonly { content: Block[] }[]): SearchCitatio
   return seen.has('unset') ? 'unset' : 'on'
 }
 
-/** A tool's result blocks with every search result set to `cite` (built again by `searchResultBlock`); other blocks unchanged. */
+/** A tool's result blocks with every search result set to `cite` (built again by `searchResultBlock`); one with no source is dropped (nothing to cite or label); other blocks unchanged. */
 function withCitations(blocks: readonly Block[], cite: SearchCitations): Block[] {
-  return blocks.map(block => {
+  return blocks.filter(block => block.type !== 'search_result' || (typeof block.source === 'string' && block.source.trim() !== '')).map(block => {
     if (block.type !== 'search_result') return block
     const inner = Array.isArray(block.content) ? block.content as Block[] : []
     const text = inner.filter(b => b.type === 'text' && typeof b.text === 'string').map(b => b.text as string).join('\n')
@@ -3043,7 +3043,7 @@ const ANTHROPIC_FAILURES: Record<ModelFailure['kind'], string> = {
   billing: "Anthropic stopped the request for a billing reason: the account's spend limit or its credit. Look at Billing in the Anthropic Console.",
   rate_limit: 'Anthropic is getting too many requests from this account right now. Try again in a minute.',
   overloaded: 'Anthropic is overloaded right now. Try again in a moment.',
-  refused_request: 'Anthropic did not accept the request as it was built. The call in Developer → AI → Calls has its explanation.',
+  refused_request: 'Anthropic refused this request (an app problem). Try again; if it repeats, Developer → AI → Calls has the reason.',
   network: 'Anthropic could not be reached (a network error). Try again in a moment.',
   timeout: `Anthropic did not answer within ${ANTHROPIC_TIMEOUT_MS / 1000} seconds. Try again in a moment.`, // the default; a request with its own limit says its own
   provider_fault: 'Anthropic had a problem on its side. Try again in a moment.',
@@ -13405,11 +13405,14 @@ const STEP_LABELS: Record<string, string> = {
 const TOOL_USE_ID = /^[A-Za-z0-9_-]{1,100}$/
 /** A proposal's kind in the app's notice to the model: never its title (the owner may have edited it). */
 const PROPOSAL_WORDS: Readonly<Record<string, string>> = { add_task: 'add a task', log_food: 'log a food line', update_food: 'change a food line', update_task: 'rename a task' }
-/** What the person reads (and what is stored with the answer) when the model's last request ended with no words. */
-const NO_ANSWER_STEPS = 'I ran out of steps before I could answer. Ask again, or narrow the question (one day, one thing).'
+/** What the person reads (and what is stored with the answer) when the model's last request ended with no words, by cause. */
+const NO_ANSWER_STEPS = 'I ran out of time or steps before I could answer. Ask again, or narrow the question (one day, one thing).'
+const NO_ANSWER_CUT = 'My answer was cut off at its length limit before I wrote it. Ask again, or narrow the question.'
+/** A chat's words for a request Anthropic refused (a 400 or 404): in a chat, a new chat is the way out when it repeats. */
+const CHAT_REFUSED = 'Anthropic refused this request (an app problem). Try again; if it repeats, start a new chat.'
 const NO_ANSWER_EMPTY = 'I finished without writing an answer. Ask again, or put the question another way.'
-/** The app's note after the tool results when the next request is the last one: it may not call a tool, so it should answer from what it found. */
-const LAST_ROUND_NOTE = '<app_updates>This answer has reached its limit of steps, time or length, so tools are off now. Answer now from what the tools returned; say plainly what you could not look up and how the person could narrow the question. This note comes from the app, not from the person.</app_updates>'
+/** The app's note after the tool results when the next request is the last one: it may not call a tool, so it should answer from what it found. Only for this answer: a later question may search again. */
+const LAST_ROUND_NOTE = '<app_updates>For this answer only: it has reached its limit of steps, time or length, so tools are off now. Answer now from what the tools returned; say plainly what you could not look up and how the person could narrow the question. The person\'s next question may use tools again. This note comes from the app, not from the person.</app_updates>'
 
 /** A message from the person: control characters out (a new line stays), trimmed, 1 to 4000 characters, or null. */
 function cleanChatText(value: unknown): string | null {
@@ -13467,7 +13470,8 @@ const textOf = (content: readonly Block[]): string => content.filter(b => b.type
 /** What a tool result block holds for one finished tool call; its search results set citations the chat's one way (`cite`). */
 function resultBlock(toolUseId: string, output: ToolOutput, cite: SearchCitations): Block {
   if (!output.ok) return { type: 'tool_result', tool_use_id: toolUseId, content: output.message, is_error: true }
-  return { type: 'tool_result', tool_use_id: toolUseId, content: output.blocks && output.blocks.length ? withCitations(output.blocks, cite) : output.text }
+  const blocks = output.blocks && output.blocks.length ? withCitations(output.blocks, cite) : []
+  return { type: 'tool_result', tool_use_id: toolUseId, content: blocks.length ? blocks : output.text || 'Nothing came back.' }
 }
 
 async function withTimeout<T>(run: Promise<T>, ms: number, onTimeout: T): Promise<T> {
@@ -13565,7 +13569,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
   // follow its stored ones. A chat whose stored results already mix them fails every request, so it is not sent.
   const cite = chatCitations(history)
   if (cite === null) {
-    return errorEvent('stale', 'This chat was started before an update and holds search results Anthropic no longer accepts together, so it was not sent. Start a new chat.', conversation?.id)
+    return errorEvent('stale', "This chat can't continue: an app bug saved its search results in a form Anthropic refuses. Start a new chat; your question is kept.", conversation?.id)
   }
   const chatMode: ChatMode = conversation ? conversation.mode : askedMode === 'coach' ? 'coach' : 'chat'
   const toolNames = conversation ? conversation.tool_names : toolsForNewChat(modes, chatMode)
@@ -13762,11 +13766,13 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
         ...(round === 1 ? { user_text: text, ...(newImages.length ? { photos: newImages.length } : {}) } : {}), ...(answer.sent ? { sent_to_provider: answer.sent } : {}),
       }, TEXT_LOG_MAX_BYTES)
       if (answer.ok) {
-        row.response = trimForLog({ text: textOf(answer.content), ending: answer.ending, ...(answer.refusal ? { refusal: answer.refusal } : {}) }, TEXT_LOG_MAX_BYTES)
+        row.response = trimForLog({ text: textOf(answer.content), ending: answer.ending, ...(answer.refusal ? { refusal: answer.refusal } : {}), ...(shownInstead ? { no_answer_text: shownInstead } : {}) }, TEXT_LOG_MAX_BYTES)
         row.thinking = answer.thinking ? trimText(answer.thinking, TEXT_LOG_MAX_BYTES) : null
       }
     }
     const toolsRunThisRound: ToolShape[] = []
+    /** The sentence the person read instead of the model's words (an answer with none): in the text log, never as the row's error (the row is not a failure). */
+    let shownInstead: string | null = null
 
     if (!answer.ok) {
       row.outcome = 'error'
@@ -13775,7 +13781,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       await finishCall(ctx.adminDb, row)
       // A round that was cut for taking too long: stopped, its row finished as an error (the worst case stays held, the
       // bill is unknown), nothing of it stored, and the person told plainly.
-      return fail(answer.kind === 'timeout' ? 'timeout' : 'error', answer.message)
+      return fail(answer.kind === 'timeout' ? 'timeout' : 'error', answer.kind === 'refused_request' ? CHAT_REFUSED : answer.message)
     }
     if (answer.ending === 'refused') {
       row.outcome = 'refused'
@@ -13813,11 +13819,14 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       // An answer with no words (only thinking, or nothing): the blocks are stored as they came (the replay must be exact),
       // and the plain sentence the person reads is kept beside them, so the chat opened later says the same.
       const words = textOf(answer.content)
-      const shown = words || (lastRound ? NO_ANSWER_STEPS : NO_ANSWER_EMPTY)
+      const shown = words || (answer.ending === 'cut_off' ? NO_ANSWER_CUT : lastRound ? NO_ANSWER_STEPS : NO_ANSWER_EMPTY)
       if (!words) {
         assistantMeta.shown_text = shown
-        row.error = cutChars(`The model ended with no answer text (${lastRound ? 'the last request, tools off' : answer.stopReason}).`, RUN_ERROR_MAX)
+        shownInstead = shown
       }
+      // An empty content list is not a message Anthropic accepts back: every later request of the chat would be refused.
+      // It has no thinking block to bind, so the sentence the person read is stored in its place.
+      const storedContent: Block[] = answer.content.length ? answer.content : [{ type: 'text', text: shown }]
       logRound()
       await finishCall(ctx.adminDb, row)
       // The citations are checked BEFORE the answer is stored and kept with it, so a chat opened later shows the same links.
@@ -13826,7 +13835,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       // The kind of suggestion this answer noted stays with the answer, so a chat opened later shows the same line.
       const noted = suggestion as ChatSuggestionNote | null // set inside the tool step's closure: TypeScript cannot see it
       if (noted) assistantMeta.suggestion = { kind: noted.kind }
-      const wrote = await store('assistant', answer.content, row.id, assistantMeta)
+      const wrote = await store('assistant', storedContent, row.id, assistantMeta)
       if (wrote !== 'ok') return fail('error', 'The answer could not be saved. Try again in a moment.')
       await updateConversation(ctx.adminDb, ctx.userId, conversationId, { message_count: seq, last_prompt_tokens: lastPrompt, cost_usd: (conversation?.cost_usd ?? 0) + costTotal })
       endedWith = { text: shown, ending: answer.ending === 'cut_off' ? 'cut_off' : 'complete' }
