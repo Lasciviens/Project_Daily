@@ -50,6 +50,7 @@ const PAGE_KB = {                                          // the shell plus the
   'src/features/wishes/pages/WishesPage.tsx': 355,         // [337]
   'src/features/football/pages/FootballPage.tsx': 350,     // [331]
   'src/features/projects/pages/ProjectsPage.tsx': 350,     // [331]
+  'src/features/notifications/pages/NotificationsPage.tsx': 325, // [303] new 26.11.2026: the bell's list page
 }
 
 function skip(why) {
