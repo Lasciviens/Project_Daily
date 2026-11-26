@@ -39,6 +39,14 @@ function corsHeaders(origin: string | null): Record<string, string> {
   }
 }
 
+// 212: the service refused the stored sign-in — a notice under the bell (and a push, as the owner chose). The database
+// builds it from the service code alone (no text, no URL) and writes at most one a day while an unread one is there.
+// Best effort: a failure here never changes the answer.
+async function notifySignInFailed(db: SupabaseClient, userId: string): Promise<void> {
+  const { error } = await db.rpc('notify_service_problem', { p_user: userId, p_service: 'strava' })
+  if (error) console.error(`strava-activities: the sign-in notice was not written (${error.code ?? 'error'})`)
+}
+
 async function refreshIfExpired(supabase: SupabaseClient, userId: string) {
   const { data: token } = await supabase
     .from('strava_tokens')
@@ -63,7 +71,11 @@ async function refreshIfExpired(supabase: SupabaseClient, userId: string) {
     }),
   })
 
-  if (!res.ok) return null
+  // 400/401: Strava no longer takes the refresh token (the access was revoked); anything else may pass.
+  if (!res.ok) {
+    if (res.status === 400 || res.status === 401) await notifySignInFailed(supabase, userId)
+    return null
+  }
 
   const { access_token, refresh_token, expires_at } = await res.json()
   await supabase

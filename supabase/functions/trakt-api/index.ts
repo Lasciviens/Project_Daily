@@ -3740,6 +3740,14 @@ async function sameSecret(given: string, expected: string): Promise<boolean> {
   return diff === 0
 }
 
+// 212: the service refused the stored sign-in — a notice under the bell (and a push, as the owner chose). The database
+// builds it from the service code alone (no text, no URL) and writes at most one a day while an unread one is there.
+// Best effort: a failure here never changes the answer.
+async function notifySignInFailed(db: Db, userId: string): Promise<void> {
+  const { error } = await db.rpc('notify_service_problem', { p_user: userId, p_service: 'trakt' })
+  if (error) console.error(`trakt-api: the sign-in notice was not written (${error.code ?? 'error'})`)
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   const url = Deno.env.get('SUPABASE_URL')!
@@ -4061,6 +4069,7 @@ Deno.serve(async (req: Request) => {
     // last error, so a cron run that hits this says so there too.
     if (status === 401) {
       await stamp(supabase, userId, { last_error: REAUTH_MESSAGE }).catch(() => null)
+      await notifySignInFailed(supabase, userId)
       return json({ error: 'reauth_required' }, 200)
     }
     const message = err instanceof Error ? err.message : String(err)

@@ -731,6 +731,14 @@ async function sameSecret(given: string, expected: string): Promise<boolean> {
 }
 
 // ── Handler ──────────────────────────────────────────────────────────────────
+// 212: the service refused the stored sign-in — a notice under the bell (and a push, as the owner chose). The database
+// builds it from the service code alone (no text, no URL) and writes at most one a day while an unread one is there.
+// Best effort: a failure here never changes the answer.
+async function notifySignInFailed(db: ReturnType<typeof createClient>, userId: string): Promise<void> {
+  const { error } = await db.rpc('notify_service_problem', { p_user: userId, p_service: 'google' })
+  if (error) console.error(`google-tasks-sync: the sign-in notice was not written (${error.code ?? 'error'})`)
+}
+
 Deno.serve(async (req) => {
   const cors = corsHeaders(req.headers.get('origin'))
   const jsonHeaders = { ...cors, 'Content-Type': 'application/json' }
@@ -804,6 +812,7 @@ Deno.serve(async (req) => {
     // token dies after 7 days while the Google Cloud consent screen is in
     // Testing (docs/deploy-checklist.md).
     const reconnect = err.error === 'invalid_grant'
+    if (reconnect) await notifySignInFailed(supabase, userId)
     return fail(reconnect ? 401 : 502, reconnect
       ? 'Google refused the stored sign-in (invalid_grant): reconnect Google in Settings → Subscriptions'
       : `token refresh failed: ${err.error ?? tokenRes.status}`, reconnect)

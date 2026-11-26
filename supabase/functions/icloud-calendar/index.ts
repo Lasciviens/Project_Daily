@@ -2044,6 +2044,14 @@ export function fieldsChangeOf(ics: string, uid: string, row: FieldsRow, area: P
 export const MOVE_FROM = ['today', 'all'] as const
 export type MoveFrom = typeof MOVE_FROM[number]
 
+// 212: the service refused the stored sign-in — a notice under the bell (and a push, as the owner chose). The database
+// builds it from the service code alone (no text, no URL) and writes at most one a day while an unread one is there.
+// Best effort: a failure here never changes the answer.
+async function notifySignInFailed(db: SupabaseClient, userId: string): Promise<void> {
+  const { error } = await db.rpc('notify_service_problem', { p_user: userId, p_service: 'icloud' })
+  if (error) console.error(`icloud-calendar: the sign-in notice was not written (${error.code ?? 'error'})`)
+}
+
 class ICloudError extends Error {
   constructor(public code: string, message: string) { super(message) }
 }
@@ -3442,6 +3450,7 @@ async function drainEveryAccount(db: Db): Promise<Record<string, number>> {
       total.problems++
       const message = stepFailureText(e)
       await db.from('icloud_credentials').update({ last_error: message }).eq('user_id', r.user_id)
+      if (e instanceof ICloudError && e.code === 'auth') await notifySignInFailed(db, r.user_id)
       console.error(`icloud-calendar cron: ${e instanceof ICloudError ? e.code : `unexpected ${faultFrames(e)}`}`)
     }
   }

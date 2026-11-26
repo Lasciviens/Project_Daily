@@ -39,6 +39,14 @@ function corsHeaders(origin: string | null): Record<string, string> {
   }
 }
 
+// 212: the service refused the stored sign-in — a notice under the bell (and a push, as the owner chose). The database
+// builds it from the service code alone (no text, no URL) and writes at most one a day while an unread one is there.
+// Best effort: a failure here never changes the answer.
+async function notifySignInFailed(db: ReturnType<typeof createClient>, userId: string): Promise<void> {
+  const { error } = await db.rpc('notify_service_problem', { p_user: userId, p_service: 'google' })
+  if (error) console.error(`calendar-token: the sign-in notice was not written (${error.code ?? 'error'})`)
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get('origin')
   const headers = corsHeaders(origin)
@@ -104,6 +112,8 @@ Deno.serve(async (req) => {
 
     if (!tokenRes.ok) {
       const err = await tokenRes.json().catch(() => ({}))
+      // invalid_grant: Google no longer takes the stored sign-in (revoked, or 7 days old while the app is in Testing).
+      if (err.error === 'invalid_grant') await notifySignInFailed(supabase, user.id)
       return new Response(JSON.stringify({ error: err.error_description ?? 'Refresh failed' }), {
         status: 502,
         headers: { ...headers, 'Content-Type': 'application/json' },
