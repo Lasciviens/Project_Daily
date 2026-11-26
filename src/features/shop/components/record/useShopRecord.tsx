@@ -133,7 +133,7 @@ export function useShopRecord(item: ShopItem, openFact: RecordFact | undefined, 
     void planThis({ kind: 'shop_item', id: item.id, title: item.title, plannedDate: item.planned_date, notes: item.notes, purpose, due })
   }
   const planned: RecordAction | null = openPlan
-    ? { key: 'planned', label: openPlan.day ? `Planned ${formatDate(openPlan.day)}` : 'Planned', tip: 'Planned — open the plan', icon: <CalendarCheck />,
+    ? { key: 'planned', label: openPlan.day ? `Planned ${formatDate(openPlan.day)}` : 'Planned', tip: `Planned${openPlan.day ? ` ${formatDate(openPlan.day)}` : ''} — open “${openPlan.title}”`, icon: <CalendarCheck />,
         onClick: () => modal.open({ kind: 'task', id: openPlan.taskId }) }
     : null
 

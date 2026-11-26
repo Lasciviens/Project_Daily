@@ -23,12 +23,9 @@ const fail = msg => { console.error(`verify-db-linked-plans: ${msg}`); process.e
   if (/^\s*(begin|commit|rollback|savepoint)\s*;/im.test(sql)) problems.push('a top-level BEGIN/COMMIT (the deploy runs it as one transaction)')
   if (/\bnet\.http_|vault\.|googleapis|icloud_enqueue/i.test(sql)) problems.push('a call outside the database')
   if (/drop (table|column)/i.test(sql)) problems.push('a drop of a table or a column')
-  // 141/169's training functions keep their own search_path and rights (redefined in place, same signature).
-  const kept = /tasks_link_training|training_plan_candidates|hevy_workout_completes_plan/
   for (const f of sql.matchAll(/create or replace function (public\.\w+)\(([^)]*)\)/g)) {
     const body = sql.slice(f.index, sql.indexOf('$$;', f.index))
     const args = f[2].replace(/\bp_\w+\s+/g, '').trim()
-    if (kept.test(f[1])) continue
     if (!/set search_path = ''/.test(body)) problems.push(`${f[1]} without search_path ''`)
     if (!sql.includes(`revoke all on function ${f[1]}(${args})`)) problems.push(`no revoke for ${f[1]}(${args})`)
     // A SECURITY DEFINER function is never the browser's: a trigger, or notify() for the service role only.

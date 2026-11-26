@@ -364,6 +364,8 @@ export function MediaLibraryControls({ detail, isMovie, userEntry, onRemoved }: 
         <StatusPills statuses={statuses} value="unwatched" disabled={addMovie.isPending || addTV.isPending}
           onPick={s => { if (s !== 'unwatched') void handleAdd(s) }} />
         <div className="flex flex-wrap items-center gap-2">
+          {/* A movie not in the library (Discover's "In cinemas"): Plan and Cinema still plan it, without a link. */}
+          {isMovie && <PlanThisButton entryId={null} title={movie!.title} runtimeMinutes={movie!.runtime} />}
           <QueueButton type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />
           <ReleaseReminderButton type={isMovie ? 'movie' : 'tv'} tmdbId={detail.id} title={isMovie ? movie!.title : tv!.name} posterPath={detail.poster_path ?? null} releaseDate={(isMovie ? movie!.release_date : tv!.first_air_date) || null} />
           <AddToListMenu type={isMovie ? 'movie' : 'show'} tmdb={detail.id} title={isMovie ? movie!.title : tv!.name} />

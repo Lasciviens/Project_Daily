@@ -4,7 +4,9 @@ import { PlanThingButton } from '../../items/components/LinkedPlanChips'
 import { useOpenPlan, usePlanThis } from '../../items/usePlanThis'
 
 interface Props {
-  entryId: string
+  /** The library entry the plan links to; null for a movie not in the library (Discover's "In cinemas"): it plans
+   *  without a link. */
+  entryId: string | null
   title: string
   /** Movie runtime in minutes — becomes the plan duration (rounded up to 15m). */
   runtimeMinutes?: number | null

@@ -100,7 +100,7 @@ export function PlannedChip({ kind, id, variant = 'secondary', className }: {
   if (!p) return null
   return (
     <Button size="sm" variant={variant} icon={<CalendarCheck aria-hidden />} className={className} data-testid="planned-chip"
-      tip={`Planned${p.day ? ` ${formatDate(p.day)}` : ''} — open the plan`} onClick={() => modal.open({ kind: 'task', id: p.taskId })}>
+      tip={`Planned${p.day ? ` ${formatDate(p.day)}` : ''} — open “${p.title}”`} onClick={() => modal.open({ kind: 'task', id: p.taskId })}>
       {p.day ? `Planned ${formatDate(p.day)}` : 'Planned'}
     </Button>
   )

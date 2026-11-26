@@ -124,6 +124,17 @@ update public.wish_items set status = 'dropped' where id = '40000000-0000-0000-0
 select t_set(t_id('wish'), 'cancelled');
 select t_ok((select status from public.wish_items where id = '40000000-0000-0000-0000-000000000003') = 'dropped',
   'E8 the owner''s own change after the tick is never undone (dropped stays dropped)');
+-- Done by the tick, then put back to planned and marked done again by the owner (a later clock): the owner's.
+reset role;
+insert into public.wish_items (id, user_id, title, status) values ('40000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000001', 'Kayak trip', 'idea');
+set role authenticated;
+insert into public.t_keep values ('wish2', public.app_save_item(public.t_item('Paddle the fjord'), '{"kind":"wish","id":"40000000-0000-0000-0000-000000000004"}'));
+select t_set(t_id('wish2'), 'done');
+update public.wish_items set status = 'planned' where id = '40000000-0000-0000-0000-000000000004';
+update public.wish_items set status = 'done' where id = '40000000-0000-0000-0000-000000000004';
+select t_set(t_id('wish2'), 'open');
+select t_ok((select status from public.wish_items where id = '40000000-0000-0000-0000-000000000004') = 'done',
+  'E8 a wish the owner marked done again by hand after the tick stays done on untick (its clock moved)');
 
 -- A project phase: done with its last open task; unticking that task opens it again.
 reset role;
@@ -193,8 +204,11 @@ insert into public.t_keep values ('game', public.app_save_item(public.t_item('Pl
 reset role;
 update public.games set last_played_at = now() - interval '5 days' where id = '50000000-0000-0000-0000-000000000001';
 select t_ok((t_task(t_id('game'))).status = 'open', 'Y5 played on another day: the game plan stays open');
-update public.games set play_seconds = 3600 where id = '50000000-0000-0000-0000-000000000001';
-select t_ok((t_task(t_id('game'))).status = 'done', 'Y5 its play time grew after the plan was made: closed');
+-- A sync reporting more play time from a session before the plan was made (its last play then): still open.
+update public.games set play_seconds = 1800 where id = '50000000-0000-0000-0000-000000000001';
+select t_ok((t_task(t_id('game'))).status = 'open', 'Y5 play time that grew from a session before the plan was made closes nothing');
+update public.games set play_seconds = 3600, last_played_at = now() where id = '50000000-0000-0000-0000-000000000001';
+select t_ok((t_task(t_id('game'))).status = 'done', 'Y5 its play time grew from a session after the plan was made: closed');
 set role authenticated;
 insert into public.t_keep values ('game2', public.app_save_item(public.t_item('Play Game One again', jsonb_build_object('date', ((now() at time zone 'Europe/Oslo')::date + 3)::text)),
   '{"kind":"game","id":"50000000-0000-0000-0000-000000000001"}'));
@@ -308,6 +322,10 @@ select t_ok(t_refused($$select public.app_save_item(public.t_item('x'), '{"kind"
 reset role;
 
 -- ═══ S. Who writes what ══════════════════════════════════════════════════════
+insert into public.tasks (id, user_id, title) values ('95000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000002', 'Theirs');
+select t_ok(t_refused($$insert into public.time_blocks (user_id, date, title, start_time, duration_minutes, task_id)
+  values ('00000000-0000-0000-0000-000000000001', '2026-11-28', 'Mine on their task', '10:00', 30, '95000000-0000-0000-0000-000000000002')$$) like '23503%',
+  'S0 a slot can''t name another account''s task (a plan''s day is read from its slot)');
 set role authenticated;
 select t_ok(t_refused($$insert into public.notifications (user_id, kind, dedupe_key) values ('00000000-0000-0000-0000-000000000001', 'shop_bought_draft', 'x:00000000-0000-0000-0000-000000000000')$$) like '42501%'
         and t_refused($$insert into public.task_link_effects (task_id, effect, user_id, target_id, before, after) values (gen_random_uuid(), 'wish_done', '00000000-0000-0000-0000-000000000001', gen_random_uuid(), '{}', '{}')$$) like '42501%'

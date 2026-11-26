@@ -297,18 +297,41 @@ $$;
 revoke all on function public.shop_draft_facts(jsonb) from public, anon;
 grant execute on function public.shop_draft_facts(jsonb) to authenticated, service_role;
 
--- A plan's own day: its slot's date, else its due day (141's rule); null when undated.
+-- A plan's own day: its slot's date, else its due day (141's rule); null when undated. Only the task's own user's slot.
 create or replace function public.task_plan_day(p_task uuid)
 returns date
 language sql
 stable
 set search_path = ''
 as $$
-  select coalesce((select min(b.date) from public.time_blocks b where b.task_id = t.id), t.due_date)
+  select coalesce((select min(b.date) from public.time_blocks b where b.task_id = t.id and b.user_id = t.user_id), t.due_date)
     from public.tasks t where t.id = p_task
 $$;
 revoke all on function public.task_plan_day(uuid) from public, anon;
 grant execute on function public.task_plan_day(uuid) to authenticated, service_role;
+
+-- A slot belongs to a task of its own user (guardian, 26.11.2026: a foreign key admits another account's task id, and
+-- a plan's day is read from its slot). 23503, as 192's ownership checks: a restore retries once the parent is back.
+create or replace function public.time_blocks_task_owner()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if new.task_id is not null
+     and (tg_op = 'INSERT' or new.task_id is distinct from old.task_id or new.user_id is distinct from old.user_id)
+     and not exists (select 1 from public.tasks t where t.id = new.task_id and t.user_id = new.user_id) then
+    raise exception 'A slot belongs to a task of your own' using errcode = '23503';
+  end if;
+  return new;
+end
+$$;
+revoke all on function public.time_blocks_task_owner() from public, anon, authenticated;
+drop trigger if exists trg_time_blocks_task_owner on public.time_blocks;
+create trigger trg_time_blocks_task_owner
+  before insert or update of task_id, user_id on public.time_blocks
+  for each row execute function public.time_blocks_task_owner();
 
 create or replace function public.tasks_link_effects()
 returns trigger
@@ -352,9 +375,11 @@ begin
        where w.id = new.wish_item_id and w.user_id = new.user_id and w.status in ('idea', 'planned');
       if v_row is not null and not exists (select 1 from public.task_link_effects x where x.task_id = new.id and x.effect = 'wish_done') then
         update public.wish_items set status = 'done' where id = new.wish_item_id and user_id = new.user_id;
+        -- Its state as the effect left it, with its clock: a wish the owner marked done again by hand is the owner's.
         insert into public.task_link_effects (task_id, effect, user_id, target_id, before, after)
-        values (new.id, 'wish_done', new.user_id, new.wish_item_id,
-                jsonb_build_object('status', v_row -> 'status'), jsonb_build_object('status', 'done'))
+        select new.id, 'wish_done', new.user_id, w.id, jsonb_build_object('status', v_row -> 'status'),
+               jsonb_build_object('status', w.status, 'updated_at', to_jsonb(w) -> 'updated_at')
+          from public.wish_items w where w.id = new.wish_item_id and w.user_id = new.user_id
         on conflict (task_id, effect) do nothing;
       end if;
     end if;
@@ -390,7 +415,8 @@ begin
          where n.user_id = e.user_id and n.dedupe_key = 'shop_bought:' || new.id::text;
       elsif e.effect = 'wish_done' then
         update public.wish_items w set status = e.before ->> 'status'
-         where w.id = e.target_id and w.user_id = e.user_id and w.status = e.after ->> 'status';
+         where w.id = e.target_id and w.user_id = e.user_id and w.status = e.after ->> 'status'
+           and (to_jsonb(w) -> 'updated_at') is not distinct from (e.after -> 'updated_at');
       elsif e.effect = 'phase_done' then
         update public.project_phases p set status = e.before ->> 'status'
          where p.id = e.target_id and p.user_id = e.user_id and p.status = 'done'
@@ -413,7 +439,9 @@ create trigger trg_tasks_link_effects
 -- ── A3. Synced kinds: the sync closes the plan ───────────────────────────────
 
 -- A plan of this thing still to do whose day the record falls on (or after, for a movie), closed at the record's
--- time. Undated: from the day it was made. Shared by the three triggers below; every query is the user's own.
+-- time — a record from before the plan was made closes nothing. Undated: from the day it was made. Books and games
+-- close only on the plan's own day on purpose (a session another day is not the planned one); a movie on or after it
+-- (a film planned and seen later is still that film). Shared by the triggers below; every query is the user's own.
 create or replace function public.close_linked_plans(p_user uuid, p_col text, p_id uuid, p_day date, p_at timestamptz, p_on_or_after boolean)
 returns integer
 language plpgsql
@@ -430,10 +458,11 @@ begin
   execute format(
     'update public.tasks t set status = ''done'', completed_at = $4
       where t.user_id = $1 and t.%I = $2 and t.status in (''open'', ''in_progress'', ''waiting'')
+        and ($6 is null or $6 >= t.created_at)
         and case when public.task_plan_day(t.id) is null then (t.created_at at time zone ''Europe/Oslo'')::date <= $3
                  when $5 then public.task_plan_day(t.id) <= $3
                  else public.task_plan_day(t.id) = $3 end', p_col)
-    using p_user, p_id, p_day, coalesce(p_at, now()), p_on_or_after;
+    using p_user, p_id, p_day, coalesce(p_at, now()), p_on_or_after, p_at;
   get diagnostics n = row_count;
   return n;
 end
@@ -494,7 +523,8 @@ begin
   if coalesce(new.play_seconds, 0) > coalesce(old.play_seconds, 0) then
     update public.tasks t set status = 'done', completed_at = now()
      where t.user_id = new.user_id and t.game_id = new.id and t.status in ('open', 'in_progress', 'waiting')
-       and t.created_at <= now()
+       -- The play time grew after the plan was made (a sync reporting an earlier session closes nothing).
+       and (new.last_played_at is null or new.last_played_at >= t.created_at)
        and coalesce(public.task_plan_day(t.id), (t.created_at at time zone 'Europe/Oslo')::date) <= v_today;
   end if;
   return null;
@@ -660,7 +690,7 @@ create or replace function public.training_plan_candidates(p_user uuid, p_day da
 returns table (id uuid, routine text, status text, plan_day date, created_at timestamptz)
 language sql
 stable
-set search_path = public
+set search_path = ''
 as $$
   select c.id, c.routine, c.status, c.plan_day, c.created_at
     from (
@@ -668,15 +698,15 @@ as $$
              case when t.status <> 'cancelled' then t.status
                   when t.closed_reason = 'missed' then 'missed'
                   else 'skipped' end as status,
-             coalesce((select min(b.date) from time_blocks b where b.task_id = t.id), t.due_date) as plan_day
-        from tasks t
+             coalesce((select min(b.date) from public.time_blocks b where b.task_id = t.id and b.user_id = t.user_id), t.due_date) as plan_day
+        from public.tasks t
        where t.user_id = p_user
          and t.hevy_workout_id is null
          and (t.hevy_routine_id is not null or t.source_type = 'training_session')
          and (t.status in ('open', 'in_progress', 'waiting', 'done')
               or (t.status = 'cancelled' and t.closed_reason = 'missed')
               or (t.status = 'cancelled' and t.hevy_routine_id is not null
-                  and exists (select 1 from training_skips k where k.task_id = t.id)))
+                  and exists (select 1 from public.training_skips k where k.task_id = t.id and k.user_id = t.user_id)))
     ) c
    where c.plan_day between p_day - 6 and p_day
      and p_day <= coalesce(c.first_plan_date, c.plan_day) + 6
@@ -684,12 +714,13 @@ as $$
 $$;
 revoke all on function public.training_plan_candidates(uuid, date) from public, anon, authenticated;
 
--- 169's rule; 211: step 3 offers a session still to do before one ticked by hand.
+-- 169's rule; 211: step 3 offers a session still to do before one ticked by hand; search_path '' and every query
+-- scoped to the workout's own user (guardian, 26.11.2026).
 create or replace function public.hevy_workout_completes_plan()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = ''
 as $$
 declare
   w_day date;
@@ -697,11 +728,11 @@ declare
   n     int;
 begin
   if new.start_time is null then return new; end if;
-  if exists (select 1 from tasks where hevy_workout_id = new.id) then return new; end if;
+  if exists (select 1 from public.tasks where hevy_workout_id = new.id) then return new; end if;
   w_day := (new.start_time at time zone 'Europe/Oslo')::date;
 
   if new.routine_id is not null then
-    select c.id into t_id from training_plan_candidates(new.user_id, w_day) c
+    select c.id into t_id from public.training_plan_candidates(new.user_id, w_day) c
      where c.routine = new.routine_id and c.plan_day = w_day
      order by case c.status when 'done' then 3 when 'skipped' then 2 when 'missed' then 1 else 0 end, c.created_at
      limit 1;
@@ -709,24 +740,24 @@ begin
 
   if t_id is null and new.routine_id is not null then
     select t.id into t_id
-      from tasks t join hevy_workouts w on w.id = t.hevy_workout_id
+      from public.tasks t join public.hevy_workouts w on w.id = t.hevy_workout_id and w.user_id = t.user_id
      where t.user_id = new.user_id
        and t.hevy_routine_id = new.routine_id
        and w.routine_id is distinct from new.routine_id
-       and coalesce((select min(b.date) from time_blocks b where b.task_id = t.id), t.due_date) = w_day
+       and coalesce((select min(b.date) from public.time_blocks b where b.task_id = t.id and b.user_id = t.user_id), t.due_date) = w_day
      order by t.created_at
      limit 1;
     if t_id is not null then
-      update tasks
+      update public.tasks
          set hevy_workout_id = new.id,
              completed_at    = coalesce(new.end_time, new.start_time)
-       where id = t_id;
+       where id = t_id and user_id = new.user_id;
       return new;
     end if;
   end if;
 
   if t_id is null and new.routine_id is not null then
-    select c.id into t_id from training_plan_candidates(new.user_id, w_day) c
+    select c.id into t_id from public.training_plan_candidates(new.user_id, w_day) c
      where c.routine = new.routine_id and c.plan_day < w_day
      order by (c.status = 'done'), (c.status = 'skipped'), c.plan_day desc, c.created_at
      limit 1;
@@ -734,23 +765,25 @@ begin
 
   if t_id is null then
     select min(c.id::text)::uuid, count(*) into t_id, n
-      from training_plan_candidates(new.user_id, w_day) c
+      from public.training_plan_candidates(new.user_id, w_day) c
      where c.plan_day = w_day and c.status in ('open', 'in_progress', 'waiting', 'done')
        and (new.routine_id is null or c.routine is null);
     if n <> 1 then t_id := null; end if;
   end if;
 
   if t_id is not null then
-    update tasks
+    update public.tasks
        set hevy_workout_id = new.id,
            completed_at    = case when status = 'done' then completed_at
                                   else coalesce(new.end_time, new.start_time) end,
            status          = 'done'
-     where id = t_id and hevy_workout_id is null;
+     where id = t_id and user_id = new.user_id and hevy_workout_id is null;
   end if;
   return new;
 end;
 $$;
+revoke all on function public.hevy_workout_completes_plan() from public, anon, authenticated;
+revoke all on function public.tasks_link_training() from public, anon, authenticated;
 
 select public.owner_lock_apply('public.notifications');
 select public.owner_lock_apply('public.task_link_effects');

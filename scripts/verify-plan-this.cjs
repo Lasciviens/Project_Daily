@@ -128,5 +128,17 @@ check('the registry names every link kind', kinds === Object.keys(LINK_KINDS).so
 check('who closes each plan follows the owner\'s rule (synced kinds by the sync, app-owned by the tick, football by hand)',
   ['movie', 'tv', 'game', 'book', 'training'].every(k => LINK_KINDS[k].closedBy === 'sync') && ['shop_item', 'wish'].every(k => LINK_KINDS[k].closedBy === 'tick') && LINK_KINDS.football.closedBy === 'hand')
 
+console.log('\n== 4. The tick says what it did ==')
+const { doneMessage, reopenMessage } = require('../src/features/items/tickMessage')
+const shop = { effect: { effect: 'shop_bought', target_id: 'k', before: { status: 'wishlist' } } }
+check('a done shop plan: "Task done · Kettle bought — check it in Shop"', doneMessage([{ ...shop, now: { title: 'Kettle', status: 'bought' } }]) === 'Task done · Kettle bought — check it in Shop')
+check('a wish, a phase', doneMessage([{ effect: { effect: 'wish_done', target_id: 'w', before: { status: 'planned' } }, now: { title: 'Bergen', status: 'done' } }]) === 'Task done · wish fulfilled'
+  && doneMessage([{ effect: { effect: 'phase_done', target_id: 'p', before: { status: 'in_progress' } }, now: { title: 'One', status: 'done' } }]) === 'Task done · phase done')
+check('no effect: plain "Task done" / "Task reopened"', doneMessage([]) === 'Task done' && reopenMessage([]) === 'Task reopened')
+check('reopened: "back on the wishlist" when undone, "your purchase kept" when the owner changed it',
+  reopenMessage([{ ...shop, now: { title: 'Kettle', status: 'wishlist' } }]) === 'Task reopened · back on the wishlist'
+  && reopenMessage([{ ...shop, now: { title: 'Kettle', status: 'bought' } }]) === 'Task reopened · your purchase kept')
+check('the toggle reports through them', /successMessage: \(r, \{ isDone \}\) => \(isDone \? doneMessage\(r\.outcomes\) : reopenMessage\(r\.outcomes\)\)/.test(read('src/features/todo/hooks/useTodos.ts')))
+
 console.log(`\nverify-plan-this: ${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

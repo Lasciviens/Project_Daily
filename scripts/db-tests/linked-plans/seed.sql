@@ -9,6 +9,9 @@ alter table public.shop_items
   add column if not exists bought_at timestamptz,
   add column if not exists price numeric,
   add column if not exists currency text;
+-- 069's clock on a wish (update_updated_at): the wish effect's undo compares it.
+alter table public.wish_items add column if not exists updated_at timestamptz not null default now();
+create trigger trg_wish_items_updated_at before update on public.wish_items for each row execute function public.update_updated_at();
 alter table public.games
   add column if not exists last_played_at timestamptz,
   add column if not exists play_seconds integer;
