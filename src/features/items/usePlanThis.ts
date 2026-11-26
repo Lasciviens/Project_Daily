@@ -5,16 +5,15 @@ import { entityModal } from '../../shared/modals'
 import { qk } from '../../shared/query/keys'
 import { STALE } from '../../shared/query/stale'
 import { todayStr } from '../../shared/utils/dateUtils'
-import { fetchPlans } from '../football/api/footballApi'
-import { planRoutine } from '../training/planTraining'
 import { fetchLinkedThing, fetchOpenPlan } from './linkApi'
 import type { TaskLink } from './linkKinds'
 import type { ItemLinkKind } from './itemTypes'
-import { planLookup, planRequest, type PlanThing } from './planThis'
+import type { PlanThing } from './planThis'
 
 // THE Plan helper (Phase 3 A2, owner 26.11.2026): every Plan button calls `usePlanThis()(thing)`. A thing that has
 // an open plan opens that plan ("planning twice opens the plan"; one open plan per thing, 210); otherwise the item
-// screen opens with the thing's defaults and its link, saved with the item in one transaction.
+// screen opens with the thing's defaults and its link, saved with the item in one transaction. The request builders
+// (planThis: football's and Shop's models, the training step) load on the tap, never in a page's first download.
 
 /** The open plan of a thing (the reverse chip "Planned 28.11.2026"); none for no id. */
 export function useOpenPlan(kind: ItemLinkKind, id: string | null | undefined) {
@@ -41,12 +40,15 @@ export function usePlanThis() {
   const qc = useQueryClient()
   return useCallback(async (thing: PlanThing) => {
     if (thing.kind === 'training') {
+      const { planRoutine } = await import('../training/planTraining')
       await planRoutine(thing.routine ?? null, { date: thing.date, onSaved: thing.onSaved })
       return
     }
+    const { planLookup, planRequest } = await import('./planThis')
     let open: string | null = null
     try {
       if (thing.kind === 'football') {
+        const { fetchPlans } = await import('../football/api/footballApi')
         // A list read a moment ago may not know a match the subscription just added: read the records again.
         const plans = await qc.fetchQuery({ queryKey: qk.football.plans(), queryFn: fetchPlans, staleTime: 0 })
         open = plans.find(p => p.event_id === thing.match.id && p.task_id)?.task_id ?? null
