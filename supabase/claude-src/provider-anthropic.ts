@@ -68,7 +68,7 @@ const ANTHROPIC_FAILURES: Record<ModelFailure['kind'], string> = {
   billing: "Anthropic stopped the request for a billing reason: the account's spend limit or its credit. Look at Billing in the Anthropic Console.",
   rate_limit: 'Anthropic is getting too many requests from this account right now. Try again in a minute.',
   overloaded: 'Anthropic is overloaded right now. Try again in a moment.',
-  refused_request: 'Anthropic did not accept the request as it was built. The call in Developer → AI → Calls has its explanation.',
+  refused_request: 'Anthropic refused this request (an app problem). Try again; if it repeats, Developer → AI → Calls has the reason.',
   network: 'Anthropic could not be reached (a network error). Try again in a moment.',
   timeout: `Anthropic did not answer within ${ANTHROPIC_TIMEOUT_MS / 1000} seconds. Try again in a moment.`, // the default; a request with its own limit says its own
   provider_fault: 'Anthropic had a problem on its side. Try again in a moment.',

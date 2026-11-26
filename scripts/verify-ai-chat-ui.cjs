@@ -76,6 +76,13 @@ console.log('\n3 · a stored chat is drawn like the live one')
     const quiet = R.turnsFromStored([{ seq: 1, role: 'user', content: [{ type: 'text', text: 'Search everything' }], meta: {} }, { seq: 2, role: 'assistant', content: [{ type: 'thinking', thinking: 't', signature: 's' }], meta: { shown_text: 'I ran out of steps before I could answer. Ask again, or narrow the question (one day, one thing).' } }], [])
     check('a stored answer with no words shows the sentence kept with it (shown_text), cut to 400 characters; one with words ignores it', quiet[1].text.startsWith('I ran out of steps') && R.turnsFromStored([{ seq: 1, role: 'assistant', content: [{ type: 'text', text: 'Hi.' }], meta: { shown_text: 'x' } }], [])[0].text === 'Hi.' && R.turnsFromStored([{ seq: 1, role: 'assistant', content: [], meta: { shown_text: 'y'.repeat(900) } }], [])[0].text.length === 400 && R.turnsFromStored([{ seq: 1, role: 'assistant', content: [], meta: { shown_text: 42 } }], [])[0].text === '', quiet)
   }
+  {
+    // 26.11.2026 review: a chat the function cannot continue ("stale") works like a full one.
+    const hook = fs.readFileSync(path.join(__dirname, '../src/features/ai/chat/useAskAi.ts'), 'utf8')
+    const pnl = fs.readFileSync(path.join(__dirname, '../src/features/ai/chat/AskAiPanel.tsx'), 'utf8')
+    check('stale works like the wall: the message and its empty answer leave the chat, the hook says "wall" so the panel puts the words and photos back, and the box is closed', /event\.reason === 'wall' \|\| event\.reason === 'stale'/.test(hook) && /setWall\(event\.reason === 'wall' \? 'full' : 'stale'\)/.test(hook) && /if \(r === 'wall'\) \{ setInput\(text\); setPhotos\(sentPhotos\) \}/.test(pnl) && /const closed = chat\.wall === 'full' \|\| chat\.wall === 'stale'/.test(pnl) && /disabled=\{closed\}/.test(pnl))
+    check('stale shows "New chat" (never "Try again"), and one tap starts a new chat of the same kind and sends the kept question', /chat\.wall === 'stale'\s*\? <Button[^>]*onClick=\{startNewAndSend\}[^>]*>New chat<\/Button>/.test(pnl) && /const startNewAndSend = \(\) => \{ const text = input; chat\.newChat\(chat\.mode\); setView\('chat'\); if \(text\.trim\(\)\) deliver\(text\) \}/.test(pnl) && /retry: \(\) => Promise<'sent' \| 'wall' \| null>/.test(hook) && /r === 'wall' && asked\) setInput\(asked\)/.test(pnl))
+  }
   check('rows out of order, with a bad shape or an unknown role, do no harm', R.turnsFromStored([rows[3], { seq: 7, role: 'user', content: 'not blocks', meta: null }, rows[0]], []).length === 2)
 }
 

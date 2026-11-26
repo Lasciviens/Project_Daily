@@ -86,7 +86,8 @@ export interface AskAi {
   turns: ChatTurn[]
   conversationId: string | null
   busy: boolean
-  wall: 'ok' | 'near' | 'full'
+  /** `full`: the chat reached its size; `stale`: the function refused to continue it after an update. Either way only a new chat goes on. */
+  wall: 'ok' | 'near' | 'full' | 'stale'
   lastText: string | null
   /** The kind of the chat on screen (a new chat takes the kind given to `newChat`). */
   mode: ChatMode
@@ -95,7 +96,7 @@ export interface AskAi {
   /** `wall`: the chat is full, nothing was sent or stored (the caller keeps the message in the box). */
   send: (text: string, photos?: readonly PhotoInput[]) => Promise<'sent' | 'wall'>
   /** Asks the last question again in the same place (no second bubble). */
-  retry: () => Promise<void>
+  retry: () => Promise<'sent' | 'wall' | null>
   /** Takes the last question and its failed answer out of the chat and returns the question, to edit it. */
   editLast: () => string | null
   newChat: (mode?: ChatMode) => void
@@ -112,7 +113,7 @@ export function useAskAi(): AskAi {
   const [turns, setTurns] = useState<ChatTurn[]>([])
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [wall, setWall] = useState<'ok' | 'near' | 'full'>('ok')
+  const [wall, setWall] = useState<'ok' | 'near' | 'full' | 'stale'>('ok')
   const [lastText, setLastText] = useState<string | null>(null)
   const [mode, setMode] = useState<ChatMode>('chat')
   const [setup, setSetup] = useState<ChatSetup | null>(null)
@@ -167,10 +168,11 @@ export function useAskAi(): AskAi {
         // A newer card for the same thing closes the older one, wherever it is in the chat.
         const replaced = event.event === 'proposal' ? event.replaces : event.event === 'done' ? event.replaced : []
         if (replaced.length) setTurns(list => list.map(t => (t.cards.some(c => replaced.includes(c.id)) ? { ...t, cards: replacedIn(t.cards, replaced) } : t)))
-        if (event.event === 'error' && event.reason === 'wall') {
-          // The function refused before storing anything: the message and its empty answer leave the chat.
+        if (event.event === 'error' && (event.reason === 'wall' || event.reason === 'stale')) {
+          // The function refused before storing anything: the message and its empty answer leave the chat, and only a new
+          // chat goes on (a full chat, or one an update cannot continue); the panel puts the question back in the box.
           hitWall = true
-          setWall('full')
+          setWall(event.reason === 'wall' ? 'full' : 'stale')
           setTurns(list => list.filter(t => t.key !== answerKey && t.key !== userKey))
           return
         }
@@ -202,10 +204,10 @@ export function useAskAi(): AskAi {
   const retry = useCallback(async () => {
     const list = turnsRef.current
     const last = list[list.length - 1]
-    if (busy || !lastText || !last || last.role !== 'assistant') return
+    if (busy || !lastText || !last || last.role !== 'assistant') return null
     // The failed answer is reset where it stands: no second bubble.
     setTurns(l => l.map(t => (t.key === last.key ? newTurn(last.key, 'assistant') : t)))
-    await run(lastText, last.key, null, photosRef.current)
+    return run(lastText, last.key, null, photosRef.current)
   }, [busy, lastText, run])
 
   const editLast = useCallback((): string | null => {
