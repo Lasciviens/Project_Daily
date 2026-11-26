@@ -549,6 +549,76 @@ interface Describe {
   safetyRules: string[]
 }
 
+// ═══ supabase/claude-src/search-results.ts ═══
+// ─────────────────────────────────────────────────────────────────────────────
+//  The `claude` function · search results
+//
+//  Every `search_result` block a request carries is built here, by one function, so all of them set citations the
+//  same way. Anthropic refuses a request whose search results disagree ("Citations must be either enabled or disabled
+//  on all search_result blocks", 400): find_text once had citations on while search_docs and get_about_me left the
+//  field out, and a chat that used both could never be sent again (owner's report, 26.11.2026).
+//
+//    on     a chat or phone tool result: the model may cite it (only find_text's own rows are ever shown as links);
+//    unset  no citations field: a one-shot job's learned knowledge (a job with an answer shape may not use citations),
+//           and the results of a chat begun before this rule whose stored results already had none.
+//
+//  `verify-claude-chat` §19 fails when any other part writes a search_result block itself.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** How the search results of one request set citations: one value per request, never a mix. */
+type SearchCitations = 'on' | 'unset'
+
+/** One search result: where it came from (a label the model reads), its title, and its text. */
+interface SearchHit { source: string; title: string; text: string }
+
+/** One `search_result` block, citations set by `cite`. */
+function searchResultBlock(hit: SearchHit, cite: SearchCitations = 'on'): Block {
+  return {
+    type: 'search_result', source: hit.source, title: hit.title, content: [{ type: 'text', text: hit.text }],
+    ...(cite === 'on' ? { citations: { enabled: true } } : {}),
+  }
+}
+
+/** How one stored search result sets citations: `on` only for exactly `{ enabled: true }`, `unset` with no field; anything else is not ours. */
+function citationsOf(block: Block): SearchCitations | 'other' {
+  if (!('citations' in block)) return 'unset'
+  const c = block.citations
+  return c !== null && typeof c === 'object' && (c as Record<string, unknown>).enabled === true && Object.keys(c as object).length === 1 ? 'on' : 'other'
+}
+
+/** Every search_result block inside the tool results of these messages. */
+function storedSearchResults(messages: readonly { content: Block[] }[]): Block[] {
+  const out: Block[] = []
+  for (const m of messages) {
+    for (const block of m.content) {
+      if (block.type !== 'tool_result' || !Array.isArray(block.content)) continue
+      for (const inner of block.content as Block[]) if (inner.type === 'search_result') out.push(inner)
+    }
+  }
+  return out
+}
+
+/**
+ * The citation setting a chat's new search results must use: the one its stored results already use (the history is
+ * replayed unchanged, so the new ones follow it), `on` for a chat that has none yet. `null` when the stored history
+ * already mixes them: Anthropic refuses every request of that chat, so it is never sent again.
+ */
+function chatCitations(messages: readonly { content: Block[] }[]): SearchCitations | null {
+  const seen = new Set(storedSearchResults(messages).map(citationsOf))
+  if (seen.has('other') || seen.size > 1) return null
+  return seen.has('unset') ? 'unset' : 'on'
+}
+
+/** A tool's result blocks with every search result set to `cite` (built again by `searchResultBlock`); one with no source is dropped (nothing to cite or label); other blocks unchanged. */
+function withCitations(blocks: readonly Block[], cite: SearchCitations): Block[] {
+  return blocks.filter(block => block.type !== 'search_result' || (typeof block.source === 'string' && block.source.trim() !== '')).map(block => {
+    if (block.type !== 'search_result') return block
+    const inner = Array.isArray(block.content) ? block.content as Block[] : []
+    const text = inner.filter(b => b.type === 'text' && typeof b.text === 'string').map(b => b.text as string).join('\n')
+    return searchResultBlock({ source: String(block.source ?? ''), title: String(block.title ?? ''), text }, cite)
+  })
+}
+
 // ═══ supabase/claude-src/prices.ts ═══
 // ─────────────────────────────────────────────────────────────────────────────
 //  The `claude` function · prices and cost
@@ -2916,12 +2986,11 @@ function searchDocs(query: string, sections: readonly DocSection[] = DOCS_SNAPSH
 }
 
 /** The hits as `search_result` blocks, each labelled with its file, the snapshot's commit and what it is. */
-function docsSearchResults(hits: readonly DocHit[], commit: string = DOCS_SNAPSHOT.commit): Record<string, unknown>[] {
-  return hits.map(h => ({
-    type: 'search_result',
+function docsSearchResults(hits: readonly DocHit[], commit: string = DOCS_SNAPSHOT.commit): Block[] {
+  return hits.map(h => searchResultBlock({
     source: `${h.file} @ ${commit.slice(0, 12)} · ${DOCS_LABEL}`,
     title: h.heading.slice(0, 120),
-    content: [{ type: 'text', text: h.text }],
+    text: h.text,
   }))
 }
 
@@ -2974,7 +3043,7 @@ const ANTHROPIC_FAILURES: Record<ModelFailure['kind'], string> = {
   billing: "Anthropic stopped the request for a billing reason: the account's spend limit or its credit. Look at Billing in the Anthropic Console.",
   rate_limit: 'Anthropic is getting too many requests from this account right now. Try again in a minute.',
   overloaded: 'Anthropic is overloaded right now. Try again in a moment.',
-  refused_request: 'Anthropic did not accept the request as it was built. The call in Developer → AI → Calls has its explanation.',
+  refused_request: 'Anthropic refused this request (an app problem). Try again; if it repeats, Developer → AI → Calls has the reason.',
   network: 'Anthropic could not be reached (a network error). Try again in a moment.',
   timeout: `Anthropic did not answer within ${ANTHROPIC_TIMEOUT_MS / 1000} seconds. Try again in a moment.`, // the default; a request with its own limit says its own
   provider_fault: 'Anthropic had a problem on its side. Try again in a moment.',
@@ -3218,8 +3287,9 @@ function anthropicContent(request: ModelRequest): string | Anthropic.ContentBloc
   if (!request.images?.length && !request.documents?.length && !request.knowledge?.length) return request.userText
   return [
     // What the app learned (cases, lessons): `search_result` blocks, each with its own source label and title, before the
-    // live text. Data the model may use, never instructions (the job's rule line says so).
-    ...(request.knowledge ?? []).map(k => ({ type: 'search_result' as const, source: k.source, title: k.title, content: [{ type: 'text' as const, text: k.text }] })),
+    // live text. Data the model may use, never instructions (the job's rule line says so). Citations unset on all of them:
+    // a job with an answer shape may not use citations, and one request never mixes the two (search-results.ts).
+    ...(request.knowledge ?? []).map(k => searchResultBlock({ source: k.source, title: k.title, text: k.text }, 'unset') as unknown as Anthropic.SearchResultBlockParam),
     // A PDF is a `document` block with a base64 source (the SDK's DocumentBlockParam); the one type is application/pdf.
     ...(request.documents ?? []).map(doc => ({ type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: doc.base64 } })),
     ...(request.images ?? []).map(image => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: image.mediaType, data: image.base64 } })),
@@ -7819,8 +7889,10 @@ async function patchCall(db: Db, userId: string, id: string, patch: Partial<Call
 
 /** The numbers that bound a chat. A change is a reviewed code change, never a setting. */
 const CHAT_LIMITS = {
-  /** The most requests one answer may take: tool rounds, then the last one, which may not call a tool. */
-  maxRounds: 5,
+  /** The most requests one answer may take: tool rounds, then the last one, which may not call a tool (5 was too few for a
+   *  question that needs several searches, owner's report 26.11.2026). Each round is reserved and ledgered on its own, and
+   *  the cached prefix keeps a later round cheap; the 110 s deadline and the 90 000-token line still end an answer first. */
+  maxRounds: 8,
   /** The most tool calls that run in one round: extra calls get an error result and never run. */
   maxToolCallsPerRound: 8,
   /** The most writes one answer may propose: extra proposal calls get an error result and never run. */
@@ -7851,6 +7923,9 @@ const CHAT_LIMITS = {
   firstEventMs: 45_000,
   /** The whole answer (every round and tool) is over after this long, well under Supabase's 150 s: a round never starts or runs past it, even one that is still streaming. */
   answerDeadlineMs: 110_000,
+  /** After a tool round, less time than this left makes the next request the last one (no tools, answer now), so a long
+   *  search ends in an answer from what was found instead of the deadline's error. */
+  lastRoundFromMs: 35_000,
   /** A proposal waits this long for its Confirm. */
   proposalHours: 24,
   /** The oldest live context is repeated after this many minutes (or on a new day). */
@@ -8121,7 +8196,7 @@ const CHAT_JOB: JobDefinition = {
   enforceAnswerSchema: false,
   sourceFiles: ['supabase/claude-src/chat-rules.ts', 'supabase/claude-src/chat-tools.ts', 'supabase/claude-src/chat-store.ts', 'supabase/claude-src/chat-loop.ts', 'supabase/claude-src/provider-anthropic.ts'],
   extraFeatures: [
-    'Our own loop: read tools run side by side (at most 8 a round), their results go back in one message, at most 5 requests per answer, at most 3 proposals',
+    'Our own loop: read tools run side by side (at most 8 a round), their results go back in one message, at most 8 requests per answer (the last one without tools, so it answers from what was found), at most 3 proposals',
     'Prompt caching: the tools, the fixed instructions and the whole chat so far are cached (the chat is only added to)',
     'Context editing: old tool results are cleared from a long prompt (from 40 000 tokens, the last 4 kept)',
     'Cache diagnostics: why a cache miss happened is kept with the answer',
@@ -9367,18 +9442,17 @@ function searchDocsOutput(query: unknown): { ok: true; text: string; blocks?: Bl
   if (!DOCS_SNAPSHOT.sections.length) return { ok: true, text: 'The app\'s documentation is not available in this build. Answer from what you know of the app, or say you cannot look it up.' }
   const hits = searchDocs(q)
   if (!hits.length) return { ok: true, text: 'Nothing in the app\'s documentation matches. Try other words, or answer without it.' }
-  return { ok: true, text: `${hits.length} sections`, blocks: docsSearchResults(hits) as Block[] }
+  return { ok: true, text: `${hits.length} sections`, blocks: docsSearchResults(hits) }
 }
 
 /** The profile: the active notes as search_result blocks (one per note), each labelled with its source; a sentence when none. */
 function recallNotesOutput(notes: readonly ProfileNote[] | null): { ok: true; text: string; blocks?: Block[] } | { ok: false; message: string } {
   if (!notes) return { ok: false, message: 'The notes could not be read just now. Answer without them.' }
   if (!notes.length) return { ok: true, text: 'The person has no approved notes yet.' }
-  const blocks: Block[] = notes.slice(0, LEARN_TOOL_LIMITS.notes).map((n, i) => ({
-    type: 'search_result',
+  const blocks: Block[] = notes.slice(0, LEARN_TOOL_LIMITS.notes).map((n, i) => searchResultBlock({
     source: `the person's notes · ${n.source}${n.approvedAt ? ` · approved ${dmy(osloDay(new Date(n.approvedAt)))}` : ` · from their own words ${dmy(osloDay(new Date(n.createdAt)))}`}`,
     title: `Note ${i + 1} (${n.kind})`,
-    content: [{ type: 'text', text: learnEscape(stripHidden(n.text)) }],
+    text: learnEscape(stripHidden(n.text)),
   }))
   return { ok: true, text: `${blocks.length} notes`, blocks }
 }
@@ -9764,12 +9838,11 @@ const FIND_TEXT: ToolDef = {
     for (const r of Array.isArray(data) ? data as Record<string, unknown>[] : []) {
       if ((r.kind !== 'task' && r.kind !== 'diary') || typeof r.id !== 'string' || !TOOL_UUID.test(r.id) || blocks.length >= CHAT_LIMITS.searchResults) continue
       const day = typeof r.day === 'string' && realDay(r.day) ? ` (${dmy(r.day)})` : ''
-      blocks.push({
-        type: 'search_result', source: `lasci:${r.kind}:${r.id.toLowerCase()}`,
+      blocks.push(searchResultBlock({
+        source: `lasci:${r.kind}:${r.id.toLowerCase()}`,
         title: dataLine(`${r.kind === 'task' ? 'Task' : ''}${r.kind === 'task' ? ': ' : ''}${r.title ?? ''}${r.kind === 'task' ? day : ''}`, 100),
-        content: [{ type: 'text', text: dataLine(r.snippet || r.title || '(no text)', 300) }],
-        citations: { enabled: true },
-      })
+        text: dataLine(r.snippet || r.title || '(no text)', 300),
+      }))
     }
     if (!blocks.length) return { ok: true, text: 'Nothing matched. Try other words, a shorter word, or another kind.', rows: 0 }
     return { ok: true, text: '', blocks, rows: blocks.length }
@@ -13278,7 +13351,9 @@ async function readChatControls(db: Db, userId: string): Promise<{ modes: Record
 //       exactly as it came, and the ledger row of the round (same run_id, the next step) gets the real numbers;
 //    4. when the model asks for tools, they run side by side as the owner, and ALL their results go back in ONE message
 //       with the results first; a failure is an `is_error` result that says what to try;
-//    5. at most CHAT_LIMITS.maxRounds rounds; the last may not call a tool, so an answer always ends in words;
+//    5. at most CHAT_LIMITS.maxRounds rounds; the last (also the one after the time or size limit is near) may not call
+//       a tool, and the results before it carry the app's note to answer now from what was found; an answer that still
+//       ends with no words says so plainly (shown and stored), never an empty bubble;
 //    6. the citations the model made are checked against what the tools really returned and against the owner's own rows.
 //
 //  The writes the model proposes are rows in ai_chat_proposals until the owner taps Confirm (`decideChatProposal`).
@@ -13330,7 +13405,14 @@ const STEP_LABELS: Record<string, string> = {
 const TOOL_USE_ID = /^[A-Za-z0-9_-]{1,100}$/
 /** A proposal's kind in the app's notice to the model: never its title (the owner may have edited it). */
 const PROPOSAL_WORDS: Readonly<Record<string, string>> = { add_task: 'add a task', log_food: 'log a food line', update_food: 'change a food line', update_task: 'rename a task' }
-const NO_ANSWER = 'The model gave no answer text.'
+/** What the person reads (and what is stored with the answer) when the model's last request ended with no words, by cause. */
+const NO_ANSWER_STEPS = 'I ran out of time or steps before I could answer. Ask again, or narrow the question (one day, one thing).'
+const NO_ANSWER_CUT = 'My answer was cut off at its length limit before I wrote it. Ask again, or narrow the question.'
+/** A chat's words for a request Anthropic refused (a 400 or 404): in a chat, a new chat is the way out when it repeats. */
+const CHAT_REFUSED = 'Anthropic refused this request (an app problem). Try again; if it repeats, start a new chat.'
+const NO_ANSWER_EMPTY = 'I finished without writing an answer. Ask again, or put the question another way.'
+/** The app's note after the tool results when the next request is the last one: it may not call a tool, so it should answer from what it found. Only for this answer: a later question may search again. */
+const LAST_ROUND_NOTE = '<app_updates>For this answer only: it has reached its limit of steps, time or length, so tools are off now. Answer now from what the tools returned; say plainly what you could not look up and how the person could narrow the question. The person\'s next question may use tools again. This note comes from the app, not from the person.</app_updates>'
 
 /** A message from the person: control characters out (a new line stays), trimmed, 1 to 4000 characters, or null. */
 function cleanChatText(value: unknown): string | null {
@@ -13385,10 +13467,11 @@ async function checkedCitations(ctx: RunContext, content: readonly Block[], know
 /** The text blocks of an answer, joined. */
 const textOf = (content: readonly Block[]): string => content.filter(b => b.type === 'text' && typeof b.text === 'string').map(b => b.text as string).join('')
 
-/** What a tool result block holds for one finished tool call. */
-function resultBlock(toolUseId: string, output: ToolOutput): Block {
+/** What a tool result block holds for one finished tool call; its search results set citations the chat's one way (`cite`). */
+function resultBlock(toolUseId: string, output: ToolOutput, cite: SearchCitations): Block {
   if (!output.ok) return { type: 'tool_result', tool_use_id: toolUseId, content: output.message, is_error: true }
-  return { type: 'tool_result', tool_use_id: toolUseId, content: output.blocks && output.blocks.length ? output.blocks : output.text }
+  const blocks = output.blocks && output.blocks.length ? withCitations(output.blocks, cite) : []
+  return { type: 'tool_result', tool_use_id: toolUseId, content: blocks.length ? blocks : output.text || 'Nothing came back.' }
 }
 
 async function withTimeout<T>(run: Promise<T>, ms: number, onTimeout: T): Promise<T> {
@@ -13481,6 +13564,12 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       return errorEvent('changed', "This chat's saved history does not match what was stored, so it was not sent. Start a new chat.", conversation.id)
     }
     history = messages
+  }
+  // Every search result of one request must set citations the same way (Anthropic refuses a mix): a chat's new results
+  // follow its stored ones. A chat whose stored results already mix them fails every request, so it is not sent.
+  const cite = chatCitations(history)
+  if (cite === null) {
+    return errorEvent('stale', "This chat can't continue: an app bug saved its search results in a form Anthropic refuses. Start a new chat; your question is kept.", conversation?.id)
   }
   const chatMode: ChatMode = conversation ? conversation.mode : askedMode === 'coach' ? 'coach' : 'chat'
   const toolNames = conversation ? conversation.tool_names : toolsForNewChat(modes, chatMode)
@@ -13590,7 +13679,8 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     if (signal?.aborted) return fail('error', 'The request was cancelled.')
     const remaining = CHAT_LIMITS.answerDeadlineMs - (Date.now() - started)
     if (remaining < 8000) return fail('timeout', 'The answer took too long and was stopped. Try a narrower question.')
-    const request = baseRequest(messages, round === CHAT_LIMITS.maxRounds || forceNoTools, remaining, { firstEventTimeoutMs: Math.min(CHAT_LIMITS.firstEventMs, remaining), idleTimeoutMs: Math.min(CHAT_LIMITS.idleMs, remaining) })
+    const lastRound = round === CHAT_LIMITS.maxRounds || forceNoTools
+    const request = baseRequest(messages, lastRound, remaining, { firstEventTimeoutMs: Math.min(CHAT_LIMITS.firstEventMs, remaining), idleTimeoutMs: Math.min(CHAT_LIMITS.idleMs, remaining) })
     request.previousMessageId = previousMessageId
 
     // The reservation of this round: its worst case is held against the budget before anything is sent.
@@ -13676,11 +13766,13 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
         ...(round === 1 ? { user_text: text, ...(newImages.length ? { photos: newImages.length } : {}) } : {}), ...(answer.sent ? { sent_to_provider: answer.sent } : {}),
       }, TEXT_LOG_MAX_BYTES)
       if (answer.ok) {
-        row.response = trimForLog({ text: textOf(answer.content), ending: answer.ending, ...(answer.refusal ? { refusal: answer.refusal } : {}) }, TEXT_LOG_MAX_BYTES)
+        row.response = trimForLog({ text: textOf(answer.content), ending: answer.ending, ...(answer.refusal ? { refusal: answer.refusal } : {}), ...(shownInstead ? { no_answer_text: shownInstead } : {}) }, TEXT_LOG_MAX_BYTES)
         row.thinking = answer.thinking ? trimText(answer.thinking, TEXT_LOG_MAX_BYTES) : null
       }
     }
     const toolsRunThisRound: ToolShape[] = []
+    /** The sentence the person read instead of the model's words (an answer with none): in the text log, never as the row's error (the row is not a failure). */
+    let shownInstead: string | null = null
 
     if (!answer.ok) {
       row.outcome = 'error'
@@ -13689,7 +13781,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       await finishCall(ctx.adminDb, row)
       // A round that was cut for taking too long: stopped, its row finished as an error (the worst case stays held, the
       // bill is unknown), nothing of it stored, and the person told plainly.
-      return fail(answer.kind === 'timeout' ? 'timeout' : 'error', answer.message)
+      return fail(answer.kind === 'timeout' ? 'timeout' : 'error', answer.kind === 'refused_request' ? CHAT_REFUSED : answer.message)
     }
     if (answer.ending === 'refused') {
       row.outcome = 'refused'
@@ -13724,6 +13816,17 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     if (answer.messageId) previousMessageId = answer.messageId
 
     if (answer.ending !== 'tool_calls') {
+      // An answer with no words (only thinking, or nothing): the blocks are stored as they came (the replay must be exact),
+      // and the plain sentence the person reads is kept beside them, so the chat opened later says the same.
+      const words = textOf(answer.content)
+      const shown = words || (answer.ending === 'cut_off' ? NO_ANSWER_CUT : lastRound ? NO_ANSWER_STEPS : NO_ANSWER_EMPTY)
+      if (!words) {
+        assistantMeta.shown_text = shown
+        shownInstead = shown
+      }
+      // An empty content list is not a message Anthropic accepts back: every later request of the chat would be refused.
+      // It has no thinking block to bind, so the sentence the person read is stored in its place.
+      const storedContent: Block[] = answer.content.length ? answer.content : [{ type: 'text', text: shown }]
       logRound()
       await finishCall(ctx.adminDb, row)
       // The citations are checked BEFORE the answer is stored and kept with it, so a chat opened later shows the same links.
@@ -13732,10 +13835,10 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       // The kind of suggestion this answer noted stays with the answer, so a chat opened later shows the same line.
       const noted = suggestion as ChatSuggestionNote | null // set inside the tool step's closure: TypeScript cannot see it
       if (noted) assistantMeta.suggestion = { kind: noted.kind }
-      const wrote = await store('assistant', answer.content, row.id, assistantMeta)
+      const wrote = await store('assistant', storedContent, row.id, assistantMeta)
       if (wrote !== 'ok') return fail('error', 'The answer could not be saved. Try again in a moment.')
       await updateConversation(ctx.adminDb, ctx.userId, conversationId, { message_count: seq, last_prompt_tokens: lastPrompt, cost_usd: (conversation?.cost_usd ?? 0) + costTotal })
-      endedWith = { text: textOf(answer.content) || NO_ANSWER, ending: answer.ending === 'cut_off' ? 'cut_off' : 'complete' }
+      endedWith = { text: shown, ending: answer.ending === 'cut_off' ? 'cut_off' : 'complete' }
       break
     }
 
@@ -13808,7 +13911,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       }
       if (output.ok && output.noted && !suggestion) suggestion = { kind: output.noted.kind }
       if (output.inputs) emit({ event: 'detail', name, input: output.inputs, ok: finalOutput.ok })
-      const block = resultBlock(id, finalOutput)
+      const block = resultBlock(id, finalOutput, cite)
       const bytes = JSON.stringify(block).length
       const fields = r.input !== null && typeof r.input === 'object' ? Object.entries(r.input as Record<string, unknown>).filter(([, v]) => v !== '' && v !== 'any' && v !== null && v !== undefined).map(([k]) => k) : []
       results.push({
@@ -13818,6 +13921,14 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       })
     }
     const resultBlocks = results.map(r => r.block)
+    // The next request is the last one when the rounds, the time or the prompt's size say so: it may not call a tool, and
+    // the app's note after the results (results first, then the note) asks for the answer from what was found.
+    const nextPromptEstimate = lastPrompt + usage.outputTokens + Math.ceil(JSON.stringify(resultBlocks).length / 3)
+    const timeLeft = CHAT_LIMITS.answerDeadlineMs - (Date.now() - started)
+    if (round + 1 >= CHAT_LIMITS.maxRounds || timeLeft < CHAT_LIMITS.lastRoundFromMs || nextPromptEstimate >= CHAT_LIMITS.forceAnswerFromTokens) {
+      forceNoTools = true
+      resultBlocks.push({ type: 'text', text: LAST_ROUND_NOTE })
+    }
     for (const r of results) {
       toolsRunThisRound.push(r.shape)
       toolsRun.push(r.shape)
@@ -13830,12 +13941,10 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     if (wroteResults !== 'ok') return fail('error', 'The tool results could not be saved. Try again in a moment.')
     messages.push({ role: 'user', content: resultBlocks })
     // The wall inside an answer: this round's prompt + what it wrote + the new results is what the next request would carry.
-    const nextPrompt = lastPrompt + usage.outputTokens + Math.ceil(JSON.stringify(resultBlocks).length / 3)
-    if (nextPrompt >= CHAT_LIMITS.stopFromTokens) {
+    if (nextPromptEstimate >= CHAT_LIMITS.stopFromTokens) {
       await updateConversation(ctx.adminDb, ctx.userId, conversationId, { message_count: seq, last_prompt_tokens: lastPrompt, cost_usd: (conversation?.cost_usd ?? 0) + costTotal, status: 'full' })
       return fail('wall', 'This chat grew too long while looking things up. Start a new chat and ask again.')
     }
-    if (nextPrompt >= CHAT_LIMITS.forceAnswerFromTokens) forceNoTools = true
     await updateConversation(ctx.adminDb, ctx.userId, conversationId, { message_count: seq, last_prompt_tokens: lastPrompt, cost_usd: (conversation?.cost_usd ?? 0) + costTotal })
   }
 
@@ -14423,6 +14532,7 @@ async function runDiagnoseChat(ctx: RunContext): Promise<DiagnoseReply> {
 /** The function's parts, in the order they are joined (scripts/build-claude-function.mjs has the same list). */
 const DESCRIBE_PARTS: Describe['parts'] = [
   { name: 'types', file: 'supabase/claude-src/types.ts', what: 'The shapes the parts hand to each other: a request, an answer, a job, a ledger summary. Nothing in it belongs to a provider.' },
+  { name: 'search results', file: 'supabase/claude-src/search-results.ts', what: "Builds every search result a request carries (your tasks and diary lines, the app's docs, your notes, a job's learned cases), so all of them in one request set citations the same way; Anthropic refuses a mix." },
   { name: 'prices', file: 'supabase/claude-src/prices.ts', what: 'The price table, and the sum that turns token counts into dollars.' },
   { name: 'guard', file: 'supabase/claude-src/guard.ts', what: 'The fixed rules: the model list, the limits, how your settings are checked, the budget wall, and the filter that takes secrets out of messages.' },
   { name: 'photos', file: 'supabase/claude-src/image-rules.ts', what: 'Checks a photo before it goes anywhere: one of three types, bytes that really are that kind of picture, its size read from its own header, at most 1600 px on the long side and about 1 MB. A photo is never stored.' },
@@ -14458,7 +14568,7 @@ const DESCRIBE_PARTS: Describe['parts'] = [
   { name: 'report store', file: 'supabase/claude-src/report-store.ts', what: "The weekly reports' table: add, claim and finish a report, so one check works on a report at a time and its push goes once." },
   { name: 'job: test bench', file: 'supabase/claude-src/job-test-bench.ts', what: 'The Test bench: any question with a model, effort and thinking you pick, from the code\'s lists.' },
   { name: 'job: diagnose', file: 'supabase/claude-src/job-diagnose.ts', what: 'The tiny question of Diagnose: "Reply with the word OK.", with no answer shape.' },
-  { name: 'chat rules', file: 'supabase/claude-src/chat-rules.ts', what: "Ask AI's fixed rules: its instructions, the limits of a chat (5 requests per answer, the 90 000-token wall), the permission of each tool, the date line, and the hashes that freeze a chat's tools and instructions." },
+  { name: 'chat rules', file: 'supabase/claude-src/chat-rules.ts', what: "Ask AI's fixed rules: its instructions, the limits of a chat (8 requests per answer, the last without tools, the 90 000-token wall), the permission of each tool, the date line, and the hashes that freeze a chat's tools and instructions." },
   { name: 'suggest rules', file: 'supabase/claude-src/suggest-rules.ts', what: "The suggestions' fixed rules (phase 4c): what an idea may be (a kind from a list, plain text, no link or markup, at most one in an answer, five a week), the key that makes one row per idea, the check of the counted patterns, and the check of the weekly answer. Nothing is created, switched on or changed by an idea." },
   { name: 'suggest store', file: 'supabase/claude-src/suggest-store.ts', what: "The suggestions' tables: the one function that writes an idea (a dismissed idea never returns, a full list and a flood are refused), the counting of repeats in the ledger, and the weekly batch's bookkeeping." },
   { name: 'transit lookup', file: 'supabase/claude-src/transit-lookup.ts', what: "Ask AI's bus and train tool (get_transit): fixed code that asks Entur's open journey planner and place search (two fixed addresses, variables only, time and size limits), checks every field of the answer, and hands back a short prepared list: line, vehicle, platform, times in Oslo time, delay or cancellation, duration. Your saved places go to Entur only as a stop or a position." },

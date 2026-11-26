@@ -16,8 +16,10 @@ import { dmy, osloClock, osloDay } from './week-facts.ts'
 
 /** The numbers that bound a chat. A change is a reviewed code change, never a setting. */
 export const CHAT_LIMITS = {
-  /** The most requests one answer may take: tool rounds, then the last one, which may not call a tool. */
-  maxRounds: 5,
+  /** The most requests one answer may take: tool rounds, then the last one, which may not call a tool (5 was too few for a
+   *  question that needs several searches, owner's report 26.11.2026). Each round is reserved and ledgered on its own, and
+   *  the cached prefix keeps a later round cheap; the 110 s deadline and the 90 000-token line still end an answer first. */
+  maxRounds: 8,
   /** The most tool calls that run in one round: extra calls get an error result and never run. */
   maxToolCallsPerRound: 8,
   /** The most writes one answer may propose: extra proposal calls get an error result and never run. */
@@ -48,6 +50,9 @@ export const CHAT_LIMITS = {
   firstEventMs: 45_000,
   /** The whole answer (every round and tool) is over after this long, well under Supabase's 150 s: a round never starts or runs past it, even one that is still streaming. */
   answerDeadlineMs: 110_000,
+  /** After a tool round, less time than this left makes the next request the last one (no tools, answer now), so a long
+   *  search ends in an answer from what was found instead of the deadline's error. */
+  lastRoundFromMs: 35_000,
   /** A proposal waits this long for its Confirm. */
   proposalHours: 24,
   /** The oldest live context is repeated after this many minutes (or on a new day). */
@@ -318,7 +323,7 @@ export const CHAT_JOB: JobDefinition = {
   enforceAnswerSchema: false,
   sourceFiles: ['supabase/claude-src/chat-rules.ts', 'supabase/claude-src/chat-tools.ts', 'supabase/claude-src/chat-store.ts', 'supabase/claude-src/chat-loop.ts', 'supabase/claude-src/provider-anthropic.ts'],
   extraFeatures: [
-    'Our own loop: read tools run side by side (at most 8 a round), their results go back in one message, at most 5 requests per answer, at most 3 proposals',
+    'Our own loop: read tools run side by side (at most 8 a round), their results go back in one message, at most 8 requests per answer (the last one without tools, so it answers from what was found), at most 3 proposals',
     'Prompt caching: the tools, the fixed instructions and the whole chat so far are cached (the chat is only added to)',
     'Context editing: old tool results are cleared from a long prompt (from 40 000 tokens, the last 4 kept)',
     'Cache diagnostics: why a cache miss happened is kept with the answer',

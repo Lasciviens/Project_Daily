@@ -16,6 +16,7 @@
 
 import type { Block } from './types.ts'
 import { docsSearchResults, searchDocs, DOCS_LABEL } from './docs-search.ts'
+import { searchResultBlock } from './search-results.ts'
 import { DOCS_SNAPSHOT } from './docs-snapshot.ts'
 import { learnEscape, plainLine, stripHidden, type LessonKind } from './learn-text.ts'
 import { dmy, osloDay } from './week-facts.ts'
@@ -40,18 +41,17 @@ export function searchDocsOutput(query: unknown): { ok: true; text: string; bloc
   if (!DOCS_SNAPSHOT.sections.length) return { ok: true, text: 'The app\'s documentation is not available in this build. Answer from what you know of the app, or say you cannot look it up.' }
   const hits = searchDocs(q)
   if (!hits.length) return { ok: true, text: 'Nothing in the app\'s documentation matches. Try other words, or answer without it.' }
-  return { ok: true, text: `${hits.length} sections`, blocks: docsSearchResults(hits) as Block[] }
+  return { ok: true, text: `${hits.length} sections`, blocks: docsSearchResults(hits) }
 }
 
 /** The profile: the active notes as search_result blocks (one per note), each labelled with its source; a sentence when none. */
 export function recallNotesOutput(notes: readonly ProfileNote[] | null): { ok: true; text: string; blocks?: Block[] } | { ok: false; message: string } {
   if (!notes) return { ok: false, message: 'The notes could not be read just now. Answer without them.' }
   if (!notes.length) return { ok: true, text: 'The person has no approved notes yet.' }
-  const blocks: Block[] = notes.slice(0, LEARN_TOOL_LIMITS.notes).map((n, i) => ({
-    type: 'search_result',
+  const blocks: Block[] = notes.slice(0, LEARN_TOOL_LIMITS.notes).map((n, i) => searchResultBlock({
     source: `the person's notes · ${n.source}${n.approvedAt ? ` · approved ${dmy(osloDay(new Date(n.approvedAt)))}` : ` · from their own words ${dmy(osloDay(new Date(n.createdAt)))}`}`,
     title: `Note ${i + 1} (${n.kind})`,
-    content: [{ type: 'text', text: learnEscape(stripHidden(n.text)) }],
+    text: learnEscape(stripHidden(n.text)),
   }))
   return { ok: true, text: `${blocks.length} notes`, blocks }
 }

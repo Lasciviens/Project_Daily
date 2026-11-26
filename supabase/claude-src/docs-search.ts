@@ -9,6 +9,8 @@
 
 import { DOCS_SNAPSHOT, type DocSection } from './docs-snapshot.ts'
 import { normKey, stripHidden } from './learn-text.ts'
+import { searchResultBlock } from './search-results.ts'
+import type { Block } from './types.ts'
 
 export const DOCS_LIMITS = { hits: 3, sectionChars: 1800, queryChars: 200 } as const
 
@@ -64,11 +66,10 @@ export function searchDocs(query: string, sections: readonly DocSection[] = DOCS
 }
 
 /** The hits as `search_result` blocks, each labelled with its file, the snapshot's commit and what it is. */
-export function docsSearchResults(hits: readonly DocHit[], commit: string = DOCS_SNAPSHOT.commit): Record<string, unknown>[] {
-  return hits.map(h => ({
-    type: 'search_result',
+export function docsSearchResults(hits: readonly DocHit[], commit: string = DOCS_SNAPSHOT.commit): Block[] {
+  return hits.map(h => searchResultBlock({
     source: `${h.file} @ ${commit.slice(0, 12)} · ${DOCS_LABEL}`,
     title: h.heading.slice(0, 120),
-    content: [{ type: 'text', text: h.text }],
+    text: h.text,
   }))
 }

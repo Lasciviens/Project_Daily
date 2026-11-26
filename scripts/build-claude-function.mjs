@@ -40,7 +40,7 @@ const RULES_CLOSE = '// </item-fill-shared>'
 // The order the parts are joined in. A part may import only from parts above it, so everything a part
 // needs when the file loads is already there.
 const PARTS = [
-  'types.ts', 'prices.ts', 'guard.ts', 'image-rules.ts', 'answer-reader.ts', 'page-fetch.ts', 'recipe-rules.ts', 'recipe-page.ts',
+  'types.ts', 'search-results.ts', 'prices.ts', 'guard.ts', 'image-rules.ts', 'answer-reader.ts', 'page-fetch.ts', 'recipe-rules.ts', 'recipe-page.ts',
   'learn-text.ts', 'learn-pick.ts', 'learn-score.ts', 'learn-specs.ts', 'learn-diff.ts', 'docs-snapshot.ts', 'docs-search.ts',
   'provider-anthropic.ts', 'ledger.ts', 'learn-store.ts',
   RULES,

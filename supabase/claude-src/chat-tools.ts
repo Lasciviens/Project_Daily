@@ -24,6 +24,7 @@ import type { Block, ChatTool, JsonSchema } from './types.ts'
 import type { Db } from './ledger.ts'
 import { ownValue } from './guard.ts'
 import { escapeTagText } from './answer-reader.ts'
+import { searchResultBlock } from './search-results.ts'
 import { dmy, factsText, osloDay, osloMidnight, osloWeek, osloWeekOf, sgn, shiftDay, grp, type WeekFacts } from './week-facts.ts'
 import { readWeekFacts } from './week-data.ts'
 import { checkedIdea, SUGGEST_COMPLEXITY, SUGGEST_KINDS, type CheckedIdea, type SuggestKind } from './suggest-rules.ts'
@@ -377,12 +378,11 @@ const FIND_TEXT: ToolDef = {
     for (const r of Array.isArray(data) ? data as Record<string, unknown>[] : []) {
       if ((r.kind !== 'task' && r.kind !== 'diary') || typeof r.id !== 'string' || !TOOL_UUID.test(r.id) || blocks.length >= CHAT_LIMITS.searchResults) continue
       const day = typeof r.day === 'string' && realDay(r.day) ? ` (${dmy(r.day)})` : ''
-      blocks.push({
-        type: 'search_result', source: `lasci:${r.kind}:${r.id.toLowerCase()}`,
+      blocks.push(searchResultBlock({
+        source: `lasci:${r.kind}:${r.id.toLowerCase()}`,
         title: dataLine(`${r.kind === 'task' ? 'Task' : ''}${r.kind === 'task' ? ': ' : ''}${r.title ?? ''}${r.kind === 'task' ? day : ''}`, 100),
-        content: [{ type: 'text', text: dataLine(r.snippet || r.title || '(no text)', 300) }],
-        citations: { enabled: true },
-      })
+        text: dataLine(r.snippet || r.title || '(no text)', 300),
+      }))
     }
     if (!blocks.length) return { ok: true, text: 'Nothing matched. Try other words, a shorter word, or another kind.', rows: 0 }
     return { ok: true, text: '', blocks, rows: blocks.length }

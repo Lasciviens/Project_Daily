@@ -30,6 +30,7 @@ import type {
   AnswerEnding, BatchLine, BatchResults, BatchStatus, BatchSubmitted, Block, CacheMiss, ChatAnswer, ChatDelta, ChatRequest, ModelAnswer, ModelFailure, ModelList, ModelRequest, Provider,
   ProviderInfo, SentRequest, TokenCount, TokenUsage,
 } from './types.ts'
+import { searchResultBlock } from './search-results.ts'
 
 /** What the "How it works" page shows. The verify script compares each line with what the SDK really sends. */
 export const ANTHROPIC_INFO: ProviderInfo = {
@@ -67,7 +68,7 @@ const ANTHROPIC_FAILURES: Record<ModelFailure['kind'], string> = {
   billing: "Anthropic stopped the request for a billing reason: the account's spend limit or its credit. Look at Billing in the Anthropic Console.",
   rate_limit: 'Anthropic is getting too many requests from this account right now. Try again in a minute.',
   overloaded: 'Anthropic is overloaded right now. Try again in a moment.',
-  refused_request: 'Anthropic did not accept the request as it was built. The call in Developer → AI → Calls has its explanation.',
+  refused_request: 'Anthropic refused this request (an app problem). Try again; if it repeats, Developer → AI → Calls has the reason.',
   network: 'Anthropic could not be reached (a network error). Try again in a moment.',
   timeout: `Anthropic did not answer within ${ANTHROPIC_TIMEOUT_MS / 1000} seconds. Try again in a moment.`, // the default; a request with its own limit says its own
   provider_fault: 'Anthropic had a problem on its side. Try again in a moment.',
@@ -311,8 +312,9 @@ function anthropicContent(request: ModelRequest): string | Anthropic.ContentBloc
   if (!request.images?.length && !request.documents?.length && !request.knowledge?.length) return request.userText
   return [
     // What the app learned (cases, lessons): `search_result` blocks, each with its own source label and title, before the
-    // live text. Data the model may use, never instructions (the job's rule line says so).
-    ...(request.knowledge ?? []).map(k => ({ type: 'search_result' as const, source: k.source, title: k.title, content: [{ type: 'text' as const, text: k.text }] })),
+    // live text. Data the model may use, never instructions (the job's rule line says so). Citations unset on all of them:
+    // a job with an answer shape may not use citations, and one request never mixes the two (search-results.ts).
+    ...(request.knowledge ?? []).map(k => searchResultBlock({ source: k.source, title: k.title, text: k.text }, 'unset') as unknown as Anthropic.SearchResultBlockParam),
     // A PDF is a `document` block with a base64 source (the SDK's DocumentBlockParam); the one type is application/pdf.
     ...(request.documents ?? []).map(doc => ({ type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: doc.base64 } })),
     ...(request.images ?? []).map(image => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: image.mediaType, data: image.base64 } })),

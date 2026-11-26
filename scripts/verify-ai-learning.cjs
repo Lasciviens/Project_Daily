@@ -155,7 +155,7 @@ const path = require('path')
 const read = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
 const run = read('supabase/claude-src/run.ts')
 check('the retry is once, only for our own check\'s refusal, with the check\'s sentence escaped, and never asks the model to grade itself', /attempt\.verdict\.outcome === 'invalid' && attempt\.verdict\.problem/.test(run) && /again\.step = 2/.test(run) && /<check_error>\$\{said\}<\/check_error>/.test(run) && !/grade|rate your|is this correct/i.test(run.match(/export function retryNote[\s\S]*?\n}/)[0]))
-check('knowledge reaches the model only as search_result blocks after the cached instructions, never in the system text', /type: 'search_result' as const, source: k\.source, title: k\.title/.test(read('supabase/claude-src/provider-anthropic.ts')) && !/system: \[[^\]]*knowledge/.test(read('supabase/claude-src/provider-anthropic.ts')))
+check('knowledge reaches the model only as search_result blocks after the cached instructions, never in the system text', /searchResultBlock\(\{ source: k\.source, title: k\.title, text: k\.text \}, 'unset'\)/.test(read('supabase/claude-src/provider-anthropic.ts')) && !/system: \[[^\]]*knowledge/.test(read('supabase/claude-src/provider-anthropic.ts')))
 const R = (() => { try { return require('../supabase/claude-src/learn-run.ts') } catch (e) { return { error: e } } })()
 if (R.error) check('learn-run loads', false, String(R.error))
 else {
