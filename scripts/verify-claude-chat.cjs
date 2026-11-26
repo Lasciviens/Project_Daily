@@ -21,6 +21,8 @@
  *  10  hostile data      a task title with instructions, another account's rows, a huge result, the database tool
  *  11  streaming         a refusal after partial text, an error in the middle of the stream, one try only
  *  14  deadline          malformed tool inputs, a request that never answers or answers late, Diagnose's chat step
+ *  19  the 26.11.2026 fixes  one citation setting for every search result of a request (Anthropic refuses a mix), an
+ *                        answer with no words says so plainly, the last request answers from what was found
  *
  *   Run:  node scripts/verify-claude-chat.cjs
  */
@@ -50,7 +52,7 @@ const SDK_NAMES = ['Anthropic', 'APIConnectionError', 'APIConnectionTimeoutError
   'ContentTooLargeError', 'InternalServerError', 'NotFoundError', 'OverloadedError', 'PermissionDeniedError', 'RateLimitError', 'UnprocessableEntityError']
 const builtSource = fs.readFileSync(path.join(REPO, 'supabase/functions/claude/index.ts'), 'utf8')
 const builtCode = sucrase.transform(builtSource.replace(/^import .*npm:@anthropic-ai\/sdk@.*$/m, '').replace(/^import .*npm:@supabase\/supabase-js@.*$/m, ''), { transforms: ['typescript'] }).code
-const EXPOSED = ['checkedProposal', 'toolModes', 'toolsForNewChat', 'chatToolsNamed', 'allChatTools', 'runChatTool', 'canonicalJson', 'messageDigest', 'liveContextText', 'needsLiveContext', 'CHAT_LIMITS', 'CHAT_TOOL_ORDER', 'ALL_TOOL_ORDER', 'COACH_ONLY_TOOL_NAMES', 'promptChars', 'verdictLines', 'phoneToolNames', 'COACH_TOOL_ORDER', 'cleanOwnerInstructions', 'ownerInstructionsBlock', 'COACH_SYSTEM', 'systemFor', 'readChatControls', 'phoneChatTools', 'runPhoneTool', 'runPhoneAsk', 'KNOWN_TOOL_NAMES', 'READ_TOOL_NAMES', 'WRITE_TOOL_NAMES', 'cleanChatText', 'sqlFingerprint', 'figuresText', 'dataLine', 'realDay', 'CHAT_SYSTEM', 'TOOL_DEFAULTS', 'sha256Hex', 'describeFunction', 'chatToolKind', 'checkedIdea', 'ideaKey', 'SUGGEST_LIMITS', 'TRANSIT_LIMITS', 'checkedWhen', 'checkedPoint', 'osloInstant', 'geocoderPlace', 'departureRows', 'tripLines', 'transitLookup', 'checkedFoodRef', 'checkedPer100', 'portionOf', 'foodHasEveryWord', 'proposalSubjects', 'findFood', 'foodByRef', 'sameThing']
+const EXPOSED = ['checkedProposal', 'toolModes', 'toolsForNewChat', 'chatToolsNamed', 'allChatTools', 'runChatTool', 'canonicalJson', 'messageDigest', 'liveContextText', 'needsLiveContext', 'CHAT_LIMITS', 'CHAT_TOOL_ORDER', 'ALL_TOOL_ORDER', 'COACH_ONLY_TOOL_NAMES', 'promptChars', 'verdictLines', 'phoneToolNames', 'COACH_TOOL_ORDER', 'cleanOwnerInstructions', 'ownerInstructionsBlock', 'COACH_SYSTEM', 'systemFor', 'readChatControls', 'phoneChatTools', 'runPhoneTool', 'runPhoneAsk', 'KNOWN_TOOL_NAMES', 'READ_TOOL_NAMES', 'WRITE_TOOL_NAMES', 'cleanChatText', 'sqlFingerprint', 'figuresText', 'dataLine', 'realDay', 'CHAT_SYSTEM', 'TOOL_DEFAULTS', 'sha256Hex', 'describeFunction', 'chatToolKind', 'checkedIdea', 'ideaKey', 'SUGGEST_LIMITS', 'TRANSIT_LIMITS', 'checkedWhen', 'checkedPoint', 'osloInstant', 'geocoderPlace', 'departureRows', 'tripLines', 'transitLookup', 'checkedFoodRef', 'checkedPer100', 'portionOf', 'foodHasEveryWord', 'proposalSubjects', 'findFood', 'foodByRef', 'sameThing', 'searchResultBlock', 'chatCitations', 'withCitations', 'docsSearchResults', 'recallNotesOutput', 'LAST_ROUND_NOTE', 'NO_ANSWER_STEPS', 'NO_ANSWER_EMPTY']
 const FIXED_NOW = new Date('2026-11-22T13:30:00Z') // Sunday 22.11.2026, 14:30 in Oslo
 class FixedDate extends Date { constructor(...a) { if (a.length) super(...a); else super(FixedDate.at) } }
 FixedDate.at = FIXED_NOW.getTime()
@@ -95,6 +97,7 @@ function fakeCreateClient(world) {
       q.eq = (c, v) => { q.eqs = { ...(q.eqs ?? {}), [c]: v }; return add(r => (c.includes('->>') ? String(r[c.split('->>')[0]]?.[c.split('->>')[1]]) : r[c]) === v) }
       q.neq = (c, v) => add(r => r[c] !== v)
       q.lt = (c, v) => add(r => r[c] != null && r[c] < v)
+      q.gt = (c, v) => add(r => r[c] != null && r[c] > v)
       q.gte = (c, v) => add(r => r[c] != null && r[c] >= v)
       q.lte = (c, v) => add(r => r[c] != null && r[c] <= v)
       q.in = (c, l) => { q.ins = { ...(q.ins ?? {}), [c]: l }; return add(r => l.includes(r[c])) }
@@ -458,14 +461,20 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
   // the round cap
   const world5b = makeWorld({ tables: { tasks: [], time_blocks: [] } })
   const looping = (n) => toolMsg([[`toolu_L${n}`, 'get_day_plan', { date: '' }]], { id: `msg_l${n}` })
-  const net5b = pretend(...[1, 2, 3, 4].map(looping), textMsg('Here is what I have.', { id: 'msg_end' }))
+  const net5b = pretend(...[1, 2, 3, 4, 5, 6, 7].map(looping), textMsg('Here is what I have.', { id: 'msg_end' }))
   r = await chat({ conversation_id: null, text: 'Keep looking' }, { world: world5b, network: net5b })
-  check('the round cap: five requests at most, the fifth may not call a tool (tool_choice none)', net5b.seen.length === 5 && net5b.seen.slice(0, 4).every(s => !('tool_choice' in s.body)) && same(net5b.seen[4].body.tool_choice, { type: 'none' }) && final(r).event === 'done' && final(r).rounds === 5, [net5b.seen.length, final(r)])
-  check('five reservations and five ledger rows, steps 1 to 5, one run', world5b.reserves.length === 5 && same(callsOf(world5b).map(x => x.step), [1, 2, 3, 4, 5]) && new Set(callsOf(world5b).map(x => x.run_id)).size === 1)
+  check('the round cap: eight requests at most, the eighth may not call a tool (tool_choice none)', LIM.maxRounds === 8 && net5b.seen.length === 8 && net5b.seen.slice(0, 7).every(s => !('tool_choice' in s.body)) && same(net5b.seen[7].body.tool_choice, { type: 'none' }) && final(r).event === 'done' && final(r).rounds === 8 && final(r).text === 'Here is what I have.', [net5b.seen.length, final(r)])
+  check('eight reservations and eight ledger rows, steps 1 to 8, one run', world5b.reserves.length === 8 && same(callsOf(world5b).map(x => x.step), [1, 2, 3, 4, 5, 6, 7, 8]) && new Set(callsOf(world5b).map(x => x.run_id)).size === 1)
+  {
+    const lastResults = net5b.seen[7].body.messages.at(-1).content
+    const earlier = net5b.seen[6].body.messages.at(-1).content
+    check('the results before the last request carry the app\'s note after them (results first): tools are off, answer from what was found; earlier results have no note', lastResults[0].type === 'tool_result' && lastResults.at(-1).type === 'text' && lastResults.at(-1).text === probe.LAST_ROUND_NOTE && /tools are off now/.test(probe.LAST_ROUND_NOTE) && /comes from the app, not from the person/.test(probe.LAST_ROUND_NOTE) && earlier.every(b => b.type === 'tool_result'), lastResults)
+    check('the note is stored with the results, so the history replays exactly', same(messagesOf(world5b).at(-2).content, lastResults))
+  }
   const world5c = makeWorld({ tables: { tasks: [] } })
-  const net5c = pretend(...[1, 2, 3, 4, 5].map(looping))
+  const net5c = pretend(...[1, 2, 3, 4, 5, 6, 7, 8].map(looping))
   r = await chat({ conversation_id: null, text: 'Never stop' }, { world: world5c, network: net5c })
-  check('a model that still asks for a tool in the last round is an error, never a sixth request', net5c.seen.length === 5 && final(r).event === 'error' && callsOf(world5c).length === 5, final(r))
+  check('a model that still asks for a tool in the last round is an error, never a ninth request', net5c.seen.length === 8 && final(r).event === 'error' && callsOf(world5c).length === 8, final(r))
   const net5d = pretend(toolMsg([['toolu_X', 'get_day_plan', { date: '' }]], { blocks: [{ type: 'tool_use', id: 'toolu_X', name: 'get_day_plan', input: { date: '', extra: 1 } }], id: 'msg_x' }), textMsg('Sorry, retrying without the extra.', { id: 'msg_y' }))
   r = await chat({ conversation_id: null, text: 'Bad call' }, { world: makeWorld({ tables: { tasks: [] } }), network: net5d })
   const sent2 = net5d.seen[1]?.body.messages.at(-1).content[0]
@@ -2011,6 +2020,93 @@ const leaks = (...t) => SECRETS.filter(s => t.some(x => String(x).includes(s)))
     check('S1: the phone has none of the new tools; the coach chat neither', !p18.phoneToolNames(p18.toolModes(null)).some(n => ['find_food', 'propose_update_food', 'propose_update_task'].includes(n)) && !p18.COACH_TOOL_ORDER.some(n => ['find_food', 'propose_update_food', 'propose_update_task'].includes(n)))
     check('S1: the instructions tell the model to use find_food, never to do the portion arithmetic, and to fix rather than log twice', /find_food/.test(p18.CHAT_SYSTEM) && /Never do that arithmetic yourself/.test(p18.CHAT_SYSTEM) && /never log it a second time/.test(p18.CHAT_SYSTEM) && /propose again with replaces = its ref/.test(p18.CHAT_SYSTEM))
     check('S1: the Kassalapp key is one of the secrets kept out of every message, and only main.ts reads it', /secrets: \[[^\]]*KASSALAPP_API_KEY/.test(source0()) && (source0().match(/Deno\.env\.get\('KASSALAPP_API_KEY'\)/g) || []).length === 2 && !/KASSALAPP_API_KEY/.test(fs.readFileSync(path.join(REPO, 'supabase/claude-src/food-lookup.ts'), 'utf8').replace(/\/\/.*$/gm, '')))
+  }
+
+  // ═══ 19 · the 26.11.2026 fixes ═══════════════════════════════════════════
+  section('19 · one citation setting per request, an honest empty answer, the last request answers')
+  {
+    // 1 · Every search_result block is built by one function, so they cannot disagree again.
+    const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n')
+    // A block (it has content); the text log's summary of what was sent ({ type, source, title, text_chars }) is not one.
+    const SR = /type:\s*['"]search_result['"](?![^}]*text_chars)/
+    const partFiles = fs.readdirSync(path.join(REPO, 'supabase/claude-src')).filter(f => f.endsWith('.ts'))
+    const writers = partFiles.filter(f => SR.test(strip(fs.readFileSync(path.join(REPO, 'supabase/claude-src', f), 'utf8'))))
+    check('only search-results.ts writes a search_result block: every other part (find_text, search_docs, get_about_me, the provider\'s learned knowledge) calls searchResultBlock', same(writers, ['search-results.ts']), writers)
+    check('…and the generated function holds that one builder only', (source0().match(new RegExp(SR.source, 'g')) ?? []).length === 1)
+    check('…each of the four builders calls it', ['chat-tools.ts', 'docs-search.ts', 'chat-learn-tools.ts', 'provider-anthropic.ts'].every(f => /searchResultBlock\(/.test(strip(fs.readFileSync(path.join(REPO, 'supabase/claude-src', f), 'utf8')))))
+    const hit = { source: 'x', title: 't', text: 'body' }
+    check('searchResultBlock: on is citations { enabled: true }, unset has no citations field', same(probe.searchResultBlock(hit), { type: 'search_result', source: 'x', title: 't', content: [{ type: 'text', text: 'body' }], citations: { enabled: true } }) && !('citations' in probe.searchResultBlock(hit, 'unset')))
+    const docs = probe.docsSearchResults([{ file: 'docs/features/ai.md', heading: 'The loop', text: 'Rounds.', score: 1 }], '0123456789abcdef')
+    const notes = probe.recallNotesOutput([{ kind: 'fact', text: 'Lives near Jernbanetorget', source: 'their own words', approvedAt: null, createdAt: '2026-11-20T10:00:00Z' }])
+    check('search_docs and get_about_me\'s notes now set citations exactly like find_text (on)', docs.length === 1 && docs[0].citations?.enabled === true && notes.ok && notes.blocks[0].citations?.enabled === true, [docs, notes])
+    check('the provider\'s learned knowledge (a one-shot job, which may have an answer shape) leaves citations unset on all of them', /searchResultBlock\(\{ source: k\.source, title: k\.title, text: k\.text \}, 'unset'\)/.test(fs.readFileSync(path.join(REPO, 'supabase/claude-src/provider-anthropic.ts'), 'utf8')))
+
+    // 2 · The owner's failure: find_text and the notes in one answer. The next request carries both, all with citations on.
+    const lessons = [{ id: uuid(70), lesson_key: uuid(71), version: 1, user_id: OWNER, scope: 'chat', state: 'active', expires_at: '2027-06-01T00:00:00Z', kind: 'fact', text: 'Lives near Jernbanetorget', source_kind: 'owner_typed', trust: 'high', approved_at: '2026-11-20T10:00:00Z', created_at: '2026-11-20T10:00:00Z' }]
+    const wMix = makeWorld({ tables: { tasks: [{ id: uuid(1), user_id: OWNER, title: 'Dentist', due_date: null }], ai_lessons: lessons }, findText: [{ kind: 'task', id: uuid(1), title: 'Dentist', snippet: 'Bring the card', day: null, rank: 1 }] })
+    const nMix = pretend(toolMsg([['toolu_M1', 'find_text', { query: 'dentist', kind: 'any' }], ['toolu_M2', 'get_about_me', { kind: 'any' }]], { id: 'msg_m1' }), textMsg('The dentist, near Jernbanetorget.', { id: 'msg_m2' }))
+    r = await chat({ conversation_id: null, text: 'Where is my dentist?' }, { world: wMix, network: nMix })
+    const sentResults = (nMix.seen[1]?.body.messages ?? []).flatMap(m => Array.isArray(m.content) ? m.content : []).filter(b => b.type === 'tool_result' && Array.isArray(b.content)).flatMap(b => b.content).filter(b => b.type === 'search_result')
+    check('find_text + get_about_me in one answer: the next request carries both kinds of search result, every one with citations { enabled: true }, and the answer finishes', sentResults.length === 2 && sentResults.some(b => /^lasci:task:/.test(b.source)) && sentResults.some(b => /^the person's notes/.test(b.source)) && sentResults.every(b => same(b.citations, { enabled: true })) && final(r).event === 'done', [sentResults, final(r)])
+
+    // 3 · A chat stored before this fix: its results are replayed unchanged, so the new ones follow them; a chat that already mixes them is never sent again.
+    const relink = async (w) => { let prev = null; for (const m of messagesOf(w)) { m.digest = await probe.messageDigest(prev, m.role, m.content); prev = m.digest } }
+    const wOld = makeWorld({ tables: { tasks: [{ id: uuid(1), user_id: OWNER, title: 'Dentist', due_date: null }] }, findText: [{ kind: 'task', id: uuid(1), title: 'Dentist', snippet: 's', day: null, rank: 1 }] })
+    const nOld = pretend(toolMsg([['toolu_O1', 'find_text', { query: 'dentist', kind: 'any' }]], { id: 'msg_o1' }), textMsg('Found.', { id: 'msg_o2' }), toolMsg([['toolu_O2', 'find_text', { query: 'dentist', kind: 'any' }]], { id: 'msg_o3' }), textMsg('Again.', { id: 'msg_o4' }))
+    const first = await chat({ conversation_id: null, text: 'find' }, { world: wOld, network: nOld })
+    for (const b of messagesOf(wOld)[2].content[0].content) delete b.citations // as search_docs stored them before: no field
+    await relink(wOld)
+    const second = await chat({ conversation_id: final(first).conversation_id, text: 'again' }, { world: wOld, network: nOld })
+    const oldSent = nOld.seen.at(-1).body.messages.flatMap(m => Array.isArray(m.content) ? m.content : []).filter(b => b.type === 'tool_result' && Array.isArray(b.content)).flatMap(b => b.content).filter(b => b.type === 'search_result')
+    check('a chat whose stored results have no citations field keeps it that way: the new results are sent without one too (never a mix)', final(second).event === 'done' && oldSent.length === 2 && oldSent.every(b => !('citations' in b)), [final(second), oldSent])
+    check('chatCitations: none stored is on; all unset is unset; all on is on; a mix or an odd value is null', probe.chatCitations([]) === 'on' && probe.chatCitations([{ content: [{ type: 'tool_result', content: [probe.searchResultBlock(hit, 'unset')] }] }]) === 'unset' && probe.chatCitations([{ content: [{ type: 'tool_result', content: [probe.searchResultBlock(hit)] }] }]) === 'on' && probe.chatCitations([{ content: [{ type: 'tool_result', content: [probe.searchResultBlock(hit), probe.searchResultBlock(hit, 'unset')] }] }]) === null && probe.chatCitations([{ content: [{ type: 'tool_result', content: [{ ...probe.searchResultBlock(hit), citations: { enabled: false } }] }] }]) === null)
+    check('withCitations rebuilds a search result in the asked form and leaves every other block alone', same(probe.withCitations([probe.searchResultBlock(hit), { type: 'text', text: 'x' }], 'unset'), [probe.searchResultBlock(hit, 'unset'), { type: 'text', text: 'x' }]))
+    const wBroken = makeWorld({ tables: { tasks: [{ id: uuid(1), user_id: OWNER, title: 'Dentist', due_date: null }] }, findText: [{ kind: 'task', id: uuid(1), title: 'Dentist', snippet: 's', day: null, rank: 1 }, { kind: 'task', id: uuid(1), title: 'Dentist', snippet: 's', day: null, rank: 1 }] })
+    const nBroken = pretend(toolMsg([['toolu_B1', 'find_text', { query: 'dentist', kind: 'any' }]], { id: 'msg_b1' }), textMsg('Found.', { id: 'msg_b2' }))
+    const b1 = await chat({ conversation_id: null, text: 'find' }, { world: wBroken, network: nBroken })
+    delete messagesOf(wBroken)[2].content[0].content[0].citations
+    await relink(wBroken)
+    const nNone = pretend(textMsg('never'))
+    const b2 = await chat({ conversation_id: final(b1).conversation_id, text: 'again' }, { world: wBroken, network: nNone })
+    check('a chat whose stored results already mix the two forms is refused in plain words (start a new chat) and nothing is sent or reserved', final(b2).event === 'error' && final(b2).reason === 'stale' && /Start a new chat/.test(final(b2).message) && !/Citations must/.test(final(b2).message) && nNone.seen.length === 0 && wBroken.reserves.length === 2, [final(b2), nNone.seen.length])
+
+    // 4 · The phone's question has the same tools: find_text and About me together are one form too.
+    const pMix = await phoneRun({ question: 'Where is my dentist?' }, { worldOver: { ...phoneWorld(), tables: { ...phoneWorld().tables, ai_lessons: lessons } }, network: pretend(toolMsg([['toolu_q1', 'find_text', { query: 'dentist', kind: 'any' }], ['toolu_q2', 'get_about_me', { kind: 'any' }]]), textMsg('Near Jernbanetorget.')) })
+    const pSent = (pMix.net.seen[1]?.body.messages ?? []).flatMap(m => Array.isArray(m.content) ? m.content : []).filter(b => b.type === 'tool_result' && Array.isArray(b.content)).flatMap(b => b.content).filter(b => b.type === 'search_result')
+    check('the phone: find_text and About me in one round send every search result with citations on (one form)', pMix.json.ok === true && pSent.length >= 2 && pSent.every(b => same(b.citations, { enabled: true })), [pMix.json, pSent.length])
+
+    // 5 · An answer that ends with no words: an honest sentence, shown and stored; the blocks themselves stay exactly as they came.
+    const wEmpty = makeWorld({ tables: { tasks: [], time_blocks: [] } })
+    const onlyThinking = { id: 'msg_quiet', blocks: [{ type: 'thinking', thinking: 'Nothing more to add.', signature: 'sig-q' }] }
+    const nEmpty = pretend(...[1, 2, 3, 4, 5, 6, 7].map(looping), onlyThinking)
+    r = await chat({ conversation_id: null, text: 'Search everything' }, { world: wEmpty, network: nEmpty })
+    const storedLast = messagesOf(wEmpty).at(-1)
+    check('the last request (tools off) ends with only thinking: the person reads that the steps ran out and what to do, never an empty bubble', final(r).event === 'done' && final(r).text === probe.NO_ANSWER_STEPS && /ran out of steps/.test(probe.NO_ANSWER_STEPS) && /narrow/.test(probe.NO_ANSWER_STEPS), final(r))
+    check('…the stored answer keeps its blocks unchanged (replay stays exact) and its meta holds the same sentence, so the chat opened later is not blank', same(storedLast.content, onlyThinking.blocks) && storedLast.meta.shown_text === probe.NO_ANSWER_STEPS, storedLast)
+    check('…the ledger row of that round says the model ended with no answer text', /no answer text/.test(callsOf(wEmpty).at(-1).error ?? '') && callsOf(wEmpty).at(-1).outcome === 'ok', callsOf(wEmpty).at(-1))
+    const wQuiet = makeWorld()
+    r = await chat({ conversation_id: null, text: 'Hm' }, { world: wQuiet, network: pretend(onlyThinking) })
+    check('an early answer with no words says so plainly too (not the steps sentence) and is stored with it', final(r).event === 'done' && final(r).text === probe.NO_ANSWER_EMPTY && messagesOf(wQuiet).at(-1).meta.shown_text === probe.NO_ANSWER_EMPTY, final(r))
+    check('an answer WITH words stores no extra sentence', !('shown_text' in messagesOf(world5b).at(-1).meta))
+
+    // 6 · Time running out: after a tool round with less than lastRoundFromMs left, the next request is the last (no tools, the note), not the deadline's error.
+    const t0 = Date.now()
+    let jump = 0
+    FixedDate.now = () => t0 + jump
+    try {
+      const wLate = makeWorld({ tables: { tasks: [], time_blocks: [] } })
+      const nLate = pretend((entry) => { jump = LIM.answerDeadlineMs - LIM.lastRoundFromMs + 5000; return sseResponse(looping(1)) }, textMsg('What I found so far.', { id: 'msg_late' }))
+      r = await chat({ conversation_id: null, text: 'Slow search' }, { world: wLate, network: nLate })
+      const lateResults = nLate.seen[1]?.body.messages.at(-1).content ?? []
+      check('little time left after a tool round: the next request may not call a tool, carries the note, and the answer comes from what was found', nLate.seen.length === 2 && same(nLate.seen[1].body.tool_choice, { type: 'none' }) && lateResults.at(-1)?.text === probe.LAST_ROUND_NOTE && final(r).event === 'done' && final(r).text === 'What I found so far.', [nLate.seen.length, final(r)])
+    } finally { delete FixedDate.now }
+
+    // 7 · A failed round: logged, and the person reads plain words, never Anthropic's raw text.
+    const wBad = makeWorld()
+    const nBad = pretend(() => new Response(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'Citations must be either enabled or disabled on all search_result blocks.' } }), { status: 400, headers: { 'content-type': 'application/json', 'request-id': 'req_bad' } }))
+    r = await chat({ conversation_id: null, text: 'Hi' }, { world: wBad, network: nBad })
+    const badRow = callsOf(wBad)[0]
+    check('a 400 from Anthropic: the person reads our own sentence (never "Citations must…"), and the round\'s ledger row is an error with Anthropic\'s reason for Developer → AI → Calls', final(r).event === 'error' && !/Citations must|invalid_request_error/.test(final(r).message) && /did not accept the request/.test(final(r).message) && badRow?.outcome === 'error' && /Citations must/.test(badRow.error ?? '') && leaks(final(r).message, badRow.error).length === 0, [final(r), badRow?.error])
   }
 
 

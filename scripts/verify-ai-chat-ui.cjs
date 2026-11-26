@@ -71,6 +71,11 @@ console.log('\n3 · a stored chat is drawn like the live one')
   check('a cut-off answer says so', turns[3].cutOff === true)
   check('a card is pending until decided, shows the decision, and is "expired" when its time has passed', R.turnsFromStored(rows, [{ ...proposals[0], status: 'confirmed' }])[1].cards[0].state === 'confirmed' && R.turnsFromStored(rows, [{ ...proposals[0], status: 'cancelled' }])[1].cards[0].state === 'cancelled' && R.turnsFromStored(rows, proposals, Date.parse('2026-11-25T00:00:00Z'))[1].cards[0].state === 'expired')
   check('a proposal row with a tool this app does not know makes no card', R.turnsFromStored(rows, [{ ...proposals[0], tool: 'db_delete' }])[1].cards.length === 0)
+  {
+    // 26.11.2026: an answer that ended with no words keeps the function's plain sentence in its meta; the chat opened later shows it, never an empty bubble.
+    const quiet = R.turnsFromStored([{ seq: 1, role: 'user', content: [{ type: 'text', text: 'Search everything' }], meta: {} }, { seq: 2, role: 'assistant', content: [{ type: 'thinking', thinking: 't', signature: 's' }], meta: { shown_text: 'I ran out of steps before I could answer. Ask again, or narrow the question (one day, one thing).' } }], [])
+    check('a stored answer with no words shows the sentence kept with it (shown_text), cut to 400 characters; one with words ignores it', quiet[1].text.startsWith('I ran out of steps') && R.turnsFromStored([{ seq: 1, role: 'assistant', content: [{ type: 'text', text: 'Hi.' }], meta: { shown_text: 'x' } }], [])[0].text === 'Hi.' && R.turnsFromStored([{ seq: 1, role: 'assistant', content: [], meta: { shown_text: 'y'.repeat(900) } }], [])[0].text.length === 400 && R.turnsFromStored([{ seq: 1, role: 'assistant', content: [], meta: { shown_text: 42 } }], [])[0].text === '', quiet)
+  }
   check('rows out of order, with a bad shape or an unknown role, do no harm', R.turnsFromStored([rows[3], { seq: 7, role: 'user', content: 'not blocks', meta: null }, rows[0]], []).length === 2)
 }
 

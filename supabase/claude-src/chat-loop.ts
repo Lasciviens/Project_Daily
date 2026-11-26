@@ -12,7 +12,9 @@
 //       exactly as it came, and the ledger row of the round (same run_id, the next step) gets the real numbers;
 //    4. when the model asks for tools, they run side by side as the owner, and ALL their results go back in ONE message
 //       with the results first; a failure is an `is_error` result that says what to try;
-//    5. at most CHAT_LIMITS.maxRounds rounds; the last may not call a tool, so an answer always ends in words;
+//    5. at most CHAT_LIMITS.maxRounds rounds; the last (also the one after the time or size limit is near) may not call
+//       a tool, and the results before it carry the app's note to answer now from what was found; an answer that still
+//       ends with no words says so plainly (shown and stored), never an empty bubble;
 //    6. the citations the model made are checked against what the tools really returned and against the owner's own rows.
 //
 //  The writes the model proposes are rows in ai_chat_proposals until the owner taps Confirm (`decideChatProposal`).
@@ -39,6 +41,7 @@ import { ideaKey, SUGGEST_LIMITS, type SuggestKind } from './suggest-rules.ts'
 import { addSuggestion } from './suggest-store.ts'
 import { chatNoteLesson, chatProposalCorrections, readChatNotes } from './learn-chat.ts'
 import { NOTE_LESSONS_PER_ANSWER } from './chat-learn-tools.ts'
+import { chatCitations, withCitations, type SearchCitations } from './search-results.ts'
 import {
   appendMessage, asChatMessages, createConversation, decideProposal, decidedProposalsSince, historyIsIntact, insertProposal, isUuid, markProposalFailed, ownRowTitle, pendingProposals, readConversation,
   readChatControls, readMessages, readProposal, replaceProposals, setConversationDeleted, setProposalResult, updateConversation, type ConversationRow, type StoredMessage,
@@ -89,7 +92,11 @@ const STEP_LABELS: Record<string, string> = {
 const TOOL_USE_ID = /^[A-Za-z0-9_-]{1,100}$/
 /** A proposal's kind in the app's notice to the model: never its title (the owner may have edited it). */
 const PROPOSAL_WORDS: Readonly<Record<string, string>> = { add_task: 'add a task', log_food: 'log a food line', update_food: 'change a food line', update_task: 'rename a task' }
-const NO_ANSWER = 'The model gave no answer text.'
+/** What the person reads (and what is stored with the answer) when the model's last request ended with no words. */
+export const NO_ANSWER_STEPS = 'I ran out of steps before I could answer. Ask again, or narrow the question (one day, one thing).'
+export const NO_ANSWER_EMPTY = 'I finished without writing an answer. Ask again, or put the question another way.'
+/** The app's note after the tool results when the next request is the last one: it may not call a tool, so it should answer from what it found. */
+export const LAST_ROUND_NOTE = '<app_updates>This answer has reached its limit of steps, time or length, so tools are off now. Answer now from what the tools returned; say plainly what you could not look up and how the person could narrow the question. This note comes from the app, not from the person.</app_updates>'
 
 /** A message from the person: control characters out (a new line stays), trimmed, 1 to 4000 characters, or null. */
 export function cleanChatText(value: unknown): string | null {
@@ -144,10 +151,10 @@ async function checkedCitations(ctx: RunContext, content: readonly Block[], know
 /** The text blocks of an answer, joined. */
 const textOf = (content: readonly Block[]): string => content.filter(b => b.type === 'text' && typeof b.text === 'string').map(b => b.text as string).join('')
 
-/** What a tool result block holds for one finished tool call. */
-function resultBlock(toolUseId: string, output: ToolOutput): Block {
+/** What a tool result block holds for one finished tool call; its search results set citations the chat's one way (`cite`). */
+function resultBlock(toolUseId: string, output: ToolOutput, cite: SearchCitations): Block {
   if (!output.ok) return { type: 'tool_result', tool_use_id: toolUseId, content: output.message, is_error: true }
-  return { type: 'tool_result', tool_use_id: toolUseId, content: output.blocks && output.blocks.length ? output.blocks : output.text }
+  return { type: 'tool_result', tool_use_id: toolUseId, content: output.blocks && output.blocks.length ? withCitations(output.blocks, cite) : output.text }
 }
 
 async function withTimeout<T>(run: Promise<T>, ms: number, onTimeout: T): Promise<T> {
@@ -240,6 +247,12 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       return errorEvent('changed', "This chat's saved history does not match what was stored, so it was not sent. Start a new chat.", conversation.id)
     }
     history = messages
+  }
+  // Every search result of one request must set citations the same way (Anthropic refuses a mix): a chat's new results
+  // follow its stored ones. A chat whose stored results already mix them fails every request, so it is not sent.
+  const cite = chatCitations(history)
+  if (cite === null) {
+    return errorEvent('stale', 'This chat was started before an update and holds search results Anthropic no longer accepts together, so it was not sent. Start a new chat.', conversation?.id)
   }
   const chatMode: ChatMode = conversation ? conversation.mode : askedMode === 'coach' ? 'coach' : 'chat'
   const toolNames = conversation ? conversation.tool_names : toolsForNewChat(modes, chatMode)
@@ -349,7 +362,8 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     if (signal?.aborted) return fail('error', 'The request was cancelled.')
     const remaining = CHAT_LIMITS.answerDeadlineMs - (Date.now() - started)
     if (remaining < 8000) return fail('timeout', 'The answer took too long and was stopped. Try a narrower question.')
-    const request = baseRequest(messages, round === CHAT_LIMITS.maxRounds || forceNoTools, remaining, { firstEventTimeoutMs: Math.min(CHAT_LIMITS.firstEventMs, remaining), idleTimeoutMs: Math.min(CHAT_LIMITS.idleMs, remaining) })
+    const lastRound = round === CHAT_LIMITS.maxRounds || forceNoTools
+    const request = baseRequest(messages, lastRound, remaining, { firstEventTimeoutMs: Math.min(CHAT_LIMITS.firstEventMs, remaining), idleTimeoutMs: Math.min(CHAT_LIMITS.idleMs, remaining) })
     request.previousMessageId = previousMessageId
 
     // The reservation of this round: its worst case is held against the budget before anything is sent.
@@ -483,6 +497,14 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     if (answer.messageId) previousMessageId = answer.messageId
 
     if (answer.ending !== 'tool_calls') {
+      // An answer with no words (only thinking, or nothing): the blocks are stored as they came (the replay must be exact),
+      // and the plain sentence the person reads is kept beside them, so the chat opened later says the same.
+      const words = textOf(answer.content)
+      const shown = words || (lastRound ? NO_ANSWER_STEPS : NO_ANSWER_EMPTY)
+      if (!words) {
+        assistantMeta.shown_text = shown
+        row.error = cutChars(`The model ended with no answer text (${lastRound ? 'the last request, tools off' : answer.stopReason}).`, RUN_ERROR_MAX)
+      }
       logRound()
       await finishCall(ctx.adminDb, row)
       // The citations are checked BEFORE the answer is stored and kept with it, so a chat opened later shows the same links.
@@ -494,7 +516,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       const wrote = await store('assistant', answer.content, row.id, assistantMeta)
       if (wrote !== 'ok') return fail('error', 'The answer could not be saved. Try again in a moment.')
       await updateConversation(ctx.adminDb, ctx.userId, conversationId, { message_count: seq, last_prompt_tokens: lastPrompt, cost_usd: (conversation?.cost_usd ?? 0) + costTotal })
-      endedWith = { text: textOf(answer.content) || NO_ANSWER, ending: answer.ending === 'cut_off' ? 'cut_off' : 'complete' }
+      endedWith = { text: shown, ending: answer.ending === 'cut_off' ? 'cut_off' : 'complete' }
       break
     }
 
@@ -567,7 +589,7 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       }
       if (output.ok && output.noted && !suggestion) suggestion = { kind: output.noted.kind }
       if (output.inputs) emit({ event: 'detail', name, input: output.inputs, ok: finalOutput.ok })
-      const block = resultBlock(id, finalOutput)
+      const block = resultBlock(id, finalOutput, cite)
       const bytes = JSON.stringify(block).length
       const fields = r.input !== null && typeof r.input === 'object' ? Object.entries(r.input as Record<string, unknown>).filter(([, v]) => v !== '' && v !== 'any' && v !== null && v !== undefined).map(([k]) => k) : []
       results.push({
@@ -577,6 +599,14 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
       })
     }
     const resultBlocks = results.map(r => r.block)
+    // The next request is the last one when the rounds, the time or the prompt's size say so: it may not call a tool, and
+    // the app's note after the results (results first, then the note) asks for the answer from what was found.
+    const nextPromptEstimate = lastPrompt + usage.outputTokens + Math.ceil(JSON.stringify(resultBlocks).length / 3)
+    const timeLeft = CHAT_LIMITS.answerDeadlineMs - (Date.now() - started)
+    if (round + 1 >= CHAT_LIMITS.maxRounds || timeLeft < CHAT_LIMITS.lastRoundFromMs || nextPromptEstimate >= CHAT_LIMITS.forceAnswerFromTokens) {
+      forceNoTools = true
+      resultBlocks.push({ type: 'text', text: LAST_ROUND_NOTE })
+    }
     for (const r of results) {
       toolsRunThisRound.push(r.shape)
       toolsRun.push(r.shape)
@@ -589,12 +619,10 @@ async function chatAnswer(ctx: RunContext, input: unknown, emit: (event: ChatEve
     if (wroteResults !== 'ok') return fail('error', 'The tool results could not be saved. Try again in a moment.')
     messages.push({ role: 'user', content: resultBlocks })
     // The wall inside an answer: this round's prompt + what it wrote + the new results is what the next request would carry.
-    const nextPrompt = lastPrompt + usage.outputTokens + Math.ceil(JSON.stringify(resultBlocks).length / 3)
-    if (nextPrompt >= CHAT_LIMITS.stopFromTokens) {
+    if (nextPromptEstimate >= CHAT_LIMITS.stopFromTokens) {
       await updateConversation(ctx.adminDb, ctx.userId, conversationId, { message_count: seq, last_prompt_tokens: lastPrompt, cost_usd: (conversation?.cost_usd ?? 0) + costTotal, status: 'full' })
       return fail('wall', 'This chat grew too long while looking things up. Start a new chat and ask again.')
     }
-    if (nextPrompt >= CHAT_LIMITS.forceAnswerFromTokens) forceNoTools = true
     await updateConversation(ctx.adminDb, ctx.userId, conversationId, { message_count: seq, last_prompt_tokens: lastPrompt, cost_usd: (conversation?.cost_usd ?? 0) + costTotal })
   }
 
