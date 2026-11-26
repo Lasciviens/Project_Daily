@@ -218,7 +218,7 @@ const CHAT_JOB_ABOUT = {
     ['get_about_me', 'Reads (code prepares the answer). Your own saved notes about yourself.'],
     ['get_transit', 'Reads Entur\'s open data. Live departures from a stop, or a trip from A to B.'],
   ].map(([name, what]) => ({ name, what })),
-  features: ['Our own loop: read tools run side by side, at most 5 requests per answer', 'Writes are proposals only'], sourceFiles: ['supabase/claude-src/chat-loop.ts', 'supabase/claude-src/chat-tools.ts'],
+  features: ['Our own loop: read tools run side by side, at most 8 requests per answer', 'Writes are proposals only'], sourceFiles: ['supabase/claude-src/chat-loop.ts', 'supabase/claude-src/chat-tools.ts'],
 }
 
 /** Two stored chats for the seed: an older answered one (with a citation) and a newer one with a card waiting for the tap. */

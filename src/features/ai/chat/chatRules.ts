@@ -453,7 +453,9 @@ export function turnsFromStored(messages: readonly StoredMessageRow[], proposals
     }
     if (!Array.isArray(m.content)) continue
     if (!answer) { answer = newTurn(`a${m.seq}`, 'assistant'); answer.streaming = false; turns.push(answer) }
-    const text = m.content.filter(isBlock).filter(b => b.type === 'text' && typeof b.text === 'string').map(b => b.text as string).join('')
+    const meta = isObject(m.meta) ? m.meta : {}
+    // An answer that ended with no words keeps the function's plain sentence beside its blocks (`shown_text`): never an empty bubble.
+    const text = m.content.filter(isBlock).filter(b => b.type === 'text' && typeof b.text === 'string').map(b => b.text as string).join('') || str(meta.shown_text, 400)
     if (text) answer.text = answer.text ? `${answer.text}\n\n${text}` : text
     for (const b of m.content.filter(isBlock)) {
       if (b.type !== 'tool_use' || typeof b.name !== 'string') continue
@@ -466,7 +468,6 @@ export function turnsFromStored(messages: readonly StoredMessageRow[], proposals
     }
     const thought = m.content.filter(isBlock).filter(b => b.type === 'thinking' && typeof b.thinking === 'string' && b.thinking).map(b => b.thinking as string).join('\n\n')
     if (thought) answer.thinking = answer.thinking ? `${answer.thinking}\n\n${thought}` : thought
-    const meta = isObject(m.meta) ? m.meta : {}
     if (typeof meta.run_id === 'string' && UUID.test(meta.run_id)) answer.runId = meta.run_id
     if (typeof meta.cost_usd === 'number' && Number.isFinite(meta.cost_usd)) answer.costUsd = (answer.costUsd ?? 0) + meta.cost_usd
     if (Array.isArray(meta.citations)) answer.citations = readCitations(meta.citations)
