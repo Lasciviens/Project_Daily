@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react'
 import { useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast } from '../../../app/store'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
-import { confirmDelete, useEntityModal } from '../../../shared/modals'
+import { confirmDelete } from '../../../shared/modals'
 import { useRowsDelete } from '../../../shared/hooks/useRowsDelete'
 import { putRowsInCache } from '../../../shared/query/cachePatch'
 import { qk, STALE } from '../../../shared/query'
@@ -15,8 +15,9 @@ import { fetchTasksByIds } from '../../todo/api/tasksApi'
 import { useDeleteTask } from '../../todo/hooks/useTodos'
 import { isClosedTask } from '../../todo/taskRules'
 import { fetchRoster, searchFootball } from '../api/espnApi'
-import { createFollow, fetchFollows, fetchPlans, recordPlan, setFavourite, setSubscribed } from '../api/footballApi'
-import { buildAgenda, leagueMonths, MATCH_CATEGORY, MATCH_TIME_ZONE, matchItem, subscriptionLeavers, type FbMatch } from '../footballModel'
+import { createFollow, fetchFollows, fetchPlans, setFavourite, setSubscribed } from '../api/footballApi'
+import { usePlanThis } from '../../items/usePlanThis'
+import { buildAgenda, leagueMonths, subscriptionLeavers, type FbMatch } from '../footballModel'
 import type { FootballFollow, FootballPlan, NewFollowInput } from '../types'
 import {
   ESPN, LIVE_EVERY, leagueMonthQuery, matchQuery, needsLive, standingsQuery, teamFixturesQuery, teamInfoQuery, teamResultsQuery,
@@ -282,45 +283,13 @@ export function useStopSubscription() {
   }
 }
 
-/** After "Plan it" saved the item through the Add sheet (which says "Added …"): the match's record. */
-export function useRecordPlan() {
-  return useMutationWithFeedback({
-    action: 'football_record_plan',
-    silent: 'the Add sheet says the item was added',
-    mutationFn: ({ match, taskId }: { match: FbMatch; taskId: string }) => recordPlan(match, taskId),
-    invalidates: [qk.football.plans()],
-  })
-}
-
 /**
- * "Plan it": the Add sheet (useEntityModal → the one item save), prefilled
- * with the match — its title, Norway's day and kick-off, two hours, the
- * competition and stadium as notes. Once saved, the match's record follows
- * ESPN (a moved kick-off moves the item; footballSync).
+ * "Plan it": THE Plan helper (items/usePlanThis) with the match — the item screen prefilled with its title, Norway's
+ * day and kick-off, two hours, the competition and stadium as notes; the item, the match's record and the task's
+ * link are one save (211, app_save_item's match link). A match already in the day opens its item. Once saved, the
+ * record follows ESPN (a moved kick-off moves the item; footballSync).
  */
 export function usePlanIt() {
-  const qc = useQueryClient()
-  const modal = useEntityModal()
-  const record = useRecordPlan()
-  return async (m: FbMatch) => {
-    // A list read a moment ago may not know a match the subscription just added:
-    // the records are read again, and a match already in the day opens its item.
-    const plans = await qc.fetchQuery({ queryKey: qk.football.plans(), queryFn: fetchPlans, staleTime: 0 }).catch(() => null)
-    const taskId = plans?.find(p => p.event_id === m.id && p.task_id)?.task_id
-    if (taskId) {
-      toast.info('Already in your day')
-      modal.open({ kind: 'task', id: taskId })
-      return
-    }
-    const mi = matchItem(m)
-    modal.open({
-      kind: 'task',
-      defaults: {
-        title: mi.title, notes: mi.notes ?? undefined, date: mi.date, dueDate: mi.date, domain: 'personal', category: MATCH_CATEGORY,
-        timeZone: MATCH_TIME_ZONE,
-        ...(mi.time ? { startTime: mi.time, duration: mi.durationMinutes ?? undefined, scheduled: true } : {}),
-      },
-      onSaved: r => { if (r.taskId) record.mutate({ match: m, taskId: r.taskId }) },
-    })
-  }
+  const plan = usePlanThis()
+  return (m: FbMatch) => plan({ kind: 'football', match: m })
 }

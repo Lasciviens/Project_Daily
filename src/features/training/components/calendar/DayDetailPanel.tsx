@@ -3,7 +3,7 @@ import { Button, ListRow } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import { formatDistance } from '../../setFormat'
-import { openPlanSession } from '../../planTraining'
+import { usePlanThis } from '../../../items/usePlanThis'
 import { coveredPlanNote, planRefOf } from '../../sessionRef'
 import { SESSION_LABEL } from '../../plan/sessionState'
 import { dayMarkOf } from './monthGridModel'
@@ -27,6 +27,7 @@ const glyphSlot = 'grid w-4 place-items-center'
  */
 export function DayDetailPanel({ day, dateStr, todayStr }: { day: DayData | null; dateStr: string; todayStr: string }) {
   const modal = useEntityModal()
+  const plan = usePlanThis()
   if (!day) return null
   const canPlan = dateStr >= todayStr
   const empty = isDayEmpty(day)
@@ -42,7 +43,7 @@ export function DayDetailPanel({ day, dateStr, todayStr }: { day: DayData | null
     <div className="flex flex-col gap-1 border-t border-line pt-3">
       <div className="flex min-h-[36px] flex-wrap items-center justify-between gap-2">
         <p className="text-body font-semibold text-fg">{heading}{dateStr === todayStr && <span className="font-normal text-fg-muted"> · Today</span>}</p>
-        {canPlan && <Button size="sm" variant="ghost" className="ml-auto" icon={<CalendarPlus />} onClick={() => openPlanSession(dateStr)} tip="Plan a session">Plan</Button>}
+        {canPlan && <Button size="sm" variant="ghost" className="ml-auto" icon={<CalendarPlus />} onClick={() => { void plan({ kind: 'training', date: dateStr }) }} tip="Plan a session">Plan</Button>}
       </div>
 
       {entries.map(e => {

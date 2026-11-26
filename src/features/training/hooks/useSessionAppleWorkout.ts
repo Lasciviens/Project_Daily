@@ -1,13 +1,12 @@
 import { useMemo } from 'react'
 import { formatLocalDate, localDayOf } from '../../../shared/utils/dateUtils'
 import { useHealthWorkoutSummaries } from '../../health/hooks/useHealthExport'
-import { matchHealthWorkout } from '../workoutHealthMatch'
+import { appleWorkoutOfSession } from '../workoutHealthMatch'
 
-/** The Apple Health workout recorded during a Hevy session (the one overlap
- *  rule, workoutHealthMatch), from that day's workout summaries. Shared by the
- *  session popup's stats row and its Apple Watch section — one read. Call it
- *  only for a session with a start and an end. */
-export function useSessionAppleWorkout(startTime: string, endTime: string) {
+/** The Apple Health workout that is this Hevy session (211's link — the database's; before 211 the overlap rule,
+ *  workoutHealthMatch), from that day's workout summaries. Shared by the session popup's stats row and its Apple
+ *  Watch section — one read. Call it only for a session with a start and an end. */
+export function useSessionAppleWorkout(hevyId: string, startTime: string, endTime: string) {
   // A watch workout started a little before a session that began just after
   // midnight sits on the previous local day — look 30 minutes back so it is
   // still fetched (the query filters by start_time).
@@ -18,8 +17,8 @@ export function useSessionAppleWorkout(startTime: string, endTime: string) {
   // keepPreviousData would show another day's workouts for a moment.
   const loading = summaries.isLoading || summaries.isPlaceholderData
   const match = useMemo(
-    () => (loading ? null : matchHealthWorkout({ start_time: startTime, end_time: endTime }, summaries.data ?? [])),
-    [loading, startTime, endTime, summaries.data],
+    () => (loading ? null : appleWorkoutOfSession(hevyId, { start_time: startTime, end_time: endTime }, summaries.data ?? [])),
+    [loading, hevyId, startTime, endTime, summaries.data],
   )
   return { match, isLoading: loading, isError: summaries.isError }
 }

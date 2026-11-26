@@ -6,16 +6,19 @@ import { qk } from './keys'
 // group lists roots, so every query under them matches by prefix.
 const groups = {
   /** A task or its schedule slot changed. */
-  // shop items and football plans: a deleted task clears their task_id (ON DELETE SET NULL).
-  taskGraph: [qk.tasks.all, qk.schedule.all, qk.shop.items(), qk.football.plans()],
+  // shop items, wishes and football plans: a deleted task clears their task_id (ON DELETE SET NULL), and a task's
+  // link (210) keeps their old back-pointer in step (a wish linked from an idea becomes planned).
+  // 211: a done plan buys its wishlist thing (a draft + a notification), fulfils a wish or closes a project phase.
+  taskGraph: [qk.tasks.all, qk.schedule.all, qk.shop.items(), qk.wishes.all, qk.football.plans(), qk.notifications.all, qk.projects.phases()],
   schedule: [qk.schedule.all],
   /** Anything in the food diary / plan / targets / water. A supplement dose is
    *  taken while its diary line exists (160), so its doses refresh too. */
   nutrition: [qk.foodLog.all, qk.mealPlan.all, qk.water.all, qk.dayTargets.all, qk.dayTargets.profiles, qk.health.cutDiaryAll, qk.supplements.all],
   recipes: [qk.recipes.all, qk.ingredients.all, qk.mealPlan.all],
   /** An episode was marked (un)watched: progress, next-up, planned blocks, recents. */
-  episodeWatched: [qk.media.watchedAll, qk.media.nextEpisodeAll, qk.media.tv, qk.media.recent(), qk.schedule.all],
-  media: [qk.media.movies, qk.media.tv, qk.media.watchedAll, qk.media.nextEpisodeAll, qk.media.recent()],
+  // A watch closes its planned episode's or movie's task (155, 211): the task lists refresh too.
+  episodeWatched: [qk.media.watchedAll, qk.media.nextEpisodeAll, qk.media.tv, qk.media.recent(), qk.schedule.all, qk.tasks.all],
+  media: [qk.media.movies, qk.media.tv, qk.media.watchedAll, qk.media.nextEpisodeAll, qk.media.recent(), qk.tasks.all],
   /** Hevy/Strava data changed (a sync, a logged workout, a routine edit):
    *  every Training view, the current program it scopes, and Health (body
    *  measurements feed the bodyweight series). */

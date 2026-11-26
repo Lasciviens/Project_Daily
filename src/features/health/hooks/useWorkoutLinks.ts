@@ -2,13 +2,13 @@ import { useMemo } from 'react'
 import { formatLocalDate, localDayOf } from '../../../shared/utils/dateUtils'
 import { useModalStore, type EntityModalRequest } from '../../../shared/modals'
 import { useHevyWorkoutDetail, useHevyWorkoutsRange } from '../../training/hooks/useHevyWorkouts'
-import { matchHealthWorkout, type TimedWorkout } from '../../training/workoutHealthMatch'
+import { hevySessionOfWorkout, type LinkedWorkout, type TimedWorkout } from '../../training/workoutHealthMatch'
 import { shownWorkoutIdOf } from '../../training/sessionLinks'
 import type { HevyWorkout } from '../../training/types.hevy'
 
-// Health ↔ Training: the Hevy session recorded at the same time as an Apple
-// Health workout, by the one overlap rule (training/workoutHealthMatch.ts) the
-// Training side uses the other way round.
+// Health ↔ Training: the Hevy session an Apple Health workout is — 211's link, the database's (before 211 the one
+// overlap rule, training/workoutHealthMatch.ts); a Watch-only workout has none. The Training side reads it the other
+// way round.
 
 /** Local days a workout touches, looking 30 minutes back (a session just after
  *  midnight can have its watch workout start the day before). */
@@ -22,13 +22,13 @@ function daysOf(w: TimedWorkout | null): { from: string; to: string } | null {
 }
 
 /** The Hevy workout that is the same session as this Apple one, with its sets. */
-export function useMatchedHevyWorkout(apple: TimedWorkout | null) {
+export function useMatchedHevyWorkout(apple: LinkedWorkout | null) {
   const days = daysOf(apple)
   const list = useHevyWorkoutsRange(days?.from ?? '', days?.to ?? '', { enabled: !!days })
   // keepPreviousData would briefly match against another day's sessions.
   const loading = !!days && (list.isLoading || list.isPlaceholderData)
   const match = useMemo<HevyWorkout | null>(
-    () => (apple && !loading ? matchHealthWorkout(apple, list.data ?? []) : null),
+    () => (apple && !loading ? hevySessionOfWorkout(apple, list.data ?? []) : null),
     [apple, loading, list.data],
   )
   const detail = useHevyWorkoutDetail(match?.id ?? null)
@@ -36,13 +36,13 @@ export function useMatchedHevyWorkout(apple: TimedWorkout | null) {
 }
 
 /** For a list: which Apple workout has a Hevy session, from ONE range read. */
-export function useHevyMatches<T extends TimedWorkout & { id: string }>(from: string, to: string, apple: readonly T[]) {
+export function useHevyMatches<T extends LinkedWorkout & { id: string }>(from: string, to: string, apple: readonly T[]) {
   const list = useHevyWorkoutsRange(from, to, { enabled: apple.length > 0 })
   return useMemo(() => {
     const out = new Map<string, HevyWorkout>()
     if (list.isPlaceholderData) return out
     for (const a of apple) {
-      const m = matchHealthWorkout(a, list.data ?? [])
+      const m = hevySessionOfWorkout(a, list.data ?? [])
       if (m) out.set(a.id, m)
     }
     return out

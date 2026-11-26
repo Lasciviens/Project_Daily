@@ -78,6 +78,11 @@ its money bought" → "Add"; the ⋯ menu's "Read a receipt" / "Tidy up product 
 categories (N)" → "Receipts" / "Tidy up" / "Stores" / "Add categories · N"; a wish tile's ⋯ → Open, Task / Plan, Quick list,
 Drop; fold headings match their tabs — "Gone", "Dropped", "Picked up", "Put away · N". The other pages are listed in the PR.
 
+## Linked plans (owner, 26.11.2026; migration 211)
+
+- Plan on a wish, the record and the quick list goes through `usePlanThis`; an owned thing with a return or complaint day still ahead offers **Return by** / **Complain by** (a plan on that day, linked to the thing), and the sell sheet **Handover** (the day you meet the buyer). While the thing has an open plan these are one chip, **Planned DD.MM.YYYY**, that opens it.
+- Ticking a wishlist thing's plan done buys it as a draft (`bought_at` = the tick; store, price and the rest are the owner's to fill in) and leaves a notice in **Needs a look** ("Bought through a plan · 26.11.2026 · check the purchase"; Open → the record's purchase, Got it reads it). Unticking puts it back on the wishlist — only while the draft is unchanged — and removes the notice. A return, complaint or handover plan only closes. Details: `docs/features/tasks.md` → Linked plans.
+
 ## Shop points of 23.11.2026 (owner)
 
 - **Record actions stay on one line** (`record/recordActions.ts`, `fitActions`, `verify-shop-record`). Why it wrapped: the row was `flex-wrap`, and only the `more` actions hid below a fixed 30rem of the whole record — but the row shares the record's width with the picture, so on a phone "Sell or give away" + "Accessory" + ⋯ were wider than the row and the last one dropped to a second line. Now the row measures its own width (`useElementWidthRem`) and `fitActions` says which buttons fit; the rest go behind ⋯ — `flex-nowrap`, never a second line. "Sell or give away" is "Sell" (the sheet keeps its title); buttons are small (`size="sm"`, `IconButton size="sm"`: 36px, 44 on touch). **Undo: still mine** is an icon button (its words as its title and accessible name) that asks first ("Still yours? This takes back the sale on 24.10.2026.") and then runs the same undo with its toast.

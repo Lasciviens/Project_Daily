@@ -32,7 +32,13 @@ export const qk = {
     projects: () => ['tasks', 'projects'] as const,
     /** A training session's first day (167) — the Move popup's "more than 7 days" note. */
     firstPlanDay: (id: string) => ['tasks', 'first-plan-day', id] as const,
+    /** A thing's open plan (211, `items/linkApi.fetchOpenPlan`) — under tasks, so every task action refreshes it. */
+    openPlan: (kind: string, id: string) => ['tasks', 'open-plan', kind, id] as const,
+    /** The thing a task plans, for the item screen's Linked chip (211). */
+    linkedThing: (kind: string, id: string) => ['tasks', 'linked-thing', kind, id] as const,
   },
+  /** Server-written notices (211's notifications): Shop's Needs a look shows them for now. */
+  notifications: { all: ['notifications'] as const },
   googleTaskLists: { all: ['google-task-lists'] as const },
   googleTasks: {
     all: ['google-tasks'] as const,

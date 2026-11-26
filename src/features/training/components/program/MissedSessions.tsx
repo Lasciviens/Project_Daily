@@ -2,7 +2,7 @@ import { AlertTriangle, CalendarCheck, CalendarPlus, SkipForward, Undo2 } from '
 import { Button, Card, KeepRoom, Skeleton, cx } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { useEntityModal } from '../../../../shared/modals'
-import { openPlanRoutine } from '../../planTraining'
+import { usePlanThis } from '../../../items/usePlanThis'
 import { useMissedSessions, useUndoTrainingSkip } from '../../hooks/useTrainingSkips'
 import { useTrainingPlanActions } from '../../hooks/useTrainingPlanActions'
 import { useFirstPlanDay } from '../../hooks/useTrainingPlans'
@@ -44,6 +44,7 @@ function openPastPlan(tasks: readonly Task[], routineId: string, today: string):
 
 function Row({ item, today, openTasks }: { item: RoutineAttention; today: string; openTasks: readonly Task[] }) {
   const modal = useEntityModal()
+  const plan = usePlanThis()
   const undo = useUndoTrainingSkip()
   const actions = useTrainingPlanActions()
   const pending = openPastPlan(openTasks, item.routineId, today)
@@ -52,7 +53,7 @@ function Row({ item, today, openTasks }: { item: RoutineAttention; today: string
   const skipTaskId = item.kind === 'skipped' ? item.skip.task_id ?? null : null
   const firstDay = useFirstPlanDay(skipTaskId)
   const undoable = item.kind === 'skipped' && !(skipTaskId && weekIsOver(firstDay ?? item.skip.plan_date, today))
-  const planIt = () =>(pending ? actions.openMove(pending) : openPlanRoutine({ id: item.routineId, title: item.title }, { date: today }))
+  const planIt = () =>(pending ? actions.openMove(pending) : void plan({ kind: 'training', routine: { id: item.routineId, title: item.title }, date: today }))
   const skip = () => modal.open({ kind: 'training-plan-skip', ...(pending
     ? { plan: pending }
     : { missed: { routineId: item.routineId, title: item.title, dueDate: item.dueDate, weekStart: item.weekStart } }) })

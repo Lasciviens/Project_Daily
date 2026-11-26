@@ -22,7 +22,7 @@ process.env.TZ = 'Europe/Oslo'
 
 const cs = require('../src/features/training/components/calendar/calendarSessions')
 const { summarizeWorkout, compareSets } = require('../src/features/training/workoutSessionStats')
-const { matchHealthWorkout, overlapSeconds } = require('../src/features/training/workoutHealthMatch')
+const { matchHealthWorkout, overlapSeconds, appleWorkoutOfSession, hevySessionOfWorkout, isTrainingSessionRow, isWatchOnly } = require('../src/features/training/workoutHealthMatch')
 const raw = require('../src/features/health/workoutRaw')
 const sr = require('../src/features/training/sessionRef')
 const { buildPlansByDate } = require('../src/features/training/components/calendar/calendarPlans')
@@ -172,6 +172,24 @@ console.log('\n== workoutHealthMatch ==')
   check('a missing end_time falls back to duration_seconds', matchHealthWorkout(hevy, [noEnd])?.id === 'dur')
   check('a session without an end matches nothing', matchHealthWorkout({ start_time: hevy.start_time, end_time: null }, [watch]) === null)
   check('a brushing overlap (<60% of the shorter) is rejected', matchHealthWorkout(hevy, [{ id: 'brush', start_time: '2026-08-25T15:40:00Z', end_time: '2026-08-25T16:30:00Z' }]) === null)
+}
+
+// ─── One training identity (211): the database's link first ─────────────────
+console.log('\n== one training identity (211) ==')
+{
+  const session = { id: 'h1', start_time: '2026-11-10T16:00:00Z', end_time: '2026-11-10T17:00:00Z' }
+  const hevyRow = { id: 'a1', name: 'Traditional Strength Training', start_time: '2026-11-10T16:00:03Z', end_time: '2026-11-10T17:10:00Z', hevy_workout_id: 'h1', source_app: 'com.hevyapp.hevy' }
+  const watchRow = { id: 'w1', name: 'Traditional Strength Training', start_time: '2026-11-10T16:00:00Z', end_time: '2026-11-10T17:00:00Z', hevy_workout_id: null, source_app: 'com.apple.health.XYZ' }
+  const walk = { id: 'walk', name: 'Outdoor Walk', start_time: '2026-11-10T08:00:00Z', end_time: '2026-11-10T09:00:00Z', hevy_workout_id: null, source_app: 'com.apple.health.XYZ' }
+  check('a session\'s Apple row is the one the database linked — never the Watch\'s own strength workout at the same second',
+    appleWorkoutOfSession('h1', session, [watchRow, hevyRow])?.id === 'a1' && appleWorkoutOfSession('h1', session, [watchRow]) === null)
+  check('an Apple row\'s Hevy session is its link; a Watch-only row has none', hevySessionOfWorkout(hevyRow, [session])?.id === 'h1' && hevySessionOfWorkout(watchRow, [session]) === null)
+  check('before 211 (no link column): the overlap rule', appleWorkoutOfSession('h1', session, [{ id: 'x', start_time: session.start_time, end_time: session.end_time }])?.id === 'x'
+    && hevySessionOfWorkout({ start_time: session.start_time, end_time: session.end_time }, [session])?.id === 'h1')
+  const strength = n => /strength/i.test(n)
+  check('Health lists the session once: Hevy\'s Apple row goes to Training; the Watch\'s strength workout and a walk stay Health\'s',
+    isTrainingSessionRow(hevyRow, strength) && !isTrainingSessionRow(watchRow, strength) && !isTrainingSessionRow(walk, strength))
+  check('Watch-only is any identifier but Hevy\'s; an older row without a source is not', isWatchOnly(watchRow) && !isWatchOnly(hevyRow) && !isWatchOnly({ source_app: null }))
 }
 
 // ─── workoutRaw ─────────────────────────────────────────────────────────────

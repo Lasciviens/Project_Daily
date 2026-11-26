@@ -10,6 +10,8 @@ import { categoryNamesOf, checklistFor } from '../../resaleTexts'
 import { HANDED_OVER, openListingOf } from '../../sellingModel'
 import { priceNow } from '../../listingNudge'
 import { HandoverChecklist } from '../record/HandoverChecklist'
+import { PlanThingButton } from '../../../items/components/LinkedPlanChips'
+import { Handshake } from 'lucide-react'
 import { boughtOn, complete, costOf, DISPOSAL_LABEL, isMine, PAID_BACK, splitSale, type MoneyCtx } from '../../ownModel'
 import { categoryPath, defaultCurrencyFor, listOf } from '../../shopModel'
 import { MoneyEditor } from '../shopEditors'
@@ -124,6 +126,9 @@ export function SellSheet({ item, items, categories, ctx, sale: start, onSold, o
     <ModalShell onClose={onClose} title={`Sell or give away · ${item.title}`} size="md" dismissible={!sale.isPending}
       footer={
         <div className="flex items-center gap-2">
+          {/* The day you meet the buyer (owner, 26.11.2026): a plan of this thing; "Planned 28.11.2026" once it has one. */}
+          <PlanThingButton thing={{ kind: 'shop_item', id: item.id, title: item.title, purpose: 'handover' }} label="Handover"
+            icon={<Handshake aria-hidden />} variant="ghost" tip="Handover — plan the day you hand it over" />
           <Button onClick={onClose} className="ml-auto" disabled={sale.isPending}>Cancel</Button>
           <Button variant="primary" onClick={submit} loading={sale.isPending} disabled={!on}>{how === 'sold' ? 'Sell' : DISPOSAL_LABEL[how]}</Button>
         </div>

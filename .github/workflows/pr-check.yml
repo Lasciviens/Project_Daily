@@ -521,6 +521,21 @@ jobs:
         run: node scripts/verify-db-icloud-invite-test.mjs
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      # Migration 210 (a task's link to the thing it plans): one link per task, one open plan per thing, the linked
+      # row is the task's own user's for every writer, the item save with p_link, the old back-pointers in step, and
+      # the data move (old links copied; 210 runs twice: the second run changes nothing; no task hidden).
+      - name: Task links database scenarios
+        run: node scripts/verify-db-task-links.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      # Migration 211 (linked plans): each app-owned effect once and undone on reopen (only while unchanged), the
+      # syncs that close movie, book and game plans (a hand tick writes no record), one training identity (Hevy's
+      # Apple row linked, a Watch walk never), the notifications table (server-written, read_at only), football's
+      # Plan it in one save. 211 runs twice; no task hidden.
+      - name: Linked plans database scenarios
+        run: node scripts/verify-db-linked-plans.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
   # Every scripts/verify-*.cjs|mjs, several at a time, as its own job beside
   # the build above, so it adds no waiting time unless it is slower than the

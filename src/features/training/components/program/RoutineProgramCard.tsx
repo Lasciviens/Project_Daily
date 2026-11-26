@@ -3,7 +3,7 @@ import { Pencil } from 'lucide-react'
 import { Card, CardHeader, MetaLine, TonePill, Truncate } from '../../../../shared/ui'
 import { ExerciseThumb } from '../../exerciseMedia'
 import { routineTargetFromSets, repRangeLabel } from '../../progress-engine'
-import { openPlanRoutine } from '../../planTraining'
+import { usePlanThis } from '../../../items/usePlanThis'
 import type { HevyRoutine } from '../../types.hevy'
 import type { ExerciseTargetOverride } from '../../types.athlete'
 import { TargetOverrideEditor } from './TargetOverrideEditor'
@@ -15,6 +15,7 @@ export function RoutineProgramCard({ routine, overrides, lastDoneText }: {
   overrides: ReadonlyMap<string, ExerciseTargetOverride>
   lastDoneText: string
 }) {
+  const plan = usePlanThis()
   const [editing, setEditing] = useState<string | null>(null)
   const exercises = [...(routine.exercises ?? [])].sort((a, b) => a.index - b.index)
   const totalSets = exercises.reduce((s, ex) => s + (ex.sets ?? []).filter(x => x.type !== 'warmup').length, 0)
@@ -24,7 +25,7 @@ export function RoutineProgramCard({ routine, overrides, lastDoneText }: {
         wrap
         title={routine.title}
         subtitle={<MetaLine as="span" items={[`${exercises.length} exercises`, `${totalSets} working sets`, `last done ${lastDoneText}`]} />}
-        action={<button type="button" className="min-h-[44px] text-meta font-semibold text-accent-600" onClick={() => openPlanRoutine(routine)}>Plan</button>}
+        action={<button type="button" className="min-h-[44px] text-meta font-semibold text-accent-600" onClick={() => { void plan({ kind: 'training', routine }) }}>Plan</button>}
       />
       <ul className="flex flex-col divide-y divide-line">
         {exercises.map(ex => {

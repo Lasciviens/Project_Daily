@@ -18,3 +18,4 @@ Background: `docs/features/health.md`.
 - Charts: hover shows values; only explicit links inside a tooltip navigate; a bar click never does.
 - One date and period control for the whole page (`HealthRangeBar`), and every widget follows it: a day shows that day's value, a longer period its average (exercise: its weekly total) against the period before. Labels say "average" / "total" / "Change", never the period's length. Only a reading that can't be averaged (VO₂ max, a Hevy entry) shows the latest value with its date. No fixed 7-day windows, and no second period control on a card.
 - `date` is computed from the export's own local time, never from the UTC timestamp.
+- A workout is a Hevy session only by `hevy_workout_id` (211, the database's); Other workouts leaves out a Training session's Apple row and keeps a Watch-only workout. Never show or store the Watch's device name (`raw.source.name` is dropped on write; the app reads `raw.source.identifier` only).

@@ -8,6 +8,7 @@ import { useHevyMatches } from '../hooks/useWorkoutLinks'
 import type { HealthWorkoutSummary } from '../api/healthApi'
 import type { HealthWindow } from '../healthWindowStats'
 import { isStrengthWorkout } from '../workoutKinds'
+import { isTrainingSessionRow } from '../../training/workoutHealthMatch'
 import { energyKcal } from '../workoutRaw'
 import { fmtDuration } from './healthFormat'
 
@@ -58,7 +59,8 @@ export function HealthWorkoutsList({ win }: { win: HealthWindow }) {
   const modal = useEntityModal()
   const [expanded, setExpanded] = useState(false)
   const { data: all = [], isLoading } = useHealthWorkoutSummaries(win.from, win.to)
-  const workouts = useMemo(() => all.filter(w => !isStrengthWorkout(w.name)), [all])
+  // A Training session's Apple row is listed under Training only (counted once); a Watch-only workout stays here.
+  const workouts = useMemo(() => all.filter(w => !isTrainingSessionRow(w, isStrengthWorkout)), [all])
   const hevy = useHevyMatches(win.from, win.to, workouts)
   const linked = hevy.size
   if (!isLoading && workouts.length === 0) return null

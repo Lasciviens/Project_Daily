@@ -1,4 +1,6 @@
 import { useCallback, useMemo } from 'react'
+import { fetchEffectTarget, fetchTickEffects } from '../../items/linkApi'
+import { doneMessage, reopenMessage } from '../../items/tickMessage'
 import { keepPreviousData, queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import {
@@ -208,11 +210,17 @@ export function useToggleTask() {
   return useMutationWithFeedback({
     action: 'toggle_task',
     mutationFn: async ({ id, isDone }: { id: string; isDone: boolean }) => {
+      // A linked plan's effects (211): read before a reopen (the database forgets an undone one), after a tick.
+      const before = isDone ? [] : await fetchTickEffects(id).catch(() => [])
       const task = await toggleTaskDone(id, isDone)
       syncGoogleTasksSoon({ taskId: id })
       // Its slot's Apple Calendar event gains or loses "✓ " (155): queued by the triggers, sent shortly.
       drainICloudSoon()
-      return task
+      // Only a task that plans an app-owned thing can have one (a wishlist thing, a wish, a project phase).
+      const owned = !!(task.shop_item_id || task.wish_item_id || task.project_phase_id)
+      const effects = isDone ? (owned ? await fetchTickEffects(id).catch(() => []) : []) : before
+      const outcomes = await Promise.all(effects.map(async e => ({ effect: e, now: await fetchEffectTarget(e).catch(() => ({ title: null, status: null })) })))
+      return { task, outcomes }
     },
     onMutate: async ({ id, isDone }) => {
       await qc.cancelQueries({ queryKey: qk.tasks.all })
@@ -221,9 +229,10 @@ export function useToggleTask() {
       mapRowsInCache<Task>(qc, qk.tasks.all, new Set([id]), t => applyTaskPatch(t, { status: isDone ? 'done' : 'open' }, now))
       return { snapshot }
     },
-    onSuccess: task => putRowsInCache(qc, qk.tasks.all, [task]),
+    onSuccess: r => putRowsInCache(qc, qk.tasks.all, [r.task]),
     onError: (_err, _vars, ctx) => { if (ctx) restoreCache(qc, ctx.snapshot) },
-    successMessage: (_task, { isDone }) => (isDone ? 'Task done' : 'Task reopened'),
+    // What the tick did to the thing it plans (211): "Task done · Kettle bought — check it in Shop".
+    successMessage: (r, { isDone }) => (isDone ? doneMessage(r.outcomes) : reopenMessage(r.outcomes)),
     // The schedule reads carry each block's task status (Training's "next
     // session", the agenda's Done) — a tick refreshes them too.
     invalidates: ['taskGraph'],

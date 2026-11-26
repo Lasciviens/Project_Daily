@@ -6,6 +6,7 @@
 
 import type { TimeBlock, ScheduleBlock, TimeBlockCategory } from '../../../features/daily/types'
 import type { Task, LiveTaskSection, TaskPriority, TaskDomain, TaskSourceType } from '../../../features/todo/types'
+import type { ItemLink } from '../../../features/items/itemTypes'
 
 // ── Mode — which alias opened a NEW item ──────────────────────────────────────
 // One item since migration 155: a task, its slot and its repeat are parts of
@@ -102,6 +103,8 @@ export interface PlanSource {
    * precisely match "this episode was marked watched" back to it.
    */
   episodeInfo?: { seasonNumber: number; episodeNumber: number }
+  /** The thing the task plans (210): saved with the item in one transaction — never a second write in onSaved. */
+  link?: ItemLink
 }
 
 // ── Result handed to onSaved (post-save hook — caller-side side effects) ──────
