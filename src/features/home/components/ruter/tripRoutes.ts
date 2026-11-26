@@ -31,5 +31,19 @@ export function groupTripsByRoute<T extends Trip>(trips: readonly T[]): TripGrou
   return { best, other }
 }
 
-/** How many trips a column shows at first, and how many more each "Show more" adds. */
-export const TRIPS_PER_STEP = 3
+/** A trip's React key: when it leaves and arrives, and its route — never its place in a list. */
+export function tripKey(trip: Pick<TripPattern, 'departure' | 'arrival' | 'legs'>): string {
+  return `${trip.departure}-${trip.arrival}-${routeSignature(trip)}`
+}
+
+/**
+ * How many trips a list shows at first, and how many more each "Show more" adds.
+ * Two columns (the tab ≥ 44rem wide): 3 a column — 6 when the best route's trips
+ * fill both columns because no other route came. One column (a phone held
+ * upright): 2 a group when other routes follow, so the first Alternative is
+ * near; 3 when the best route is all there is.
+ */
+export function tripStep(twoUp: boolean, hasOther: boolean): number {
+  if (twoUp) return hasOther ? 3 : 6
+  return hasOther ? 2 : 3
+}

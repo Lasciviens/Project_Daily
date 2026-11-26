@@ -2,7 +2,8 @@
 /*
  * Verification — Transit's Routes tab: the best trip's route on the left, trips
  * on other lines or stops on the right (src/features/home/components/ruter/tripRoutes.ts),
- * and the compact "Tw" direction on a stop chip (transitUtils.shortToward).
+ * how many trips a list shows, and a stop chip's compact "Tw" direction with its
+ * platform apart (transitUtils.shortToward / stopChipLine).
  * Against the REAL modules via sucrase (no unit-test runner by convention).
  *
  * Run: node scripts/verify-trip-routes.cjs
@@ -11,8 +12,8 @@ require('sucrase/register')
 const fs = require('fs')
 const path = require('path')
 
-const { routeSignature, groupTripsByRoute, TRIPS_PER_STEP } = require('../src/features/home/components/ruter/tripRoutes')
-const { shortToward } = require('../src/features/home/components/ruter/transitUtils')
+const { routeSignature, groupTripsByRoute, tripKey, tripStep } = require('../src/features/home/components/ruter/tripRoutes')
+const { shortToward, stopChipLine } = require('../src/features/home/components/ruter/transitUtils')
 
 let passed = 0
 let failed = 0
@@ -61,13 +62,32 @@ console.log('\n2 · Grouping: the best trip\'s route on the left, every other ro
   const { best, other } = groupTripsByRoute([bus31('b1'), metro5('m1')])
   check('the best trip decides the left column, whatever its line', best[0].name === 'b1' && other[0].name === 'm1')
 }
-check('a column starts with a few trips and "Show more" adds as many', Number.isInteger(TRIPS_PER_STEP) && TRIPS_PER_STEP >= 2 && TRIPS_PER_STEP <= 4, TRIPS_PER_STEP)
+
+console.log('\n2b · How many trips a list shows (and each "Show more" adds)')
+check('two columns: 3 a column', tripStep(true, true) === 3)
+check('two columns, no other route: the best route fills both — 6', tripStep(true, false) === 6)
+check('one column with other routes: 2 a group, so the first Alternative is near', tripStep(false, true) === 2)
+check('one column, the best route only: 3', tripStep(false, false) === 3)
+
+console.log('\n2c · A trip\'s key is the trip itself, never its place in a list')
+{
+  const a = metro5('a'), b = { ...metro5('b'), departure: '2026-11-26T12:15:00+01:00', arrival: '2026-11-26T12:30:00+01:00' }
+  check('the same trip gives the same key', tripKey(a) === tripKey(metro5('again')))
+  check('another time gives another key', tripKey(a) !== tripKey(b))
+  check('another route at the same times gives another key', tripKey(a) !== tripKey(bus31('x')))
+}
 
 console.log('\n3 · A stop chip\'s direction in the owner\'s short form: "Toward" → "Tw"')
 check('"Toward Økern, Oslo" → "Tw Økern, Oslo" (æøå kept)', shortToward('Toward Økern, Oslo') === 'Tw Økern, Oslo', shortToward('Toward Økern, Oslo'))
 check('after a platform: "Platform D · Toward Grorud T" → "Platform D · Tw Grorud T"', shortToward('Platform D · Toward Grorud T') === 'Platform D · Tw Grorud T')
 check('a description without "Toward" is left as it is', shortToward('Mot sentrum') === 'Mot sentrum')
 check('only the whole word: "Towards" stays', shortToward('Towards Bergen') === 'Towards Bergen')
+const line = t => JSON.stringify(stopChipLine(t))
+check('"Platform B · Toward Økern, Oslo S" → the direction alone + badge B', line('Platform B · Toward Økern, Oslo S') === JSON.stringify({ direction: 'Tw Økern, Oslo S', platform: 'B' }), line('Platform B · Toward Økern, Oslo S'))
+check('a quay description before the direction is left out of the chip', line('Mot sentrum · Toward Lillestrøm, Lørenskog') === JSON.stringify({ direction: 'Tw Lillestrøm, Lørenskog', platform: null }), line('Mot sentrum · Toward Lillestrøm, Lørenskog'))
+check('a description alone is the direction', line('Mot sentrum') === JSON.stringify({ direction: 'Mot sentrum', platform: null }))
+check('"Platform 3" alone → only the badge', line('Platform 3') === JSON.stringify({ direction: null, platform: '3' }))
+check('nothing saved → nothing shown', line(null) === JSON.stringify({ direction: null, platform: null }) && line('') === line(null))
 
 console.log('\n4 · The screen uses it')
 {
@@ -77,10 +97,14 @@ console.log('\n4 · The screen uses it')
   const queries = read('src/features/home/hooks/useTransitQueries.ts')
   check('RoutesTab groups the trips with groupTripsByRoute', /groupTripsByRoute\(/.test(tab) && tab.includes("from './tripRoutes'"))
   check('the left column\'s first trip is tagged Best, the right column\'s first Alternative', /tag=\{i === 0 \? 'Best'/.test(tab) && /tag=\{i === 0 \? 'Alternative'/.test(tab))
-  check('each column has its own "Show more"', /setShownBest\(/.test(tab) && /setShownOther\(/.test(tab))
-  check('the two columns come from the tab\'s own width, never on a phone (sideways too)', /@container/.test(tab) && /useBreakpoint\(\) !== 'phone'/.test(tab) && /wide && '@\[44rem\]:grid-cols-2'/.test(tab))
+  check('each column has its own "Show more", by tripStep', /setBestSteps\(/.test(tab) && /setOtherSteps\(/.test(tab) && /tripStep\(twoUp, hasOther\)/.test(tab))
+  check('the two columns come from the tab\'s own width alone (@container, 44rem): a sideways phone too', /@container/.test(tab) && /@\[44rem\]:grid-cols-2/.test(tab) && !/useBreakpoint/.test(tab) && /useElementWidthRem\(\)/.test(tab) && />= 44\b/.test(tab))
+  check('no "Other routes" heading: the first Alternative tag is the label', !/>Other routes</.test(tab))
+  check('trip cards are keyed by the trip, not the index', /<TripCard key=\{tripKey\(trip\)\}/.test(tab) && !/<TripCard key=\{i\}/.test(tab))
+  check('no other route: the best route\'s trips fill both columns', /if \(!hasOther\) return/.test(tab))
   check('no viewport sm:/lg: layout in RoutesTab', !/\b(sm|md|lg|xl):(max-w|grid-cols|ml-auto|flex-row)/.test(tab))
-  check('stop chips shorten "Toward" and cut the rest with <Truncate>', /<Truncate fullText=\{s\.quay_description\}[^>]*>\{shortToward\(s\.quay_description\)\}<\/Truncate>/.test(tab))
+  check('stop chips show the direction alone, cut with <Truncate>, the platform as a badge, the full text as tooltip and name', /stopChipLine\(s\.quay_description\)/.test(tab) && /<Truncate fullText=\{s\.quay_description[^}]*\}[^>]*>\{direction\}<\/Truncate>/.test(tab) && /\{platform\}<\/span>/.test(tab) && /title=\{tip\}/.test(tab) && /aria-label=\{tip\}/.test(tab))
+  check('stop chips: two a row, three when wide (no empty track beside three)', /grid grid-cols-2 gap-2 @\[40rem\]:grid-cols-3/.test(tab))
   check('TripCard takes one tag (Best | Alternative) in the Best tag\'s style', /tag\?: 'Best' \| 'Alternative'/.test(card) && !/isBest/.test(card + tab))
   check('trips are asked for in one count shared with Home\'s card', /const TRIP_COUNT = \d+/.test(queries) && /fetchTrips\([^)]*TRIP_COUNT/.test(queries))
   const n = Number((queries.match(/const TRIP_COUNT = (\d+)/) || [])[1])
