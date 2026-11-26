@@ -95,7 +95,7 @@ check('the bell\'s drop-down and the page render the one NotificationList',
   [/<NotificationList mode="dropdown"/.test(read('src/features/notifications/components/NotificationBell.tsx')), /<NotificationList mode="page"/.test(read('src/features/notifications/pages/NotificationsPage.tsx')),
     /export function NotificationList\(/.test(list)], [true, true, true])
 check('the bell sits next to the avatar in the top bar and the phone header',
-  ['src/app/shell/AppTopBar.tsx', 'src/app/shell/MobileHeader.tsx'].map(p => /<NotificationBell \/>\n\s+<SettingsMenu \/>/.test(read(p))), [true, true])
+  ['src/app/shell/AppTopBar.tsx', 'src/app/shell/MobileHeader.tsx'].map(p => /<NotificationBell look="(bar|header)" \/>\n\s+<SettingsMenu \/>/.test(read(p))), [true, true])
 check('/notifications is a page of the registry and a lazy page', [/path: '\/notifications'/.test(read('src/app/navigation.ts')), /NotificationsPage = lazyPage\(/.test(read('src/app/pages.ts')),
   /path="\/notifications"/.test(read('src/app/router.tsx'))], [true, true, true])
 check('a notice opens its thing by the kind\'s fixed way (a popup by id, else noticeRoute) — never an address from the row',
