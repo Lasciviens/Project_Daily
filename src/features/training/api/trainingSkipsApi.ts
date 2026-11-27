@@ -60,8 +60,3 @@ export async function createTrainingSkip(input: CreateTrainingSkipInput): Promis
   if (res.error) throw isMissingTable(res.error) ? new Error(NOT_MIGRATED_112) : res.error
   return res.data as TrainingSkip
 }
-
-export async function deleteTrainingSkip(id: string): Promise<void> {
-  const { error } = await supabase.from('training_skips').delete().eq('id', id)
-  if (error) throw isMissingTable(error) ? new Error(NOT_MIGRATED_112) : error
-}

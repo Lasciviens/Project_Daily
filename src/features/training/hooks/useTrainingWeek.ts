@@ -6,9 +6,9 @@ import { useHevyWorkoutsRange } from './useHevyWorkouts'
 import { useHevyRoutines } from './useHevyRoutines'
 import { useTrainingPlansByDate } from './useTrainingPlans'
 import { usePlanContext } from './usePlanContext'
-import { matchDaySessions, planRoutineId, planStartHHMM } from '../components/calendar/calendarSessions'
-import { planWeek, sessionStatus, type TrainingWeek, type WeekSessionInput } from '../plan/sessionState'
-import { workoutLocalDay } from '../workoutDates'
+import { useCurrentProgramRoutines } from './useAthleteProfile'
+import { buildTrainingWeek } from '../plan/weekInputs'
+import type { TrainingWeek } from '../plan/sessionState'
 import type { CalendarPlanItem } from '../components/calendar/calendarModel'
 
 export interface TrainingWeekView {
@@ -18,8 +18,6 @@ export interface TrainingWeekView {
   isLoading: boolean
   isError: boolean
 }
-
-const MON_FIRST = (d: number) => (d + 6) % 7
 
 /**
  * The week of `date` (Monday to Sunday) as THE status reads it (plan/sessionState → planWeek): every planned session
@@ -37,60 +35,23 @@ export function useTrainingWeek(date?: string): TrainingWeekView {
   const templatesQ = useScheduleBlocks()
   const routinesQ = useHevyRoutines()
   const { skips, routineOf } = usePlanContext()
+  const programQ = useCurrentProgramRoutines()
+  const program = programQ.data
   const workouts = workoutsQ.data
   const templates = templatesQ.data
   const routines = routinesQ.data
 
   return useMemo(() => {
-    const titleOf = new Map((routines ?? []).map(r => [r.id, r.title]))
-    const ofPlan = (p: CalendarPlanItem, d: string) => planRoutineId(p) ?? routineOf({ title: p.title, date: d, startHHMM: planStartHHMM(p) })
-    const dayOfWorkout = new Map((workouts ?? []).map(w => [w.id, workoutLocalDay(w) || null]))
-
-    const inputs: WeekSessionInput[] = []
-    const planOf = new Map<string, CalendarPlanItem>()
-    for (let d = from; d <= sunday; d = shiftDateStr(d, 1)) {
-      const dayPlans = plans.data.get(d) ?? []
-      if (dayPlans.length === 0) continue
-      const dayWorkouts = (workouts ?? []).filter(w => workoutLocalDay(w) === d)
-      const day = matchDaySessions({ date: d, todayStr: today, plans: dayPlans, workouts: dayWorkouts, hasActivity: false, skips, routineOf: ofPlan })
-      const add = (plan: CalendarPlanItem, input: Omit<WeekSessionInput, 'key' | 'title' | 'routineId' | 'date'>) => {
-        const routineId = ofPlan(plan, d)
-        const key = `${plan.id}@${d}`
-        planOf.set(key, plan)
-        inputs.push({ key, title: (routineId && titleOf.get(routineId)) || plan.title, routineId, date: d, ...input })
-      }
-      for (const s of day.sessions) {
-        for (const plan of s.plans) add(plan, { status: sessionStatus({ date: d, taskStatus: 'done', taskWorkoutId: s.workout.id, today }), workoutDate: d })
-      }
-      // A workout of another routine that day that covered none of its plans: it was done instead (a swap, 213).
-      const loose = day.sessions.filter(s => s.plans.length === 0 && s.workout.routine_id)
-      for (const o of day.openPlans) {
-        const routineId = ofPlan(o.plan, d)
-        const instead = o.session.open && d <= today ? loose.find(s => s.workout.routine_id !== routineId) : undefined
-        add(o.plan, {
-          status: o.session,
-          workoutDate: o.session.workoutId ? dayOfWorkout.get(o.session.workoutId) ?? null : null,
-          insteadTitle: instead ? titleOf.get(instead.workout.routine_id!) ?? instead.workout.title ?? null : null,
-        })
-      }
-    }
-
-    // The program's order: the weekly schedule's training plans by their first weekday (Monday first), then time.
-    const order: string[] = []
-    for (const t of (templates ?? []).filter(x => x.category === 'training')
-      .map(x => ({ x, first: Math.min(...(x.days_of_week ?? []).map(MON_FIRST)) }))
-      .sort((a, b) => a.first - b.first || (a.x.start_time ?? '').localeCompare(b.x.start_time ?? ''))) {
-      const id = routineOf({ title: t.x.title, date: monday, startHHMM: t.x.start_time?.slice(0, 5) ?? null })
-      if (id && !order.includes(id)) order.push(id)
-    }
-
-    const trainedToday = (workouts ?? []).some(w => workoutLocalDay(w) === today)
+    const { week, planOf } = buildTrainingWeek({
+      date: monday, today, plansByDate: plans.data, workouts: workouts ?? [], skips, routineOf,
+      titleOf: new Map((routines ?? []).map(r => [r.id, r.title])), templates: templates ?? [],
+      program: program ? program.map(p => p.routine_id) : undefined,
+    })
     return {
-      week: planWeek({ sessions: inputs, order, today, monday, trainedToday }),
-      planOf,
+      week, planOf,
       isLoading: plans.isLoading || workoutsQ.isLoading || templatesQ.isLoading || routinesQ.isLoading,
       isError: plans.isError || workoutsQ.isError,
     }
   }, [plans.data, plans.isLoading, plans.isError, workouts, workoutsQ.isLoading, workoutsQ.isError, templates, templatesQ.isLoading,
-    routines, routinesQ.isLoading, skips, routineOf, today, monday, sunday, from])
+    routines, routinesQ.isLoading, program, skips, routineOf, today, monday])
 }

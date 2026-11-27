@@ -121,18 +121,17 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       category: i.block?.category ?? i.template?.category ?? null, planDate: i.planDate,
     }))
 
-    // Next training: today, this week's first session still to do on the day to do it (useNextTrainingSession's
-    // rule: sessionState.planWeek); else, and for another day, one-off training blocks plus recurring training
-    // templates from the viewed day on — the same pure rule.
+    // Next training: today, this week's first session still to do (useNextTrainingSession's rule:
+    // sessionState.planWeek); while the week loads, another day, or a week with none, one-off training blocks plus
+    // recurring training templates from the viewed day on — the same pure rule. The card never waits for the week.
     const trainingTemplates = templates.filter(t => t.category === 'training')
     const trainingDays = trainingDaysQ.data ?? []
     const fromWeek = isToday ? weekNextSession(week.week, week.planOf) : null
-    const nextTraining = fromWeek ? { ...fromWeek, date: fromWeek.doOn ?? fromWeek.date } : pickNextTrainingSession({
+    const nextTraining = fromWeek ?? pickNextTrainingSession({
       blocks:        trainingQ.data ?? [],
       templates:     trainingTemplates,
       dayTasks:      trainingDays,
       today:         date,
-      nowHHMM:       isToday ? hourLabel(nowHour) : '00:00',
       lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS,
     })
 
@@ -145,7 +144,7 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       nextTraining,
       // Every read waits here, so a day appears once and complete.
       isLoading: dayTasks.isLoading || blocksQ.isLoading || templatesQ.isLoading
-        || prevBlocksQ.isLoading || trainingQ.isLoading || trainingDaysQ.isLoading || week.isLoading,
+        || prevBlocksQ.isLoading || trainingQ.isLoading || trainingDaysQ.isLoading,
       scheduleError: blocksFailed || prevFailed || templatesFailed,
       refetchSchedule: () => {
         if (blocksFailed) void refetchBlocks()
@@ -154,6 +153,6 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       },
       scheduleRetrying,
     }
-  }, [date, nowMs, dayTasks.repeatDays, dayTasks.open, dayTasks.done, dayTasks.cancelled, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, prevBlocksQ.isLoading, templatesQ.data, templatesQ.isLoading, trainingQ.data, trainingQ.isLoading, trainingDaysQ.data, trainingDaysQ.isLoading, week.week, week.planOf, week.isLoading,
+  }, [date, nowMs, dayTasks.repeatDays, dayTasks.open, dayTasks.done, dayTasks.cancelled, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, prevBlocksQ.isLoading, templatesQ.data, templatesQ.isLoading, trainingQ.data, trainingQ.isLoading, trainingDaysQ.data, trainingDaysQ.isLoading, week.week, week.planOf,
     blocksFailed, prevFailed, templatesFailed, refetchBlocks, refetchPrev, refetchTemplates, scheduleRetrying])
 }

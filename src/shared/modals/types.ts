@@ -58,11 +58,10 @@ export type EntityModalRequest =
    *  one (`plan` — a recurring occurrence has no row, so it carries its day). */
   | { kind: 'training-session'; workoutId?: string; plan?: { kind: 'block' | 'recurring'; id: string; date: string }; taskId?: string }
   // Move or skip one planned training session — the same sheets from every
-  // view (features/training/modals/TrainingPlanSheets). Skip also takes a
-  // missed routine with no plan (Training → Missed sessions). Move's `toDate`:
+  // view (features/training/modals/TrainingPlanSheets). Move's `toDate`:
   // the day it starts on ("Plan it" for a picked day moves the open plan there).
   | { kind: 'training-plan-move'; plan: TrainingPlanRef; toDate?: string }
-  | { kind: 'training-plan-skip'; plan?: TrainingPlanRef; missed?: { routineId: string; title: string; dueDate: string; weekStart: string } }
+  | { kind: 'training-plan-skip'; plan: TrainingPlanRef }
   /** One exercise (a Hevy template): its picture and demo, muscles and Hevy's
    *  own history of it. `title` is prefill for one the library here lacks. */
   | { kind: 'exercise'; templateId: string; title?: string }

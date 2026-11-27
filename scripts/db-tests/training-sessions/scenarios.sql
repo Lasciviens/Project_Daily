@@ -321,7 +321,7 @@ select t_ok(t_refused($$select public.training_shift_sessions(public.t_p(930), 1
         and t_day(t_p(930)) = t_d(-1),
   'T7 a done session on the day it would land: refused, nothing moves');
 select t_ok(t_refused($$select public.training_shift_sessions(public.t_p(930), 3, public.t_d(0))$$) like '22023%',
-  'T7 never later than today');
+  'T7 never later than tomorrow (today when it is free)');
 reset role;
 select t_clear();
 

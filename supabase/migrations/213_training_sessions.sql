@@ -362,7 +362,8 @@ create trigger trg_tasks_workout_owner
 -- day further. Should be more dynamic"; "It should be an option not must"; "One truth! … It has to stick to the real
 -- data!". The app offers it (sessionState.shiftOffer); this moves the sessions in the data — tasks and their slots,
 -- Apple Calendar follows through its queue (the triggers) — and answers what moved, for the toast and its Undo.
---   p_days > 0 (Move): p_anchor is a session still to do whose day has passed; it lands on p_today at the latest. It
+--   p_days > 0 (Move): p_anchor is a session still to do whose day has passed; it lands on p_today (or the day after,
+--     when today is trained already) at the latest. It
 --     and every session of the current program still to do in its cycle (its day and the six after) move p_days later,
 --     the gaps between them kept; a session on a day one of them lands on moves too (the cycle rolls on, also into the
 --     next week, at most 27 days from the anchor).
@@ -413,8 +414,9 @@ begin
        or not (a.status in ('open', 'in_progress', 'waiting') or (a.status = 'cancelled' and a.closed_reason = 'missed')) then
       raise exception 'This session is not open any more' using errcode = '22023';
     end if;
-    if d0 >= v_today or d0 + p_days > v_today then
-      raise exception 'Only a session whose day has passed moves, and at most to today' using errcode = '22023';
+    -- To today, or tomorrow when today is trained already (never two sessions on one day).
+    if d0 >= v_today or d0 + p_days > v_today + 1 then
+      raise exception 'Only a session whose day has passed moves, and at most to tomorrow' using errcode = '22023';
     end if;
     v_ids := array[a.id]; v_from := array[d0]; v_targets := array[d0 + p_days];
   else

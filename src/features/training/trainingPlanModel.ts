@@ -32,10 +32,6 @@ export interface NextTrainingSession {
   taskId:    string | null
   /** The routine it trains, when known (the week model's next, useNextTrainingSession). */
   routineId?: string | null
-  /** The day to do it when that is not its planned day: a missed session still
-   *  open this week, or one the week shifted (sessionState.planWeek); null =
-   *  no day left this week (carried into next week). */
-  doOn?: string | null
 }
 
 function shiftDay(dateStr: string, delta: number): string {
@@ -61,7 +57,7 @@ export interface TrainingDayTaskLike {
 /** `templates` must already be the training ones. Today's session stays next
  *  all day (owner's sessions proposal, 27.11.2026: it used to drop once its
  *  start time passed); a block whose task is done (trained — migration 141) or
- *  cancelled is not. `nowHHMM` no longer filters (kept for the callers).
+ *  cancelled is not.
  *  `dayTasks`: a weekly day closed as its task (a Hevy workout or a Google
  *  Tasks tick, no split) is not one to come either — sessionState decides
  *  (a day closed as missed is still to do there). */
@@ -70,7 +66,6 @@ export function pickNextTrainingSession(input: {
   templates:     readonly RecurringBlockLike[]
   dayTasks?:     readonly TrainingDayTaskLike[]
   today:         string
-  nowHHMM:       string
   lookaheadDays: number
 }): NextTrainingSession | null {
   const { blocks, templates, today, lookaheadDays } = input

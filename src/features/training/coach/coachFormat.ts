@@ -3,7 +3,8 @@ import { MOVEMENT_PATTERN_LABEL, labelForSlug, movementPatternLabel, resolveMove
 import type { ProgressData } from '../progressModel'
 import type { AthleteLimitation, AthleteProfile } from '../types.athlete'
 import type { HevyRoutine } from '../types.hevy'
-import { missedText, type RoutineAttention } from '../plan/skippedRoutines'
+import type { WeekMissed } from '../plan/weekInputs'
+import { formatDate } from '../../../shared/utils/dateFormat'
 import { PAIR_META, leanLabel, ratioText, sidesText, type BalancePair, type RatioRead } from '../plan/muscleBalance'
 import type { CoachBalance } from './coachModel'
 
@@ -47,8 +48,8 @@ export interface CoachData {
   steps: CoachDay[]
   activeKcal: CoachDay[]
   bodyweight: CoachWeight[]
-  /** Current-program routines not done for 7+ days, with their skip / plan (plan/skippedRoutines.ts). */
-  missedSessions?: RoutineAttention[]
+  /** This week's sessions whose day passed undone, or skipped (plan/weekInputs.weekMissed — the This week strip's own reading). */
+  missedSessions?: WeekMissed[]
   /** Push:pull and quad:hamstring, planned vs done (plan/muscleBalance.ts — the numbers the app shows). */
   balance?: CoachBalance | null
   /** The nutrition goal's phase (day_targets.goal) — cutting / maintaining / gaining. */
@@ -176,17 +177,21 @@ function shiftIso(date: string, days: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-/** "Missed: Lower B — not done in 9 days (due 2026-09-25) · skipped: Sick". */
-export function missedLine(m: RoutineAttention): string {
-  const state = m.kind === 'skipped' ? ` · skipped: ${m.skip.reason}` : m.kind === 'replanned' ? ` · replanned for ${m.plannedDate}` : ''
-  return `Missed: ${m.title} — ${missedText(m)} (due ${m.dueDate})${state}`
+/** "Missed: Lower A — planned 24.11.2026, still open until 30.11.2026" / "… · skipped: Sick" — this week's sessions as
+ *  the This week strip reads them (213). */
+export function missedLine(m: WeekMissed): string {
+  const state = m.state === 'skipped'
+    ? ` · skipped${m.reason ? `: ${m.reason.trim()}` : ''}`
+    : `, still open${m.countsUntil ? ` until ${formatDate(m.countsUntil)}` : ''}${m.skippedOver ? ' · skipped over' : ''}`
+  return `Missed: ${m.title} — planned ${formatDate(m.date)}${state}`
 }
 
-function missedJson(m: RoutineAttention): Record<string, unknown> {
+function missedJson(m: WeekMissed): Record<string, unknown> {
   return {
-    t: m.title, days_since: m.daysSince, due: m.dueDate, status: m.kind,
-    ...(m.kind === 'skipped' ? { reason: m.skip.reason } : {}),
-    ...(m.kind === 'replanned' ? { planned: m.plannedDate } : {}),
+    t: m.title, planned: m.date, status: m.state,
+    ...(m.countsUntil ? { open_until: m.countsUntil } : {}),
+    ...(m.reason ? { reason: m.reason } : {}),
+    ...(m.skippedOver ? { skipped_over: true } : {}),
   }
 }
 

@@ -57,7 +57,7 @@ function SessionHeader({ plan }: { plan: NextPlan }) {
           <p className="section-label">{pick?.source === 'planned' ? 'Next session' : 'Next in your rotation'}</p>
           <h2 className="text-title font-semibold text-fg">{title}</h2>
           <p className="text-meta text-fg-muted">
-            {pick?.source === 'planned' && session ? whenText(session.doOn ?? session.date, session.startTime, today) : 'Nothing planned — your current-program routine trained longest ago'}
+            {pick?.source === 'planned' && session ? whenText(session.date, session.startTime, today) : 'Nothing planned — your current-program routine trained longest ago'}
             {routine ? ` · ${lastDoneText(pick?.lastTrained ?? null, today)}` : ''}
           </p>
         </div>

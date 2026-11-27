@@ -65,7 +65,6 @@ const buttons = {
   'src/features/training/components/program/RoutineProgramCard.tsx': 'the program card',
   'src/features/training/components/session/TrainingSessionView.tsx': 'Plan this routine again',
   'src/features/training/components/calendar/DayDetailPanel.tsx': 'a training day',
-  'src/features/training/modals/TrainingPlanSheets.tsx': 'Skip → Plan',
   'src/features/daily/components/summary/TrainingBand.tsx': 'Daily\'s training band',
 }
 const without = Object.entries(buttons).filter(([f]) => !/\busePlanThis\b|\bPlanThingButton\b/.test(read(f))).map(([f, w]) => `${w} (${f})`)

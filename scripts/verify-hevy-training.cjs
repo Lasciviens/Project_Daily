@@ -154,21 +154,21 @@ check('future → upcoming (a future "activity" never marks it done)', planStatu
 {
   // 2026-09-27 is a Sunday.
   const templates = [{ id: 'R', title: 'Push (recurring)', start_time: '16:30', end_time: '17:30', days_of_week: [1, 3, 5], effective_from: '2026-09-01' }]
-  const next = pickNextTrainingSession({ blocks: [], templates, today: '2026-09-27', nowHHMM: '12:00', lookaheadDays: 30 })
+  const next = pickNextTrainingSession({ blocks: [], templates, today: '2026-09-27', lookaheadDays: 30 })
   check('recurring template is a next session (banner ignored these)', next && next.kind === 'recurring' && next.date === '2026-09-28' && next.startTime === '16:30')
-  const withBlock = pickNextTrainingSession({ blocks: [{ id: 'B', title: 'Legs', date: '2026-09-27', start_time: '18:00:00', task_id: 't1' }], templates, today: '2026-09-27', nowHHMM: '12:00', lookaheadDays: 30 })
+  const withBlock = pickNextTrainingSession({ blocks: [{ id: 'B', title: 'Legs', date: '2026-09-27', start_time: '18:00:00', task_id: 't1' }], templates, today: '2026-09-27', lookaheadDays: 30 })
   check('an earlier one-off block wins', withBlock && withBlock.kind === 'block' && withBlock.id === 'B' && withBlock.taskId === 't1')
-  const passed_ = pickNextTrainingSession({ blocks: [{ id: 'B', title: 'Legs', date: '2026-09-27', start_time: '09:00', task_id: null }], templates, today: '2026-09-27', nowHHMM: '12:00', lookaheadDays: 30 })
+  const passed_ = pickNextTrainingSession({ blocks: [{ id: 'B', title: 'Legs', date: '2026-09-27', start_time: '09:00', task_id: null }], templates, today: '2026-09-27', lookaheadDays: 30 })
   check('today\'s session stays next all day, also once its time has passed (sessions proposal, 27.11.2026)', passed_ && passed_.kind === 'block' && passed_.id === 'B')
   const future = [{ ...templates[0], effective_from: '2026-10-05' }]
-  const notYet = pickNextTrainingSession({ blocks: [], templates: future, today: '2026-09-27', nowHHMM: '12:00', lookaheadDays: 30 })
+  const notYet = pickNextTrainingSession({ blocks: [], templates: future, today: '2026-09-27', lookaheadDays: 30 })
   check('never projected before effective_from', notYet && notYet.date === '2026-10-05', notYet && notYet.date)
-  check('nothing planned → null', pickNextTrainingSession({ blocks: [], templates: [], today: '2026-09-27', nowHHMM: '12:00', lookaheadDays: 30 }) === null)
+  check('nothing planned → null', pickNextTrainingSession({ blocks: [], templates: [], today: '2026-09-27', lookaheadDays: 30 }) === null)
 }
 {
-  const trained = pickNextTrainingSession({ blocks: [{ id: 'B', title: 'Legs', date: '2026-09-27', start_time: '18:00:00', task_id: 't1', task_status: 'done' }], templates: [], today: '2026-09-27', nowHHMM: '07:30', lookaheadDays: 30 })
+  const trained = pickNextTrainingSession({ blocks: [{ id: 'B', title: 'Legs', date: '2026-09-27', start_time: '18:00:00', task_id: 't1', task_status: 'done' }], templates: [], today: '2026-09-27', lookaheadDays: 30 })
   check('a block whose task is done (trained at 07:00) is not next', trained === null)
-  const cancelled = pickNextTrainingSession({ blocks: [{ id: 'B', title: 'Legs', date: '2026-09-28', start_time: '18:00:00', task_id: 't1', task_status: 'cancelled' }, { id: 'C', title: 'Pull', date: '2026-09-29', start_time: null, task_id: null }], templates: [], today: '2026-09-27', nowHHMM: '07:30', lookaheadDays: 30 })
+  const cancelled = pickNextTrainingSession({ blocks: [{ id: 'B', title: 'Legs', date: '2026-09-28', start_time: '18:00:00', task_id: 't1', task_status: 'cancelled' }, { id: 'C', title: 'Pull', date: '2026-09-29', start_time: null, task_id: null }], templates: [], today: '2026-09-27', lookaheadDays: 30 })
   check('a cancelled one is skipped for the next plan', cancelled?.id === 'C')
 }
 {
@@ -177,7 +177,7 @@ check('future → upcoming (a future "activity" never marks it done)', planStatu
   // 2026-10-29 is a Thursday.
   const tpl = { id: 'sb', title: 'Lower B', category: 'training', days_of_week: [4], start_time: '17:00:00', end_time: '18:00:00', effective_from: '2026-01-01', except_dates: [] }
   const day = (o) => ({ schedule_block_id: 'sb', occurrence_date: '2026-10-29', status: 'open', closed_reason: null, ...o })
-  const pick = (dayTasks) => pickNextTrainingSession({ blocks: [], templates: [tpl], dayTasks, today: '2026-10-29', nowHHMM: '08:00', lookaheadDays: 30 })
+  const pick = (dayTasks) => pickNextTrainingSession({ blocks: [], templates: [tpl], dayTasks, today: '2026-10-29', lookaheadDays: 30 })
   check('a weekly day whose task is done is not next: the following week\'s is', pick([day({ status: 'done' })])?.date === '2026-11-05')
   check('…nor one skipped (its task cancelled)', pick([day({ status: 'cancelled' })])?.date === '2026-11-05')
   check('a day closed as missed is still to do (sessionState reads it open)', pick([day({ status: 'cancelled', closed_reason: 'missed' })])?.date === '2026-10-29')

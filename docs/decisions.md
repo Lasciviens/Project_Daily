@@ -41,6 +41,7 @@ Settled calls, one line each: what was decided, why, and where the full story li
 | Food totals are derived from their source, never frozen at log time (26.09.2026) | The owner eats by these numbers | `docs/features/food.md` |
 | Wishes: no period tables, recurring MM-DD windows, seasonal reset, map or geofence | See the list | `docs/features/wishes.md` |
 | Game pictures in Storage are low resolution only (covers, ScreenScraper copies); the ES-DE originals stay on the RP6's SD card (13.10.2026) | The 1 GB storage wall; the owner deleted the uploaded originals | `docs/termux-widgets.md` |
+| A swap counts without a sequence guard (213, 27.11.2026): a workout done on another program routine's day completes its own session 3–6 days later, whether or not the next session in the sequence was done first | S20's "before the next session in the sequence" would leave a session open that the owner trained; a workout represents itself (167), and the strip shows the passed-over one as "Skipped over" | `docs/features/training.md`, `docs/training/science.md` (S20 note) |
 | Exercise GIFs stay on the public CDN | A full mirror is ~370 MB against the 1 GB storage wall | `docs/features/training.md` |
 
 ## Code that looks removable but isn't
