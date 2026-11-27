@@ -1,6 +1,6 @@
 # Training science library
 
-The research the app's training logic is judged against. One recreational lifter, 3–4 days a week, upper/lower split, logging weight × reps × RPE in Hevy. Each topic says what the research found, how sure we can be, and the papers behind it; the numbered **practical rules for the app (S1, S2, …)** at the end turn that into checks code and reviews can cite ("S11 says a stall needs ≥ 3 weeks").
+The research the app's training logic is judged against. One recreational lifter, 3–4 days a week, upper/lower split, logging weight × reps × RPE in Hevy. Each topic says what the research found, how sure we can be, and the papers behind it; the numbered **practical rules for the app (S1, S2, …)** at the end turn that into checks code and reviews can cite ("S13 says a stall needs ≥ 3 weeks").
 
 The `training-scientist` agent (`.claude/agents/training-scientist.md`) reads this file first and judges the app and the owner's results against it.
 
@@ -470,7 +470,7 @@ There is **no trial that tests double progression's exact trigger** ("all sets a
 
 Each rule can be checked against logged Hevy data (weight, reps, RPE per set) and the training plan. "Working sets" are the non-warm-up sets of one exercise in one session. Each rule names its evidence (section) and confidence; *(app choice)* marks a threshold this library picks within what the evidence allows, and *(expert practice)* a rule no trial has tested.
 
-These rules are what the science supports. Where the app does something else today, that is a finding to report, not a bug to fix silently: the owner decides (`AGENTS.md`: the owner's words are the spec).
+These rules are what the science supports, plus marked app choices. Where the app does something else today, that is a finding to report, not a bug to fix silently: the owner decides (`AGENTS.md`: the owner's words are the spec).
 
 ### Load progression
 

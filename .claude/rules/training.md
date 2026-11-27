@@ -8,7 +8,7 @@ paths:
 
 Background: `docs/features/training.md`.
 
-- A change to training logic (progress engine, next session, session status, volume, deloads) is checked against `docs/training/science.md` by the `training-scientist` agent; the PR cites the S rules it follows or departs from.
+- For training science questions, call `training-scientist`; it reads `docs/training/science.md`.
 - One source per concept: bodyweight `useBodyweightSeries`, next session `useNextTrainingSession`/`pickNextTrainingSession`, sessions per week `sessionsThisWeek`, est. 1RM `est1RM`, one coach context (`training/coach/`). Never a second formula for the same number.
 - The progress engine (`progress-engine/`) is pure, versioned (`ALGORITHM_VERSION`) and runs once per page (`TrainingProgressProvider`). RPE is shown but never gates a decision.
 - The coach snapshot line formats are a contract with the `coach_assessment` job's instructions (`supabase/claude-src/job-coach.ts`): change them together. The assessment's decisions (rest day, deload cue, the one lift) are code (`coach/coachFacts.ts`); the model only explains them.
