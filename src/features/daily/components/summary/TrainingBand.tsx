@@ -20,7 +20,7 @@ import { pickNextTrainingSession } from '../../../training/trainingPlanModel'
 import { usePlanThis } from '../../../items/usePlanThis'
 import { matchDaySessions, planStartHHMM } from '../../../training/components/calendar/calendarSessions'
 import { getWorkoutDuration } from '../../../training/components/calendar/calendarModel'
-import { planRefOf, planStateWord } from '../../../training/sessionRef'
+import { planRefOf, planStateWord, plannedOnNote, plansClosedBy } from '../../../training/sessionRef'
 import { SESSION_TONE } from '../../../training/plan/sessionState'
 import { computeLiftChanges, summarizeImprovement } from '../../../training/plan/improvement'
 import { localDayBoundsIso, workoutLocalDay } from '../../../training/workoutDates'
@@ -65,8 +65,10 @@ export function TrainingBand({ date }: { date: string }) {
     ...(strava.data ?? []).map(a => ({ id: `s:${a.id}`, date: localDayOf(a.start_date) ?? '' })).filter(s => s.date),
   ], [workouts.data, strava.data])
 
-  // The week's plans, read the calendar's way (each with its task, 167).
-  const plans = useTrainingPlansByDate(monday, sunday)
+  // The week's plans, read the calendar's way (each with its task, 167) — from six days before the day when that is
+  // earlier: a late workout closes its week's open plan, and the day's card says which ("Planned for 24.11.2026 16:45").
+  const weekBefore = shiftDateStr(date, -6)
+  const plans = useTrainingPlansByDate(weekBefore < monday ? weekBefore : monday, sunday)
   const planCtx = useDayPlanContext(date)
   const { data: profile } = useAthleteProfile()
   const dayView = useMemo(() => {
@@ -107,6 +109,8 @@ export function TrainingBand({ date }: { date: string }) {
   const open = dayView.today.openPlans.find(o => o.status !== 'done')
     ?? dayView.today.openPlans.find(o => o.session.doneBy === 'workout') ?? null
   const elsewhere = useDoneElsewhere(open?.session ?? null, date)
+  // The plans of other days this day's workout closed — the words the Log and the session popup use.
+  const plannedFor = useMemo(() => (session ? plansClosedBy(session.workout.id, plans.data, date).map(plannedOnNote) : []), [session, plans.data, date])
   const more = dayView.today.sessions.length + dayView.today.openPlans.length - 1
 
   return (
@@ -122,6 +126,7 @@ export function TrainingBand({ date }: { date: string }) {
               onClick={() => modal.open({ kind: 'training-session', workoutId: session.workout.id })}>
               <StatValue text>{session.workout.title || 'Workout'}</StatValue>
               <StatNote tone="success">Done{getWorkoutDuration(session.workout) ? ` · ${getWorkoutDuration(session.workout)} min` : ''}{more > 0 ? ` · +${more} more` : ''}</StatNote>
+              {plannedFor.length > 0 && <StatNote>{plannedFor.join(' · ')}</StatNote>}
             </StatBox>
           ) : open ? (
             <StatBox icon={<Dumbbell aria-hidden />} label={date === today ? 'Today' : formatWeekdayDate(date)}

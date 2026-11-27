@@ -23,7 +23,7 @@ function Legend() {
   return (
     <InfoBubble label="What the marks mean">
       <span className="flex flex-col gap-1.5">
-        {(['done', 'today', 'pending', 'upcoming', 'missed', 'skipped'] as const).map(m => (
+        {(['done', 'today', 'pending', 'upcoming', 'missed', 'elsewhere', 'skipped'] as const).map(m => (
           <span key={m} className="flex items-center gap-2"><span className="grid w-4 place-items-center"><DayMarkGlyph mark={m} /></span>{DAY_MARK_LABEL[m]}</span>
         ))}
         <span className="flex items-center gap-2"><span className="grid w-4 place-items-center"><StravaBar /></span>Strava activity</span>

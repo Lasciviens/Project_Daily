@@ -191,6 +191,11 @@ console.log('a sold card (owner, 27.11.2026: "Sold marker says how much it was s
   const facts = R.rowFacts(phone, [cas], ctxOf(), TODAY, null).map(f => sp(f.text))
   check('one rule with the row: the end cost is the row\'s "cost you" (accessories sold with it, extra costs)',
     sp(R.soldCard(phone, [cas], ctxOf()).end.text) === '2 200 NOK' && facts[0] === 'cost you 2 200' && R.leftMoney(phone, [cas], ctxOf()).end === 2200)
+  check('accessories sold with it: the Bought line says so ("Bought 4 000 NOK + accessories")', sp(R.soldCard(phone, [cas], ctxOf()).bought) === 'Bought 4 000 NOK + accessories', R.soldCard(phone, [cas], ctxOf()).bought)
+  { const ctxCosts = O.moneyCtx([{ id: 'c1', item_id: tablet.id, amount: 300, currency: 'NOK', fx_nok: null }], null)
+    const withCosts = R.soldCard(tablet, [], ctxCosts)
+    check('extra costs: "Bought 4 490 NOK + costs", and the end cost counts them (4 490 + 300 − 1 200)', sp(withCosts.bought) === 'Bought 4 490 NOK + costs' && sp(withCosts.end.text) === '3 590 NOK', JSON.stringify(withCosts))
+    check('no extras and nothing sold with it: the plain "Bought 4 490 NOK"', sp(c.bought) === 'Bought 4 490 NOK') }
   check('given away or thrown away: no sold card, the neutral word', R.soldCard(mine({ disposal: 'given', disposed_on: day(-5) }), [], ctxOf()) === null
     && R.soldCard(mine({ disposal: 'broken', disposed_on: day(-5) }), [], ctxOf()) === null && O.disposalTone('given') === 'neutral' && O.disposalTone('broken') === 'neutral')
   check('the Sold mark is the success tone (green)', O.disposalTone('sold') === 'success')

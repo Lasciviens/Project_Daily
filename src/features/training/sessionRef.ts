@@ -174,7 +174,7 @@ export function coveredPlanNote(plans: readonly CalendarPlanItem[], workout: Day
 // A late workout completes its week's open plan (141/167; 211's
 // hevy_workout_completes_plan): the plan's day then reads done, but nothing was
 // trained on it. Owner, 27.11.2026, on a Log day showing "⟳ Lower A … 16:45 ·
-// Done" beside that day's Upper A: "2 trainings on one day?" — "this was done on
+// Done" beside that day's Upper A: "2 training on one day?" — "this was done on
 // 26.11". Every view (the Log, Daily's row and Training card, the session popup)
 // says it with these words: the plan's day "Done 26.11.2026" (a tap opens that
 // workout), the workout's day "Planned for 24.11.2026 16:45".
@@ -182,13 +182,14 @@ export function coveredPlanNote(plans: readonly CalendarPlanItem[], workout: Day
 /** A plan with the day it falls on. */
 export interface PlanOnDay { plan: CalendarPlanItem; date: string }
 
-/** The workout that closed a plan on another day than the plan's own. `date`:
- *  the workout's local day, null while it isn't known (not loaded). */
-export interface DoneElsewhere { workoutId: string; date: string | null }
+/** The workout that closed a plan on another day than the plan's own, and that
+ *  workout's local day. */
+export interface DoneElsewhere { workoutId: string; date: string }
 
 /** The workout that closed this plan when it was done on another day, else null
  *  (not done by a workout, or done on its own day). `workoutDay`: the workout's
- *  local day by id, or null when it isn't among what was read. */
+ *  local day by id, or null when it isn't among what was read — then it is null
+ *  too (treated as not elsewhere), so a view doesn't flip once the day loads. */
 export function doneElsewhere(
   status: Pick<SessionStatus, 'state' | 'doneBy' | 'workoutId'>,
   planDate: string,
@@ -196,7 +197,7 @@ export function doneElsewhere(
 ): DoneElsewhere | null {
   if (status.state !== 'done' || status.doneBy !== 'workout' || !status.workoutId) return null
   const date = workoutDay(status.workoutId) ?? null
-  return date === planDate ? null : { workoutId: status.workoutId, date }
+  return date == null || date === planDate ? null : { workoutId: status.workoutId, date }
 }
 
 /** The status word of a plan: "Done 26.11.2026" when a workout on another day
