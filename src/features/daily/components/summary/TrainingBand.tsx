@@ -29,6 +29,7 @@ import { useDayTargets } from '../../hooks/useDayTargets'
 import { useNutritionCoach } from '../../hooks/useNutritionCoach'
 import { trainingWeekGlance, type WeekDayMark } from '../../personalGlance'
 import { ThisWeekStrip } from '../../../training/components/week/ThisWeekStrip'
+import { useTrainingWeek } from '../../../training/hooks/useTrainingWeek'
 
 // Personal's Training band (owner, 26.10.2026: "easily understandable results
 // and stats: averages, and how the plan is doing — cut / maintain / gain"):
@@ -225,6 +226,10 @@ function RestDayBox({ date, label, loading }: { date: string; label: string; loa
   const { data: templates = [] } = useScheduleBlocks()
   const { data: dayTasks = [] } = useTrainingDayTasks(date, lookaheadTo)
   const { data: routines = [] } = useHevyRoutines()
+  // The week's next session (a missed one first, sessionState.planWeek) — the strip's and Training's Next; another
+  // week's day, or a week with nothing left, reads the soonest plan after the day.
+  const { week } = useTrainingWeek(date)
+  const weekNext = week.next && (week.next.doOn ?? week.next.date) > date ? week.next : null
   const next = useMemo(() => pickNextTrainingSession({
     blocks, templates: templates.filter(t => t.category === 'training'), dayTasks, today: shiftDateStr(date, 1), nowHHMM: '00:00',
     lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS - 1,
@@ -252,7 +257,8 @@ function RestDayBox({ date, label, loading }: { date: string; label: string; loa
           </Menu>
         )}
       </div>
-      <StatNote>{next ? `Next: ${next.title} · ${formatWeekdayDate(next.date)}` : 'Nothing planned ahead'}</StatNote>
+      <StatNote>{weekNext ? `Next: ${weekNext.title} · ${formatWeekdayDate(weekNext.doOn ?? weekNext.date)}`
+        : next ? `Next: ${next.title} · ${formatWeekdayDate(next.date)}` : 'Nothing planned ahead'}</StatNote>
     </StatBox>
   )
 }

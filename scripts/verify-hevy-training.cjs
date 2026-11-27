@@ -185,7 +185,7 @@ check('future → upcoming (a future "activity" never marks it done)', planStatu
   check('another repeat\'s or another day\'s task changes nothing', pick([day({ status: 'done', schedule_block_id: 'other' }), day({ status: 'done', occurrence_date: '2026-10-22' })])?.date === '2026-10-29')
   // Every caller (the Training banner and Next, Home, Personal's rest day) hands it the days' tasks.
   const fs = require('fs'), path = require('path')
-  for (const f of ['src/features/training/hooks/useTrainingSessions.ts', 'src/features/home/hooks/useTodayOverview.ts', 'src/features/daily/components/summary/TrainingBand.tsx']) {
+  for (const f of ['src/features/training/hooks/useNextTrainingSession.ts', 'src/features/home/hooks/useTodayOverview.ts', 'src/features/daily/components/summary/TrainingBand.tsx']) {
     const calls = fs.readFileSync(path.join(__dirname, '..', f), 'utf8').split('pickNextTrainingSession({').slice(1).map(c => c.slice(0, c.indexOf('})')))
     check(`${path.basename(f)}: every next-session pick gets the days' tasks`, calls.length > 0 && calls.every(c => /\bdayTasks\b/.test(c)))
   }

@@ -180,7 +180,8 @@ export const SESSION_TONE: Record<SessionState, Tone> = {
 export function sessionNote(s: SessionStatus, routineTitle?: string | null): string | null {
   switch (s.state) {
     case 'pending':
-      return `${stillOpenLine(s.countsUntil)} · ${routineTitle ? `a ${routineTitle} workout` : 'a workout'} closes it.`
+      // Beside its "Still open" pill: until when, and what closes it.
+      return `Counts until ${formatDate(s.countsUntil)} — ${routineTitle ? `${/^[aeiou]/i.test(routineTitle) ? 'an' : 'a'} ${routineTitle} workout` : 'a workout'} closes it.`
     case 'done':
       return s.doneBy === 'hand' ? 'Marked done by hand.' : s.doneBy === 'activity' ? 'A Strava activity covered that day.' : null
     case 'skipped':
@@ -422,9 +423,10 @@ export function weekSessionWord(s: WeekSession): string {
   }
   if (s.insteadTitle) return `Did ${s.insteadTitle} instead`
   if (s.skippedOver) return 'Skipped over — do it next, don\'t double up'
+  const moved = s.doOn && s.doOn !== s.date ? ` · ${s.mark === 'next' ? 'on' : 'moves to'} ${formatWeekdayDate(s.doOn)}` : ''
+  if (s.mark === 'next') return `Next${moved}${s.status.state === 'pending' ? ` · ${stillOpenLine(s.status.countsUntil).toLowerCase()}` : ''}`
   if (s.status.state === 'pending') return stillOpenLine(s.status.countsUntil)
-  const moved = s.doOn && s.doOn !== s.date ? ` · moves to ${formatWeekdayDate(s.doOn)}` : ''
-  return `${s.mark === 'next' ? 'Next' : SESSION_LABEL[s.status.state]}${moved}`
+  return `${SESSION_LABEL[s.status.state]}${moved}`
 }
 
 const weekEndOf = (s: WeekSessionInput): string => shiftDay(s.date, LATE_WINDOW_DAYS)

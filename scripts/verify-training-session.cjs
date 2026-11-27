@@ -22,8 +22,9 @@ const R = { taskRoutineId: 'r-lower-b' }
   const s = st({ date: '2026-10-11', startHHMM: '14:30', minutes: 60, taskStatus: 'open', ...R })
   eq(s.state, 'pending', 'an open plan from yesterday is not "Missed": a workout still completes it')
   eq(s.countsUntil, '2026-10-17', '141 window: six days after the planned day')
-  eq(S.sessionNote(s, 'Lower B'), 'Still open — counts until 17.10.2026 · a Lower B workout closes it.', 'the note says until when, DD.MM.YYYY')
+  eq(S.sessionNote(s, 'Lower B'), 'Counts until 17.10.2026 — a Lower B workout closes it.', 'the note says until when, DD.MM.YYYY')
   eq(S.SESSION_LABEL[s.state], 'Still open', 'label (owner\'s sessions proposal, 27.11.2026)')
+  eq(S.sessionNote(s, 'Upper B'), 'Counts until 17.10.2026 — an Upper B workout closes it.', '…"an" before a vowel')
   eq(S.SESSION_TONE[s.state], 'neutral', 'still open is never a warning')
   eq(S.sessionActions(s, { hasTask: true, weekly: false }), ['done', 'move', 'skip', 'edit', 'delete'], 'every task action while it is open')
 }

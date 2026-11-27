@@ -35,7 +35,7 @@ const PAGE_KB = {                                          // the shell plus the
                                                            // reports its save for AI learning (the call's id and a hook; the report itself loads at the save);
                                                            // 524 on 24.11.2026 (main at 523.00): the Trakt api refuses deleting the Queue (+0.04) and Places' stop search — the anchored list and readable stop kinds (+0.3)
   'src/features/recipes/pages/RecipesPage.tsx': 505,       // [479] Food
-  'src/features/training/pages/TrainingPage.tsx': 450,     // [424]
+  'src/features/training/pages/TrainingPage.tsx': 457,     // [424]; +7 on 27.11.2026 (450 → 457): Next reads the plan's week (useTrainingWeek: the calendar's pairing, the plans by day) for the This week strip and next session (training sessions, 213)
   'src/features/health/pages/HealthPage.tsx': 435,         // [413]
   'src/features/developer/pages/DeveloperPage.tsx': 400,   // [377]
   'src/features/media/pages/MediaPage.tsx': 395,           // [376]
