@@ -79,7 +79,7 @@ export function GoogleListRow({ value, typing, onPick, onNew, onType, onDone, op
   if (typing) {
     return (
       <Row label="New list" mark={mark}>
-        <input autoFocus value={value} onChange={e => onType(e.target.value)} placeholder="List" maxLength={100} {...typingHints('list')}
+        <input autoFocus value={value} onChange={e => onType(e.target.value)} placeholder="Title" maxLength={100} {...typingHints('list')}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onDone() } }} onBlur={onDone}
           aria-label="New Google Tasks list" className="input-bare w-40 min-w-0 pb-0 text-right text-lead" />
       </Row>

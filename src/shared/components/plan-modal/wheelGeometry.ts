@@ -1,8 +1,8 @@
 // The time wheel's arithmetic (TimeWheel.tsx), kept pure so verify-item-screen can check it: which row sits in the
 // band at a scroll offset, and the offset that puts a row there. Every length is measured from the column as drawn
-// (owner, 27.11.2026: the iPhone's wheel showed 18 : 20 in its band for 14:15, the bold row above it — a 32px constant
-// against 2rem rows at Display scale 80 %) — never a pixel constant, so any Display scale or a zoomed page keeps the
-// value, the band and the bold row together.
+// (the owner's screenshot, 27.11.2026: 18 : 20 in the band for 14:15, the bold row above it — what a 32px constant
+// against 2rem rows gives at Display scale 80 %, as the harness shows) — never a pixel constant, so any Display scale
+// or a zoomed page keeps the value, the band and the bold row together.
 
 export interface WheelGeometry {
   /** The first row's top inside the column's scroll content (the spacer above it). */

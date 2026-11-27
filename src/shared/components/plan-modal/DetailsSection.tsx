@@ -393,9 +393,9 @@ function NamesRow({ value, mark, known, onChange }: { value: string[]; mark?: Re
         {value.length < DETAIL_LIMITS.names && (
           <Combobox<string | null> value={null} onChange={n => { if (n) add(n) }} onClose={() => { if (!query) setFocused(false) }} immediate>
             <div className="relative min-w-0">
-              {/* No "name" in its words: the iPhone offered a contact's AutoFill for the old three-word placeholder (owner,
-                  27.11.2026), which was also cut at 16px ("Add a nam"). One short word, in a field sized in em to hold it
-                  at any text size. */}
+              {/* The owner saw "AutoFill Contact" over this field and its old three-word placeholder cut ("Add a nam",
+                  27.11.2026). iOS guesses contact fields from a field's words too, so none says "name" (untested on a
+                  device). One short word, in a field sized in em to hold it at any Display scale. */}
               <ComboboxInput ref={field} aria-label="With: who goes with you" title="With: who you go or play with — earlier ones are offered"
                 placeholder="Add" maxLength={DETAIL_LIMITS.name + 10} value={query}
                 onFocus={() => setFocused(true)} onChange={e => setQuery(e.target.value)}
@@ -407,7 +407,7 @@ function NamesRow({ value, mark, known, onChange }: { value: string[]; mark?: Re
                 onBlur={() => { if (typed && !has(typed)) add(typed); setFocused(false); setQuery('') }}
                 {...typingHints('with', 'words')}
                 // Narrow beside the names (no line of its own on a phone), wider while typing.
-                className="input-bare w-[3em] pb-0 text-right text-lead transition-[width] focus:w-[5em] motion-reduce:transition-none" />
+                className="input-bare w-[3em] pb-0 text-right text-lead transition-[width] focus:w-[8em] motion-reduce:transition-none" />
               {(isNew || offered.length > 0) && (
                 <FieldOptions field={field} className="min-w-[12rem]">
                   {isNew && offered.length > 0 && (

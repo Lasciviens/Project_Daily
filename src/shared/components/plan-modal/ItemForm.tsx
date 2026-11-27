@@ -51,6 +51,7 @@ import { shapeOf, withCalendarField, type PlanForm } from './planForm'
 import type { PlanModalConfig } from './planModal.types'
 import type { QuickAddResult } from '../../../features/items/quickAdd'
 import type { TaskSection } from '../../../features/todo/types'
+import { typingHints } from './fieldStyles'
 
 interface Props {
   form: PlanForm
@@ -275,7 +276,7 @@ function TitleField({ id, value, onChange, autoFocus, placeholder }: {
       ref={ref} id={id} rows={1} value={value} autoFocus={autoFocus} data-autofocus={autoFocus || undefined} placeholder={placeholder}
       onChange={e => onChange(e.target.value.replace(/\s*\n+\s*/g, ' '))}
       onKeyDown={e => { if (e.key === 'Enter') e.preventDefault() }}
-      autoComplete="off" enterKeyHint="done"
+      {...typingHints('title', 'sentence', 'done')}
       className="input-bare min-w-0 flex-1 resize-none overflow-hidden border-b-0 pb-0 text-title font-semibold placeholder:font-normal"
     />
   )
@@ -287,6 +288,7 @@ function NotesField({ value, onChange, mark }: { value: string; onChange: (v: st
   return (
     <div className={cx(LINE, 'flex items-start gap-2 px-3.5')}>
       <textarea ref={ref} rows={2} value={value} onChange={e => onChange(e.target.value)} placeholder="Notes" aria-label="Notes"
+        {...typingHints('notes', 'sentence', 'enter')}
         className="input-bare min-w-0 flex-1 resize-none overflow-hidden border-b-0 py-2.5 text-lead" />
       {mark}
     </div>

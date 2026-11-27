@@ -77,25 +77,40 @@ function WheelColumn({ label, count, step, value, onPick }: {
     requestAnimationFrame(() => { if (ref.current) ref.current.style.scrollSnapType = '' })
   }
 
+  // Just opened: the panel may still be growing into view, the font may land, the sheet may move — the value is put
+  // back in the band on each of those until the column first settles or the owner touches it. After that nothing
+  // re-places it, so a key, a tap or the timeline glides it (under useMotion) and no glide is cut short.
+  const opening = useRef(true)
+  const latest = useRef(index)
+
   // Follow the value when it changes from outside (the timeline, the other pill, a key) — and on open.
   useLayoutEffect(() => {
     const el = ref.current
+    latest.current = index
     if (!el || turning.current) return
-    place(index, !!el.dataset.ready && motion)
+    const ready = !!el.dataset.ready
+    if (ready) opening.current = false
+    place(index, ready && motion)
     el.dataset.ready = '1'
   }, [index, motion])
 
-  // Opened, the column settles on its value once the panel is laid out (it may still be growing into view, the font
-  // may land, the sheet may move): every size change puts the value back in the band until the owner touches it.
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    const again = () => { if (!turning.current) place(index, false) }
+    let settled = 0
+    const stop = () => { opening.current = false; ro.disconnect(); cancelAnimationFrame(frame); window.clearTimeout(settled) }
+    const again = () => {
+      if (!opening.current || turning.current) return
+      place(latest.current, false)
+      // Settled once nothing has moved it for a moment.
+      window.clearTimeout(settled)
+      settled = window.setTimeout(stop, 400)
+    }
     const frame = requestAnimationFrame(again)
     const ro = new ResizeObserver(again)
     ro.observe(el)
-    return () => { cancelAnimationFrame(frame); ro.disconnect() }
-  }, [index])
+    return stop
+  }, [])
   useEffect(() => () => window.clearTimeout(settleTimer.current), [])
 
   function onScroll() {
@@ -110,7 +125,7 @@ function WheelColumn({ label, count, step, value, onPick }: {
       else place(at(), motion)
     }, 140)
   }
-  const touch = () => { turning.current = true }
+  const touch = () => { turning.current = true; opening.current = false }
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
@@ -127,6 +142,7 @@ function WheelColumn({ label, count, step, value, onPick }: {
     const y0 = e.clientY, t0 = el.scrollTop
     let moved = false
     turning.current = true
+    opening.current = false
     el.style.scrollSnapType = 'none'
     el.setPointerCapture(e.pointerId)
     const move = (ev: globalThis.PointerEvent) => {
