@@ -118,6 +118,12 @@ eq(G.pickBySeed(['a', 'b', 'c'], '2026-10-26:0:film'), G.pickBySeed(['a', 'b', '
   const cardsDir = path.join(__dirname, '../src/features/daily/components/summary')
   const users = fs.readdirSync(cardsDir).filter(f => /\.tsx$/.test(f) && f !== 'cellKit.tsx' && /StatBox/.test(fs.readFileSync(path.join(cardsDir, f), 'utf8')))
   eq(/export function StatBox/.test(kit) && users.length >= 5, true, 'every new card is made of the one box (cellKit.StatBox)')
+  // Owner, 27.11.2026: "THIS WEEK 2 of 4" showed another week — on another day the box still said "This week", and a
+  // keepPreviousData placeholder (the last week's read) was counted while the new week loaded.
+  const band = fs.readFileSync(path.join(cardsDir, 'TrainingBand.tsx'), 'utf8')
+  eq(/monday === mondayOf\(today\) \? 'This week' : `Week of \$\{formatDate\(monday\)\}`/.test(band) && /label=\{weekLabel\}/.test(band), true,
+    'the week box says "This week" only for today\'s week, else "Week of DD.MM.YYYY"')
+  eq(/workouts\.isPlaceholderData/.test(band) && /strava\.isPlaceholderData/.test(band), true, 'another week\'s placeholder read is never counted (the boxes wait)')
 }
 
 console.log(`verify-personal-glance: ${n} checks passed`)

@@ -148,7 +148,8 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
   const isActive = (r: DayRow) => viewingToday && r.startHour !== null && r.endHour !== null && r.startHour <= nowHour && r.endHour > nowHour
 
   function renderRow(r: DayRow): ReactNode {
-    if (r.spillover) return <ContinuationRow row={r} past={isPast(r)} onOpen={() => openRow(r)} />
+    // A continuation that carries its open overdue task (dayItems.continuationTakesTask) is that task's row today.
+    if (r.spillover && !r.carriesTask) return <ContinuationRow row={r} past={isPast(r)} onOpen={() => openRow(r)} />
     switch (r.kind) {
       case 'training': return <TrainingRow row={r} planCtx={planCtx} nowHour={nowHour} active={isActive(r)} />
       case 'repeat':   return <RepeatRow row={r} active={isActive(r)} />

@@ -4,7 +4,7 @@ import { CalendarDays, Dumbbell, Flame, Plus, Target, TrendingUp, Trophy } from 
 import { Cell, CellHeader, CellLink, StatBox, StatEmpty, StatNote, StatValue } from './cellKit'
 import { cx } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
-import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
+import { formatDate, formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import { localDayOf, shiftDateStr, todayStr } from '../../../../shared/utils/dateUtils'
 import { useHevyWorkoutsRange } from '../../../training/hooks/useHevyWorkouts'
 import { useDoneElsewhere } from '../../../training/hooks/useDoneElsewhere'
@@ -97,7 +97,11 @@ export function TrainingBand({ date }: { date: string }) {
   const coach = useNutritionCoach(targets)
   const pace = coach.decision.pace
 
-  const loading = workouts.isLoading
+  // A placeholder (keepPreviousData) is another week's read: never counted as this one's numbers (owner, 27.11.2026:
+  // "THIS WEEK 2 of 4" showed another week) — the boxes wait for the shown week's own reads.
+  const loading = workouts.isLoading || workouts.isPlaceholderData || strava.isLoading || strava.isPlaceholderData
+  // "This week" only for today's week; another day's week says which one (a past day's box read "This week").
+  const weekLabel = monday === mondayOf(today) ? 'This week' : `Week of ${formatDate(monday)}`
   const session = dayView.today.sessions[0] ?? null
   // A plan still to do first; else one a workout on another day closed ("Done 26.11.2026" — never "Rest day").
   const open = dayView.today.openPlans.find(o => o.status !== 'done')
@@ -136,11 +140,11 @@ export function TrainingBand({ date }: { date: string }) {
           )}
 
           {/* 2. Its week, Monday to Sunday. */}
-          <StatBox icon={<CalendarDays aria-hidden />} label="This week">
+          <StatBox icon={<CalendarDays aria-hidden />} label={weekLabel}>
             {loading ? <StatEmpty loading /> : (
               <>
                 <StatValue>{week.target ? `${week.sessions} of ${week.target}` : week.sessions}</StatValue>
-                <WeekDots week={week.week} />
+                <WeekDots week={week.week} label={weekLabel} />
               </>
             )}
           </StatBox>
@@ -192,9 +196,9 @@ export function TrainingBand({ date }: { date: string }) {
 }
 
 /** Seven small marks, Monday to Sunday: filled = trained, ring = planned. */
-function WeekDots({ week }: { week: { date: string; letter: string; mark: WeekDayMark; shown: boolean }[] }) {
+function WeekDots({ week, label }: { week: { date: string; letter: string; mark: WeekDayMark; shown: boolean }[]; label: string }) {
   return (
-    <ol className="mt-0.5 grid grid-cols-7 gap-0.5" aria-label="This week, Monday to Sunday">
+    <ol className="mt-0.5 grid grid-cols-7 gap-0.5" aria-label={`${label}, Monday to Sunday`}>
       {week.map(d => (
         <li key={d.date} className="flex flex-col items-center gap-0.5" aria-label={`${formatWeekdayDate(d.date)}: ${MARK_WORD[d.mark]}`}>
           <span aria-hidden className={cx('text-micro leading-none', d.shown ? 'font-bold text-fg' : 'text-fg-faint')}>{d.letter}</span>
