@@ -6,6 +6,7 @@ import type { HevyWorkout, StravaActivity } from '../../types.hevy'
 import type { TimeBlock, ScheduleBlock } from '../../../daily/types'
 import type { TrainingDayTask } from '../../../daily/api/scheduleApi'
 import { matchDaySessions, type DaySession, type OpenPlan } from './calendarSessions'
+import { doneElsewhere, plansClosedBy } from '../../sessionRef'
 
 // Training calendar data model — the plan/workout/activity shape of one day.
 
@@ -63,7 +64,17 @@ export function dayDataFor(dateStr: string, date: Date, workouts: HevyWorkout[],
     skips,
     routineOf,
   })
-  return { date, activities: dayActivities, sessions, openPlans }
+  // A late workout closes its week's open plan (141/167): the plan's day says
+  // when it was done and opens that workout; the workout's day says which plan
+  // it did (sessionRef — the words every view uses). Read from what the calendar
+  // already has: its weeks' workouts and plans.
+  const workoutDay = (id: string) => { const w = workouts.find(x => x.id === id); return w ? workoutLocalDay(w) || null : null }
+  return {
+    date,
+    activities: dayActivities,
+    sessions: sessions.map(s => ({ ...s, plannedElsewhere: plansClosedBy(s.workout.id, plansByDate, dateStr) })),
+    openPlans: openPlans.map(o => ({ ...o, doneByOther: doneElsewhere(o.session, dateStr, workoutDay) })),
+  }
 }
 
 export function isDayEmpty(day: DayData): boolean {

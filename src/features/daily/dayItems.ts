@@ -53,6 +53,10 @@ export interface DayRow<T extends RowTask = Task> {
   busy:      boolean
   /** The part after midnight of something that started the day before. */
   spillover: boolean
+  /** A continuation that is its task's row on this day: the task is on the day
+   *  list only because it is open and overdue (its day was yesterday), so it
+   *  sits here, once, instead of again under Anytime (continuationTakesTask). */
+  carriesTask: boolean
   state:     RowState | null
   /** The task behind the row, when it has one. */
   task:      T | null
@@ -143,6 +147,19 @@ const isTrainingTaskRow = (t: RowTask) => t.source_type === 'training_session' |
 const isTraining = (i: DayItem) => (i.block ?? i.template)?.category === 'training'
 
 /**
+ * Whether the tail of yesterday's slot (past midnight) is its task's row today.
+ * Its task's own row is yesterday's — but an open task due before this day is
+ * on this day's list too (overdue, `fetchTasksForDay`), so it would show twice:
+ * in the schedule (the continuation) and under Anytime (owner, 27.11.2026: the
+ * moved "Watch: X2 movie" twice). Then the continuation takes it. A task due ON
+ * this day (a deadline today) keeps its own row; one not on the list (read by
+ * id) stays yesterday's.
+ */
+export function continuationTakesTask(task: Pick<RowTask, 'status' | 'due_date'> | null, onDayList: boolean, day: string): boolean {
+  return !!task && onDayList && taskState(task.status) === 'open' && !!task.due_date && task.due_date < day
+}
+
+/**
  * The day's rows. `tasks`: the day list (useDayTasks — open, done, cancelled);
  * `items`: the day schedule (buildDaySchedule); `linkedTasks`: the tasks of the
  * day's slots that are not on the day list (a slot on another day than its
@@ -177,7 +194,7 @@ export function buildDayRows<T extends RowTask>(input: {
       key: i.id, title: i.title,
       startHour: timed ? i.startHour : null,
       endHour: busy ? i.endHour : null,
-      busy, spillover: i.spillover, item: i, overlaps: false,
+      busy, spillover: i.spillover, carriesTask: false, item: i, overlaps: false,
     }
     if (i.kind === 'recurring') {
       // A plan's day nobody edited on its own (those left the plan, 142) —
@@ -194,8 +211,10 @@ export function buildDayRows<T extends RowTask>(input: {
     }
     const b = i.block
     const task = i.taskId ? onList.get(i.taskId) ?? linked.get(i.taskId) ?? null : null
-    // The tail of yesterday's slot is a continuation; the task's own row is yesterday's.
-    if (task && !i.spillover) placed.add(task.id)
+    // The tail of yesterday's slot is a continuation; the task's own row is yesterday's —
+    // unless the task is on this day's list as an open overdue task: then the continuation is its row.
+    const carriesTask = i.spillover && continuationTakesTask(task, !!task && onList.has(task.id), day)
+    if (task && (!i.spillover || carriesTask)) placed.add(task.id)
     const status = task?.status ?? b?.task_status ?? null
     const repeat = b?.schedule_block_id && b.occurrence_date && i.taskId
       ? { scheduleBlockId: b.schedule_block_id, date: b.occurrence_date, acted: true }
@@ -204,7 +223,7 @@ export function buildDayRows<T extends RowTask>(input: {
     // Missed is judged from the slot's day as it is now (a day moved forward
     // isn't missed); `repeat.date` stays the plan's own day (what a tick acts on).
     rows.push({
-      ...base, kind, task, repeat,
+      ...base, kind, task, repeat, carriesTask,
       state: !i.taskId ? null : repeat ? repeatState(task ?? (status ? { status } : null), b?.date ?? repeat.date, today) : taskState(status),
     })
   }
@@ -220,7 +239,7 @@ export function buildDayRows<T extends RowTask>(input: {
       ? { scheduleBlockId: t.schedule_block_id, date: t.occurrence_date, acted: true } : null
     rows.push({
       key: `task:${t.id}`, kind: ofRepeat ? 'repeat' : 'task', title: t.title, startHour: at, endHour: null, busy: false,
-      spillover: false, task: t, item: null, repeat: ofRepeat, overlaps: false,
+      spillover: false, carriesTask: false, task: t, item: null, repeat: ofRepeat, overlaps: false,
       state: ofRepeat ? repeatState(t, t.due_date ?? t.occurrence_date!, today) : taskState(t.status),
     })
   }

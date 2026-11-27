@@ -8,6 +8,7 @@ import {
 } from '../wishTile'
 import { money, num } from './shopFormat'
 import { DisposalBadge, DisposalRibbon } from './DisposalRibbon'
+import type { DisposalTone } from '../ownModel'
 import type { ShopDisposal, ShopItem } from '../types'
 
 // The Shop's picture tiles (THEME.md §6.3 "Picture tiles"): the one layout of
@@ -151,10 +152,12 @@ export function PictureWell({ srcs, icon: Icon, initials, tint, belt, corner }: 
  * default picture on its tint, else the initials; a photo that fails to load
  * falls back the same way.
  */
-export function RowPicture({ src, icon: Icon, initials, tint, className, ribbon, left, size = 'md' }: {
+export function RowPicture({ src, icon: Icon, initials, tint, className, ribbon, ribbonTone, left, size = 'md' }: {
   src: string | null
-  /** How the thing left ("Sold", "Given away"): a banner across the foot of a big picture. */
+  /** How the thing left ("Sold 1 200 NOK", "Given away"): a banner across the foot of a big picture. */
   ribbon?: string | null
+  /** The banner's tone (`disposalTone`: sold is green). */
+  ribbonTone?: DisposalTone
   /** How the thing left: a small icon badge in the corner of a row's or a line's picture. */
   left?: ShopDisposal | null
   /** `md` 40px (a row), `sm` 28px (a list line), `fill` the width it is given, square (a big picture). */
@@ -169,7 +172,7 @@ export function RowPicture({ src, icon: Icon, initials, tint, className, ribbon,
   return (
     <span aria-hidden data-tint={photo ? undefined : tint}
       className={cx('relative grid shrink-0 place-items-center overflow-hidden rounded-row', size === 'fill' ? 'aspect-square w-full' : size === 'sm' ? 'h-7 w-7' : 'h-10 w-10', photo ? 'bg-well' : Icon ? 'tint-well' : 'tint-fill', className)}>
-      {ribbon && <DisposalRibbon label={ribbon} />}
+      {ribbon && <DisposalRibbon label={ribbon} tone={ribbonTone} />}
       {left && <DisposalBadge disposal={left} />}
       {photo
         ? <img src={photo} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(photo)} className="h-full w-full object-contain p-[8%] mix-blend-multiply" />

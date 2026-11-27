@@ -6,7 +6,7 @@ import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { useNeedsALook } from '../../hooks/useNeedsALook'
-import { boughtOn, DISPOSAL_LABEL, durationLabel } from '../../ownModel'
+import { boughtOn, DISPOSAL_LABEL, disposalTone, durationLabel } from '../../ownModel'
 import { chainTitle } from '../../chainModel'
 import { nudgeFor, storyOf } from '../../recordStory'
 import { ItemThumb } from '../shopKit'
@@ -167,7 +167,7 @@ export function RecordBody(props: RecordBodyProps) {
   const head = ((r && mode === 'open') || picture) && (
     <div className="flex items-start gap-3">
       {/* Only a real picture: an empty box took 80px beside the actions. A thing that left always has its picture box: the ribbon with its word is the banner (owner, 23.11.2026). */}
-      {(picture || item.disposal) && <ItemThumb src={picture} ribbon={item.disposal ? DISPOSAL_LABEL[item.disposal] : null} className={item.disposal ? 'h-20 w-20' : '@[30rem]:h-20 @[30rem]:w-20'} />}
+      {(picture || item.disposal) && <ItemThumb src={picture} ribbon={item.disposal ? DISPOSAL_LABEL[item.disposal] : null} ribbonTone={disposalTone(item.disposal)} className={item.disposal ? 'h-20 w-20' : '@[30rem]:h-20 @[30rem]:w-20'} />}
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         {/* The pill (on a phone) shares its line with how long it has been yours (its day is the Paid cell's and the Story's) — and
             with Find picture, so it costs no line of its own. Adding, Find picture sits in the line of the switch above. */}

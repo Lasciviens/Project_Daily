@@ -4,8 +4,7 @@ import { useEntityModal } from '../../../../shared/modals'
 import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import { formatDistance } from '../../setFormat'
 import { usePlanThis } from '../../../items/usePlanThis'
-import { coveredPlanNote, planRefOf } from '../../sessionRef'
-import { SESSION_LABEL } from '../../plan/sessionState'
+import { coveredPlanNote, planRefOf, planStateWord } from '../../sessionRef'
 import { dayMarkOf } from './monthGridModel'
 import { StravaTypeIcon } from '../StravaIcons'
 import { DayMarkGlyph, StravaBar } from './DayMarkGlyph'
@@ -23,7 +22,9 @@ const glyphSlot = 'grid w-4 place-items-center'
  * The selected day under the month grid: one row per real session. A row
  * opens the session popup — the workout (what was lifted), or the plan (its
  * exercises and targets); changing a plan is behind that popup's ⋯. A plan a
- * workout covered is part of that workout's row, never a second row.
+ * workout covered is part of that workout's row, never a second row. A plan a
+ * workout on ANOTHER day closed says so ("Done 26.11.2026") and opens that
+ * workout; its ⟳ says it is the plan ("Planned session"), not a second training.
  */
 export function DayDetailPanel({ day, dateStr, todayStr }: { day: DayData | null; dateStr: string; todayStr: string }) {
   const modal = useEntityModal()
@@ -51,7 +52,7 @@ export function DayDetailPanel({ day, dateStr, todayStr }: { day: DayData | null
           const w = e.session.workout
           const dur = getWorkoutDuration(w)
           // The same words as the popup this row opens (sessionRef.coveredPlanNote).
-          const note = coveredPlanNote(e.session.plans, w)
+          const note = coveredPlanNote(e.session.plans, w, e.session.plannedElsewhere)
           return (
             <ListRow
               key={w.id}
@@ -64,18 +65,22 @@ export function DayDetailPanel({ day, dateStr, todayStr }: { day: DayData | null
             />
           )
         }
-        const { plan, session } = e.open
+        const { plan, session, doneByOther } = e.open
         const ref = planRefOf(plan, dateStr)
         const mark = dayMarkOf({ sessions: [], openPlans: [e.open] }) ?? 'upcoming'
+        const open = doneByOther ? () => modal.open({ kind: 'training-session', workoutId: doneByOther.workoutId })
+          : ref ? () => modal.open({ kind: 'training-session', plan: ref }) : undefined
         return (
           <ListRow
             key={plan.id}
             className="-mx-3"
             leading={<span className={glyphSlot}><DayMarkGlyph mark={mark} /></span>}
-            title={`${plan.kind === 'recurring' ? '⟳ ' : ''}${plan.title}`}
-            subtitle={[e.at, session.doneBy === 'activity' ? 'Done on Strava' : SESSION_LABEL[session.state]].filter(Boolean).join(' · ')}
-            trailing={ref ? chevron : undefined}
-            onClick={ref ? () => modal.open({ kind: 'training-session', plan: ref }) : undefined}
+            title={plan.kind === 'recurring'
+              ? <><span role="img" title="Planned session" aria-label="Planned session">⟳</span> {plan.title}</>
+              : plan.title}
+            subtitle={[e.at, session.doneBy === 'activity' ? 'Done on Strava' : planStateWord(session.state, doneByOther ?? null)].filter(Boolean).join(' · ')}
+            trailing={open ? chevron : undefined}
+            onClick={open}
           />
         )
       })}

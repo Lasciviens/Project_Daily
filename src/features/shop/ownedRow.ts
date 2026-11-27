@@ -9,7 +9,7 @@ import { formatDate } from '../../shared/utils/dateFormat'
 import { formatMoney } from '../settings/subscriptionRules'
 import {
   add, boughtOn, complete, costOf, daysBetween, gotOf, minus, monthsBetween, paidOf, valueAgeDays, valueNowOf, VALUE_STALE_DAYS,
-  type MoneyCtx,
+  type Amount, type MoneyCtx,
 } from './ownModel'
 import { currencyOf } from './shopModel'
 import { cleanPrice } from './wishTile'
@@ -123,13 +123,10 @@ export function rowFacts(i: ShopItem, accessories: readonly ShopItem[], ctx: Mon
   const push = (text: string | null | false | undefined, tone?: 'success') => { if (text) out.push(tone ? { text, tone } : { text }) }
   if (i.disposal) {
     // The result first (a phone cuts the end of the line); how it left is the row's tag, the day in its Story.
-    const together = i.sale_group ? accessories.filter(a => a.sale_group === i.sale_group) : []
-    const got = add(gotOf(i), ...together.map(a => gotOf(a)))
-    const result = minus(add(costOf(i, ctx), ...together.map(a => costOf(a, ctx))), got)
-    if (complete(result) && i.disposed_on) {
-      const n = Math.round(result.nok)
-      if (n < 0) push(`made ${num(-n)}`, 'success')
-      else push(`cost you ${num(n)}`)
+    const { got, end } = leftMoney(i, accessories, ctx)
+    if (end != null) {
+      if (end < 0) push(`made ${num(-end)}`, 'success')
+      else push(`cost you ${num(end)}`)
     }
     if (i.sale_price != null && complete(got)) push(`got ${num(got.nok)}`)
     push(i.sold_to && `to ${i.sold_to}`)
@@ -143,6 +140,49 @@ export function rowFacts(i: ShopItem, accessories: readonly ShopItem[], ctx: Mon
   }
   push(chain)
   return out
+}
+
+/**
+ * A thing that left, in money — ONE rule for its row's facts and its card (owner, 27.11.2026: "Bought - Sold = end
+ * cost"): `got`, what came back (the sale, trade-in or refund, with the accessories sold with it — `sale_group`);
+ * `end`, what it cost in the end — paid plus its costs, for it and those accessories, minus what came back, in NOK at
+ * each day's rate (negative = it made money); null while an amount waits for its rate, is missing, or the day it left
+ * isn't known.
+ */
+export function leftMoney(i: ShopItem, accessories: readonly ShopItem[], ctx: MoneyCtx): { got: Amount; end: number | null; withCosts: boolean; withAccessories: boolean } {
+  const together = i.sale_group ? accessories.filter(a => a.id !== i.id && a.sale_group === i.sale_group) : []
+  const got = add(gotOf(i), ...together.map(a => gotOf(a)))
+  const result = minus(add(costOf(i, ctx), ...together.map(a => costOf(a, ctx))), got)
+  const withCosts = [i, ...together].some(x => (ctx.costs.get(x.id)?.length ?? 0) > 0)
+  return { got, end: complete(result) && i.disposed_on ? Math.round(result.nok) : null, withCosts, withAccessories: together.length > 0 }
+}
+
+/**
+ * A sold thing's big-picture card (owner, 27.11.2026: "If sold = Sold marker says how much it was sold for. Below shows
+ * bought for price with valuta. Small text! And on right down corner shows result. Bought - Sold = end cost." — "Sold mark
+ * is gray and almost unvisible. Make it green, shady green."): the banner "Sold 1 200 NOK" (the sale in its own currency,
+ * the success tone), under the name (then one line) "Bought 4 490 NOK" in small text (what was paid in its own currency;
+ * "Gift"; "+ costs" / "+ accessories" when the end cost also counts extra costs or accessories sold with it, so
+ * Bought − Sold = end cost adds up visibly), and in the bottom-right corner the end cost in NOK (`leftMoney`, the rows' rule): a cost neutral ("3 290 NOK"), money made in the success tone ("+300 NOK").
+ * Null for a thing not sold (given away, thrown away … keep the word on a neutral banner).
+ */
+export interface SoldCard {
+  ribbon: string
+  bought: string | null
+  end: { label: 'End cost' | 'Made'; text: string; tone: 'success' | 'neutral'; title: string } | null
+}
+export function soldCard(i: ShopItem, accessories: readonly ShopItem[], ctx: MoneyCtx): SoldCard | null {
+  if (i.disposal !== 'sold') return null
+  const ribbon = i.sale_price != null ? `Sold ${formatMoney(i.sale_price, i.sale_currency ?? currencyOf(i))}` : 'Sold'
+  const { end: n, withCosts, withAccessories } = leftMoney(i, accessories, ctx)
+  // What the end cost also counts, so Bought − Sold = end cost adds up on the card ("Bought 4 490 NOK + costs").
+  const plus = `${withCosts ? ' + costs' : ''}${withAccessories ? ' + accessories' : ''}`
+  const paid = i.got_as_gift && !i.price ? 'Gift' : i.price != null ? `Bought ${formatMoney(i.price, currencyOf(i))}` : null
+  const bought = paid && n != null ? `${paid}${plus}` : paid
+  const end = n == null ? null
+    : n < 0 ? { label: 'Made' as const, text: `+${num(-n)} NOK`, tone: 'success' as const, title: `Made ${num(-n)} NOK: sold for more than it cost` }
+      : { label: 'End cost' as const, text: `${num(n)} NOK`, tone: 'neutral' as const, title: `End cost ${num(n)} NOK: what it cost minus what it sold for` }
+  return { ribbon, bought, end }
 }
 
 /**

@@ -170,6 +170,44 @@ console.log('a card\'s tag: a date tag as an icon and its whole date (a 12rem ca
   check('no tag: none; every short form is a whole DD.MM.YYYY date', R.cardTag(mine({}), null, TODAY) === null && [ret, comp].every(t => /^\d{2}\.\d{2}\.\d{4}$/.test(t.short)))
 }
 
+console.log('a sold card (owner, 27.11.2026: "Sold marker says how much it was sold for … bought for price with valuta. Small text! … right down corner shows result. Bought - Sold = end cost"; "Make it green")')
+{
+  const mine = p => item({ status: 'bought', bought_at: at(-200), price: 1000, ...p })
+  const tablet = mine({ title: 'Old tablet', price: 4490, disposal: 'sold', disposed_on: day(-30), sale_price: 1200, sale_currency: 'NOK' })
+  const c = R.soldCard(tablet, [], ctxOf())
+  check('the banner says what it sold for, in the sale\'s currency', sp(c.ribbon) === 'Sold 1 200 NOK', c.ribbon)
+  check('the small line says what was paid, in its own currency', sp(c.bought) === 'Bought 4 490 NOK', c.bought)
+  check('the corner: the end cost in NOK, a cost neutral', sp(c.end.text) === '3 290 NOK' && c.end.tone === 'neutral' && /End cost/.test(c.end.title), JSON.stringify(c.end))
+  const flip = R.soldCard(mine({ price: 2200, disposal: 'sold', disposed_on: day(-5), sale_price: 2900 }), [], ctxOf())
+  check('money made: "+700 NOK" in the success tone', sp(flip.end.text) === '+700 NOK' && flip.end.tone === 'success', JSON.stringify(flip.end))
+  const lira = R.soldCard(mine({ price: 9000, currency: 'TRY', region: 'TR', fx_nok: 0.3, disposal: 'sold', disposed_on: day(-5), sale_price: 2000, sale_currency: 'TRY', sale_fx_nok: 0.3 }), [], ctxOf())
+  check('foreign money: the banner and the line in their own currency, the end cost in NOK at each day\'s rate',
+    sp(lira.ribbon) === 'Sold 2 000 TRY' && sp(lira.bought) === 'Bought 9 000 TRY' && sp(lira.end.text) === '2 100 NOK', JSON.stringify(lira))
+  const waiting = R.soldCard(mine({ price: 9000, currency: 'TRY', region: 'TR', fx_nok: null, disposal: 'sold', disposed_on: day(-5), sale_price: 2000, sale_currency: 'TRY' }), [], ctxOf())
+  check('a rate still pending: no end cost (never at a guessed rate)', waiting.end === null)
+  check('a sale with no amount: the word only, no end cost', (() => { const x = R.soldCard(mine({ disposal: 'sold', disposed_on: day(-5) }), [], ctxOf()); return x.ribbon === 'Sold' && x.end === null })())
+  const phone = mine({ price: 4000, disposal: 'sold', disposed_on: day(-5), sale_price: 2000, sale_group: 'g1' })
+  const cas = mine({ price: 400, accessory_of: phone.id, disposal: 'sold', disposed_on: day(-5), sale_price: 200, sale_group: 'g1' })
+  const facts = R.rowFacts(phone, [cas], ctxOf(), TODAY, null).map(f => sp(f.text))
+  check('one rule with the row: the end cost is the row\'s "cost you" (accessories sold with it, extra costs)',
+    sp(R.soldCard(phone, [cas], ctxOf()).end.text) === '2 200 NOK' && facts[0] === 'cost you 2 200' && R.leftMoney(phone, [cas], ctxOf()).end === 2200)
+  check('accessories sold with it: the Bought line says so ("Bought 4 000 NOK + accessories")', sp(R.soldCard(phone, [cas], ctxOf()).bought) === 'Bought 4 000 NOK + accessories', R.soldCard(phone, [cas], ctxOf()).bought)
+  { const ctxCosts = O.moneyCtx([{ id: 'c1', item_id: tablet.id, amount: 300, currency: 'NOK', fx_nok: null }], null)
+    const withCosts = R.soldCard(tablet, [], ctxCosts)
+    check('extra costs: "Bought 4 490 NOK + costs", and the end cost counts them (4 490 + 300 − 1 200)', sp(withCosts.bought) === 'Bought 4 490 NOK + costs' && sp(withCosts.end.text) === '3 590 NOK', JSON.stringify(withCosts))
+    check('no extras and nothing sold with it: the plain "Bought 4 490 NOK"', sp(c.bought) === 'Bought 4 490 NOK') }
+  check('given away or thrown away: no sold card, the neutral word', R.soldCard(mine({ disposal: 'given', disposed_on: day(-5) }), [], ctxOf()) === null
+    && R.soldCard(mine({ disposal: 'broken', disposed_on: day(-5) }), [], ctxOf()) === null && O.disposalTone('given') === 'neutral' && O.disposalTone('broken') === 'neutral')
+  check('the Sold mark is the success tone (green)', O.disposalTone('sold') === 'success')
+  const fs = require('fs'), path = require('path')
+  const views = fs.readFileSync(path.join(__dirname, '../src/features/shop/components/owned/OwnedViews.tsx'), 'utf8')
+  const ribbon = fs.readFileSync(path.join(__dirname, '../src/features/shop/components/DisposalRibbon.tsx'), 'utf8')
+  check('the card wears soldCard\'s banner in its tone, the paid line small (text-meta, in the name\'s second line — one card height) and the end cost in the corner',
+    views.includes('soldCard(item, accessories, ctx)') && views.includes('ribbonTone={disposalTone(item.disposal)}') && /flex h-10 min-w-0 flex-col[\s\S]{0,200}text-meta tabular-nums text-fg-muted">\{sold\.bought\}/.test(views) && views.includes('justify-between'))
+  check('the corner says what it is: "End cost" for a cost, "Made" for money made', c.end.label === 'End cost' && flip.end.label === 'Made')
+  check('the banner and the badge take their tone (data-tone), never a fixed neutral', /data-tone=\{tone\}/.test(ribbon) && /data-tone=\{disposalTone\(disposal\)\}/.test(ribbon))
+}
+
 console.log('the Story')
 {
   const story = (i, more = {}) => St.storyOf(i, { items: more.items ?? [i], links: more.links ?? [], costs: more.costs ?? [], today: TODAY })

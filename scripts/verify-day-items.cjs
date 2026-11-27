@@ -117,6 +117,27 @@ console.log('\n== 6. A slot on another day than its task\'s date ==')
   })
   eq(tail.timed.map(x => [x.key, x.spillover]), [['late__spillover', true]], 'yesterday\'s slot runs into today as a continuation')
   eq(keys(tail.anytime), ['task:party'], 'the continuation never takes the task\'s own row')
+  // Owner, 27.11.2026: a movie moved to a late slot yesterday, still open — its task is on today's list as overdue.
+  const film = day({
+    prevBlocks: [block('film-slot', { date: YESTERDAY, task_id: 'film', title: 'Watch: X2', start_time: '22:30:00', duration_minutes: 135 })],
+    tasks: { open: [task('film', { title: 'Watch: X2', due_date: YESTERDAY, due_time: '22:30:00' })] },
+  })
+  eq([film.timed.map(x => [x.key, x.spillover, x.carriesTask, x.task?.id]), keys(film.anytime)], [[['film-slot__spillover', true, true, 'film']], []],
+    'an open overdue task whose slot ran past midnight is ONE row today: the continuation, never again under Anytime')
+  const filmDone = day({
+    prevBlocks: [block('film-slot', { date: YESTERDAY, task_id: 'film', start_time: '22:30:00', duration_minutes: 135 })],
+    tasks: { done: [task('film', { status: 'done', due_date: YESTERDAY })] },
+    linked: [],
+  })
+  eq(filmDone.timed.map(x => x.carriesTask), [false], 'a done task is not carried (it is on its own day)')
+  const notListed = day({
+    prevBlocks: [block('film-slot', { date: YESTERDAY, task_id: 'film', start_time: '22:30:00', duration_minutes: 135 })],
+    linked: [task('film', { due_date: YESTERDAY })],
+  })
+  eq([notListed.timed.map(x => x.carriesTask), notListed.anytime.length], [[false], 0], 'a task read by id (not on the day list) stays yesterday\'s')
+  eq(D.continuationTakesTask({ status: 'open', due_date: TODAY }, true, TODAY), false, 'a task due on this day (a deadline) keeps its own row')
+  const agenda = require('fs').readFileSync(require('path').join(__dirname, '../src/features/daily/components/DayAgenda.tsx'), 'utf8')
+  eq(/r\.spillover && !r\.carriesTask\) return <ContinuationRow/.test(agenda), true, 'Daily draws a carrying continuation as the task\'s row (tick and actions)')
 }
 
 console.log('\n== 7. Time with no length (155): a moment, never planned, never overlapping ==')

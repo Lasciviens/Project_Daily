@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
 import { ArrowUpDown, ChevronDown, ExternalLink, Package } from 'lucide-react'
 import { Truncate, cx } from '../../../shared/ui'
-import { complete, type Amount } from '../ownModel'
+import { complete, type Amount, type DisposalTone } from '../ownModel'
 import { DisposalRibbon } from './DisposalRibbon'
 import { amountReason, hostOf, money, num, pendingWords, webUrl } from './shopFormat'
 
@@ -82,12 +82,12 @@ export function SortSelect<T extends string>({ value, labels, onChange, classNam
 }
 
 /** A square picture with a quiet placeholder; a picture that fails to load falls back too. */
-export function ItemThumb({ src, size = 'md', className, ribbon }: { src: string | null; size?: 'sm' | 'md' | 'lg'; className?: string; ribbon?: string | null }) {
+export function ItemThumb({ src, size = 'md', className, ribbon, ribbonTone }: { src: string | null; size?: 'sm' | 'md' | 'lg'; className?: string; ribbon?: string | null; ribbonTone?: DisposalTone }) {
   const [failed, setFailed] = useState(false)
   const box = size === 'sm' ? 'h-9 w-9' : size === 'lg' ? 'h-20 w-20' : 'h-12 w-12'
   return (
     <span className={cx('relative grid shrink-0 place-items-center overflow-hidden rounded-row border border-line bg-surface-2', box, className)}>
-      {ribbon && <DisposalRibbon label={ribbon} />}
+      {ribbon && <DisposalRibbon label={ribbon} tone={ribbonTone} />}
       {src && !failed
         ? <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} className="h-full w-full object-contain" />
         : <Package aria-hidden className={cx('text-fg-faint', size === 'lg' ? 'h-7 w-7' : 'h-4 w-4')} />}

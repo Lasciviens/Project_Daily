@@ -108,7 +108,7 @@ console.log('\nsessionPlan')
   check('bodyweight reps keep their own metric', p.metricKind === 'reps')
   check('routine exercise notes are not carried into the plan', !('notes' in p) && !('warmup' in p))
   check('fixed-rep prescription "1 × 8 reps"', p.prescription === '1 × 8 reps', p.prescription)
-  check('no RPE logged → no RPE text, no effort note', b.lastHasRpe === false && b.lastEffort === null && !/RPE/.test(b.lastSets))
+  check('no RPE logged → no RPE text, no effort note', b.lastEffort === null && !/RPE/.test(b.lastSets))
 }
 
 // ─── sessionPlan.ts — RPE (Hevy) on "Last time" + the effort note ──────────
@@ -120,8 +120,15 @@ console.log('\nsessionPlan · RPE')
     { decisionById: new Map(), sessionsById: new Map([['x', [{ date: '2026-09-24', allSets: sets, comparableWorkingSets: [] }]]]), metricKindById: new Map() },
   )[0]
   const near = plan([cs(10, 8.5), cs(9, 10), cs(8, 10)])
-  check('"Last time" carries each set\'s RPE', near.lastSets === '60 kg × 10/9/8 @ RPE 8.5/10/10', near.lastSets)
-  check('rated last session flagged for the explainer', near.lastHasRpe === true)
+  // Owner, 27.11.2026, on the Next card: "dont show RPE here" — the sets only; Progress, the workout and the coach keep it.
+  check('"Last time" on Next shows the sets without their RPE', near.lastSets === '60 kg × 10/9/8', near.lastSets)
+  check('…every other screen still formats RPE (formatSessionSets { rpe: true }: Progress, chart, coach)', (() => {
+    const fs = require('fs'), path = require('path')
+    const r = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
+    return /formatSessionSets\([^)]*\{ rpe: true \}\)/.test(r('src/features/training/coach/coachFormat.ts'))
+      && /\{ rpe: true \}/.test(r('src/features/training/progress/decisionParts.tsx')) && !/rpe: true/.test(r('src/features/training/plan/sessionPlan.ts'))
+      && !/RpeInfoBubble/.test(r('src/features/training/components/next/NextExerciseCard.tsx'))
+  })())
   check('average 9.5 → near your limit', near.lastEffort.note === 'near_limit' && near.lastEffort.averageRpe === 9.5, J(near.lastEffort))
   check('near-limit text names RPE 9.5+ and the reps left', near.lastEffort.text === 'Last time was near your limit (RPE 9.5+) — average 9.5 over 3 working sets, about 0–½ reps left.', near.lastEffort.text)
   const easy = plan([cs(12, 6), cs(12, 6), cs(12, 7), cs(12, 7.5)])
@@ -138,7 +145,7 @@ console.log('\nsessionPlan · RPE')
   const half = plan([cs(10, 10), cs(10, 10), cs(10, null), cs(10, null)])
   check('half the working sets rated is enough; text says "2 of 4"', half.lastEffort?.note === 'near_limit' && /over 2 of 4 working sets/.test(half.lastEffort.text), J(half.lastEffort))
   const few = plan([cs(10, 10), cs(10, null), cs(10, null)])
-  check('fewer than half rated → no effort read (but the RPE still shows)', few.lastEffort === null && few.lastHasRpe === true && few.lastSets === '60 kg × 10/10/10 @ RPE 10/–/–', few.lastSets)
+  check('fewer than half rated → no effort read', few.lastEffort === null && few.lastSets === '60 kg × 10/10/10', few.lastSets)
   check('the effort note never touches the target (no decision → no target)', near.target === null && near.targetHeadline === null)
   check('thresholds exported as documented', S.NEAR_LIMIT_RPE === 9.5 && S.ROOM_TO_PUSH_RPE === 7)
 }

@@ -29,6 +29,7 @@ const { buildPlansByDate } = require('../src/features/training/components/calend
 const mg = require('../src/features/training/components/calendar/monthGridModel')
 const tabs = require('../src/features/training/pages/trainingTabs')
 const links = require('../src/features/training/sessionLinks')
+const cm = require('../src/features/training/components/calendar/calendarModel')
 
 let passed = 0
 let failed = 0
@@ -430,6 +431,60 @@ console.log('\n== 167: a workout represents itself; a weekly day reads its own t
     source_type: 'training_session', source_id: null, task_id: 't2', task_status: 'cancelled', task_closed_reason: 'missed', task_routine_id: R1, task_workout_id: null, task_first_plan_date: '2026-09-22' } }
   const slotDay = cs.matchDaySessions({ date: '2026-09-22', todayStr: '2026-09-25', plans: [slot], workouts: [], hasActivity: false })
   check('a slot whose task is a missed day reads "Not logged yet", not Skipped', slotDay.openPlans[0]?.status === 'pending')
+}
+
+// ─── A plan closed by a workout on another day (owner, 27.11.2026) ──────────
+console.log('\n== A plan a late workout closed: "Done <day>" on its day, "Planned for <day> <time>" on the workout\'s ==')
+{
+  // The owner's Log: Tue 24.11 has the weekly Lower A (its day's task, 156) at 16:45 and that day's Upper A at 17:04;
+  // Lower A was trained Thu 26.11 at 17:02 — the database closed Tuesday's task with it (211 step 3).
+  const R_LOWER = 'R-lower', R_UPPER = 'R-upper'
+  const lowerTask = { id: 't-lower', status: 'done', closed_reason: null, hevy_workout_id: 'w-lower', hevy_routine_id: R_LOWER, schedule_block_id: 'sb-lower', occurrence_date: '2026-11-24', first_plan_date: '2026-11-24' }
+  const lowerPlan = { id: 'sb-lower__2026-11-24', title: 'Lower A (Quadriceps & Kalf)', kind: 'recurring', dayTask: lowerTask,
+    scheduleBlock: { id: 'sb-lower', title: 'Lower A (Quadriceps & Kalf)', start_time: '16:45:00', end_time: '17:45:00', days_of_week: [2], category: 'training' } }
+  // 16:04 / 16:02 UTC = 17:04 / 17:02 Oslo (CET).
+  const upper = { id: 'w-upper', title: 'Upper A (Chest & Arm)', routine_id: R_UPPER, start_time: '2026-11-24T16:04:00Z', end_time: '2026-11-24T17:10:00Z', hevy_created_at: '2026-11-24T16:04:00Z' }
+  const lower = { id: 'w-lower', title: 'Lower A (Quadriceps & Kalf)', routine_id: R_LOWER, start_time: '2026-11-26T16:02:00Z', end_time: '2026-11-26T17:24:00Z', hevy_created_at: '2026-11-26T16:02:00Z' }
+  const plansByDate = new Map([['2026-11-24', [lowerPlan]], ['2026-11-26', []]])
+  const T = '2026-11-27'
+  const tue = cm.dayDataFor('2026-11-24', new Date('2026-11-24T12:00:00'), [upper, lower], [], plansByDate, T)
+  check('Tuesday: Upper A is the one session; Lower A stays its plan (not a second training)', tue.sessions.length === 1 && tue.sessions[0].workout.id === 'w-upper' && tue.openPlans.length === 1)
+  const open = tue.openPlans[0]
+  check('…the plan knows the workout that closed it and its day', open.doneByOther?.workoutId === 'w-lower' && open.doneByOther?.date === '2026-11-26', JSON.stringify(open.doneByOther))
+  check('…and reads "Done 26.11.2026", never a bare "Done"', sr.planStateWord(open.status, open.doneByOther) === 'Done 26.11.2026', sr.planStateWord(open.status, open.doneByOther))
+  const thu = cm.dayDataFor('2026-11-26', new Date('2026-11-26T12:00:00'), [upper, lower], [], plansByDate, T)
+  check('Thursday: the workout carries the plan it closed', thu.sessions[0]?.plannedElsewhere?.length === 1 && thu.sessions[0].plannedElsewhere[0].date === '2026-11-24')
+  check('…and its note reads "Planned for 24.11.2026 16:45"', sr.coveredPlanNote(thu.sessions[0].plans, thu.sessions[0].workout, thu.sessions[0].plannedElsewhere) === 'Planned for 24.11.2026 16:45',
+    sr.coveredPlanNote(thu.sessions[0].plans, thu.sessions[0].workout, thu.sessions[0].plannedElsewhere))
+  check('Tuesday\'s Upper A gets no such note (it closed nothing)', sr.coveredPlanNote(tue.sessions[0].plans, tue.sessions[0].workout, tue.sessions[0].plannedElsewhere) === null)
+  // The workout outside what was read: not "elsewhere" until its day is known, so the view doesn't flip once it loads.
+  const unread = cm.dayDataFor('2026-11-24', new Date('2026-11-24T12:00:00'), [upper], [], plansByDate, T).openPlans[0]
+  check('a workout whose day is unknown: treated as not elsewhere (plain "Done")', unread.doneByOther === null && sr.planStateWord(unread.status, unread.doneByOther) === 'Done')
+  check('doneElsewhere: workout day unknown → null', sr.doneElsewhere({ state: 'done', doneBy: 'workout', workoutId: 'w' }, '2026-11-24', () => null) === null && sr.doneElsewhere({ state: 'done', doneBy: 'workout', workoutId: 'w' }, '2026-11-24', () => undefined) === null)
+  // Its own neutral mark: the plan's day is not a training day.
+  check('a plan done by a workout on another day gets its own neutral mark, never "Trained"', mg.dayMarkOf({ sessions: [], openPlans: [open] }) === 'elsewhere' && mg.DAY_MARK_LABEL.elsewhere === 'Done another day')
+  check('…Tuesday itself still reads Trained (its own Upper A)', mg.dayMarkOf(tue) === 'done')
+  check('…a plan done on its own day (or by Strava) stays "done"', mg.dayMarkOf({ sessions: [], openPlans: [{ status: 'done', doneByOther: null }] }) === 'done')
+  // Done on its own day, by hand, or by Strava: never "done elsewhere".
+  check('doneElsewhere: a workout on the plan\'s own day → null', sr.doneElsewhere({ state: 'done', doneBy: 'workout', workoutId: 'w' }, '2026-11-24', () => '2026-11-24') === null)
+  check('doneElsewhere: ticked by hand → null', sr.doneElsewhere({ state: 'done', doneBy: 'hand', workoutId: null }, '2026-11-24', () => '2026-11-26') === null)
+  check('doneElsewhere: Strava → null', sr.doneElsewhere({ state: 'done', doneBy: 'activity', workoutId: null }, '2026-11-24', () => null) === null)
+  check('planStateWord: other states keep THE status word', sr.planStateWord('missed', null) === 'Missed' && sr.planStateWord('done', null) === 'Done')
+  // Every view uses the one helper (the Log, Daily's row and Training card, the session popup).
+  const fs = require('fs'), path = require('path')
+  const read = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
+  const panel = read('src/features/training/components/calendar/DayDetailPanel.tsx')
+  check('the Log row says it with planStateWord and opens the workout', /planStateWord\(session\.state, doneByOther/.test(panel) && /workoutId: doneByOther\.workoutId/.test(panel))
+  check('the Log\'s ⟳ is named "Planned session" (tooltip and accessible name)', /title="Planned session" aria-label="Planned session">⟳</.test(panel))
+  const rows = read('src/features/daily/components/DayAgendaRows.tsx')
+  check('Daily\'s training row: useDoneElsewhere + planStateWord, opens the workout', /useDoneElsewhere\(status, plan\.info\.date\)/.test(rows) && /planStateWord\(mark, elsewhere\)/.test(rows) && /workoutId: elsewhere\.workoutId/.test(rows))
+  const band = read('src/features/daily/components/summary/TrainingBand.tsx')
+  check('Daily\'s Training card: the same words and the same tap', /planStateWord\(open\.status, elsewhere\)/.test(band) && /workoutId: elsewhere\.workoutId/.test(band))
+  check('Daily\'s Training card on the workout\'s day: "Planned for …" (plansClosedBy + plannedOnNote, plans read from 6 days before)', /plansClosedBy\(session\.workout\.id, plans\.data, date\)\.map\(plannedOnNote\)/.test(band) && /shiftDateStr\(date, -6\)/.test(band))
+  const glyph = read('src/features/training/components/calendar/DayMarkGlyph.tsx')
+  check('the "elsewhere" mark is neutral (no success colour)', /elsewhere: *'[^']*border-line-strong'/.test(glyph) && !/elsewhere: *'[^']*success/.test(glyph))
+  const view = read('src/features/training/components/session/TrainingSessionView.tsx')
+  check('the session popup passes the plans of earlier days to coveredPlanNote', /coveredPlanNote\(plans, workout, plannedElsewhere\)/.test(view))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)
