@@ -7,7 +7,8 @@
 import { formatMoney } from '../settings/subscriptionRules'
 import { DISPOSAL_LABEL, durationLabel, isMine } from './ownModel'
 import { currencyOf, localDay } from './shopModel'
-import type { Look, LookKind, LookTone, RecordFact } from './shopSuggestions'
+import { noticeTitle } from '../notifications/notificationKinds'
+import { isUrgentLook, type Look, type LookKind, type LookTone, type RecordFact } from './shopSuggestions'
 import type { ShopItem, ShopItemCost, ShopItemLink } from './types'
 
 export type StoryKind = 'wished' | 'model' | 'planned' | 'bought' | 'accessory' | 'cost' | 'value' | 'gone' | 'return' | 'complaint'
@@ -118,12 +119,18 @@ export function storyOf(item: ShopItem, { items, links, costs, today }: StoryInp
  * due. Claim only where Needs a look's own row has it — a price protection a checked rule decides
  * (`purchaseModel.protectionOf`), never Ask AI's or a price site's — so the record and the list never differ.
  */
-export type NudgeAction = 'bought' | 'value' | 'fix' | 'claim' | null
+export type NudgeAction = 'bought' | 'value' | 'fix' | 'claim' | 'purchase' | null
+
+/** A nudge's kind (its icon): a Needs-a-look kind, or the server's "bought through a plan" notice. */
+export type NudgeKind = LookKind | 'bought_notice'
+
+/** An unread notice as the nudge needs it (the bell's feed row: `useShopNotices`). */
+export interface NudgeNotice { id: string; kind: string; link_id: string | null }
 
 export interface Nudge {
   key: string
-  /** The Needs-a-look kind behind it (its icon), or a fact the record lacks. */
-  kind: LookKind
+  /** The Needs-a-look kind behind it (its icon), a fact the record lacks, or the notice. */
+  kind: NudgeKind
   tone: LookTone
   /** What is due and the money, as short facts. */
   facts: string[]
@@ -134,6 +141,8 @@ export interface Nudge {
   fact?: RecordFact | null
   /** The rest of the words, for the line's tooltip (owner, 24.11.2026: short, the description on hover). */
   tip?: string
+  /** For 'purchase': the notice it reads when the owner acts on it. */
+  noticeId?: string
 }
 
 /**
@@ -145,8 +154,16 @@ export interface Nudge {
  * estimate says only how old it is: the money strip right above shows the
  * amount and its day (review, 10.11.2026: the same facts three times).
  */
-export function nudgeFor(item: ShopItem, looks: readonly Look[], today: string): Nudge | null {
+export function nudgeFor(item: ShopItem, looks: readonly Look[], today: string, notices: readonly NudgeNotice[] = []): Nudge | null {
   const own = looks.find(l => l.itemId === item.id)
+  // A plan bought it (211's notice, unread): the bell's words, after an urgent row as in Needs a look's sheet.
+  const notice = notices.find(n => n.kind === 'shop_bought_draft' && n.link_id === item.id)
+  if (notice && !(own && isUrgentLook(own))) {
+    return {
+      key: 'bought_notice', kind: 'bought_notice', tone: 'info', where: null, action: 'purchase', noticeId: notice.id,
+      facts: [noticeTitle({ kind: 'shop_bought_draft', service: null, due_on: null, subject: null }, today)],
+    }
+  }
   if (own) {
     const action: NudgeAction = own.action === 'bought' ? 'bought' : own.action === 'value' ? 'value'
       : own.action === 'claim' && own.kind === 'cheaper_returnable' && own.claim ? 'claim' : null

@@ -38,6 +38,10 @@ check('a passed end day says its date (DD.MM.YYYY)', K.noticeWhen(today, '2026-1
 check('the key and the failures', [K.noticeTitle(f('claude_key_expiring', { service: 'anthropic', due_on: '2026-12-03' }), today),
   K.noticeTitle(f('sign_in_failed', { service: 'icloud' }), today), K.noticeTitle(f('claude_key_rejected', { service: 'anthropic' }), today)],
   ['Claude API key ends in 7 days', 'Apple Calendar needs you to sign in again', 'Anthropic rejected the Claude API key'])
+check('PlayStation refusing its sign-in says what to do and where (owner, 27.11.2026)',
+  [K.noticeTitle(f('sign_in_failed', { service: 'psn' }), today), K.noticeDetail(f('sign_in_failed', { service: 'psn' })), K.noticeRoute({ kind: 'sign_in_failed' }),
+    /PlayStation/.test(K.NOTICE_KINDS.find(k => k.kind === 'sign_in_failed').hint)],
+  ['PlayStation needs you to sign in again', 'Connect it again in Settings → Subscriptions', '/settings?tab=subscriptions', true])
 check('the second line: the thing\'s name, else what to do', [K.noticeDetail(f('follow_new_title', { subject: 'Dune' })), K.noticeDetail(f('sign_in_failed', { service: 'trakt' })),
   K.noticeDetail(f('claude_key_expiring', { due_on: '2026-12-03' }))],
   ['Dune', 'Connect it again in Settings → Subscriptions', 'Ends 03.12.2026 · make a new key in the Anthropic Console'])
@@ -79,7 +83,11 @@ check('the last 4: 4 key characters, nothing, or refused', [E.keyHint('Ab3_'), E
 console.log('the producers')
 check('Strava: only a 401 refresh answer is "sign in again" (a 400\'s body is not documented — docs/integrations/strava.md)',
   /if \(res\.status === 401\) await notifySignInFailed\(supabase, userId\)/.test(read('supabase/functions/strava-activities/index.ts')) && !/res\.status === 400/.test(read('supabase/functions/strava-activities/index.ts')), true)
-const producers = [['trakt-api', 'trakt'], ['strava-activities', 'strava'], ['google-tasks-sync', 'google'], ['calendar-token', 'google'], ['icloud-calendar', 'icloud']]
+const psnApi = read('supabase/functions/psn-api/index.ts')
+check('PlayStation: a refresh answered without an access token is "sign in again" (psn-api 2.18.1 returns Sony\'s answer unchecked); a failed notice never changes the answer; nothing is written then',
+  /if \(typeof refreshed\.accessToken !== 'string' \|\| !refreshed\.accessToken\) \{\n(\s+\/\/[^\n]*\n)*\s+try \{ await notifySignInFailed\(supabase, userId\) \} catch \{ console\.error\('psn-api: the sign-in notice was not written'\) \}\n\s+return json\(\{ error: 'reauth_required'/.test(psnApi)
+    && psnApi.indexOf('await notifySignInFailed(supabase, userId)') < psnApi.indexOf("await supabase.from('psn_tokens').update({"), true)
+const producers = [['trakt-api', 'trakt'], ['strava-activities', 'strava'], ['google-tasks-sync', 'google'], ['calendar-token', 'google'], ['icloud-calendar', 'icloud'], ['psn-api', 'psn']]
 check('each sync function tells the database which service refused its sign-in (a code, never text)',
   producers.map(([fn, svc]) => new RegExp(`rpc\\('notify_service_problem', \\{ p_user: userId, p_service: '${svc}' \\}\\)`).test(read(`supabase/functions/${fn}/index.ts`))
     && /await notifySignInFailed\(/.test(read(`supabase/functions/${fn}/index.ts`))), producers.map(() => true))
@@ -106,15 +114,19 @@ check('the morning push carries the morning notices as one line (claimed only on
 
 console.log('one list, every way in')
 const list = read('src/features/notifications/components/NotificationList.tsx')
-check('the bell\'s drop-down and the page render the one NotificationList',
+check('the bell\'s drop-down, the page and Shop → Needs a look render the one NotificationList (Shop: its kinds, unread)',
   [/<NotificationList mode="dropdown"/.test(read('src/features/notifications/components/NotificationBell.tsx')), /<NotificationList mode="page"/.test(read('src/features/notifications/pages/NotificationsPage.tsx')),
-    /export function NotificationList\(/.test(list)], [true, true, true])
+    /<NotificationList mode="shop" onDone=\{onClose\} \/>/.test(read('src/features/shop/components/NeedsALookSheet.tsx')), /export function NotificationList\(/.test(list),
+    /fetchNotices\(\{ limit: SHOP_LIMIT, unreadOnly: true, kinds: SHOP_NOTICE_KINDS \}\)/.test(read('src/features/notifications/hooks/useNotifications.ts')),
+    JSON.stringify(K.SHOP_NOTICE_KINDS), ['src/features/shop/api/noticesApi.ts', 'src/features/shop/hooks/useShopNotices.ts'].some(p => fs.existsSync(path.join(root, p)))],
+  [true, true, true, true, true, '["shop_bought_draft"]', false])
 check('the bell sits next to the avatar in the top bar and the phone header',
   ['src/app/shell/AppTopBar.tsx', 'src/app/shell/MobileHeader.tsx'].map(p => /<NotificationBell look="(bar|header)" \/>\n\s+<SettingsMenu \/>/.test(read(p))), [true, true])
 check('/notifications is a page of the registry and a lazy page', [/path: '\/notifications'/.test(read('src/app/navigation.ts')), /NotificationsPage = lazyPage\(/.test(read('src/app/pages.ts')),
   /path="\/notifications"/.test(read('src/app/router.tsx'))], [true, true, true])
-check('the drop-down\'s See all sits in its header next to Read all; the page\'s Read/Unread button shows the state (no dot there)',
-  [/\{!page && \(\n\s+<Link to="\/notifications"/.test(list), list.indexOf('Read all\n') < list.indexOf('to="/notifications"'), /\{unread && !page && /.test(list), !/CircleCheck/.test(list)], [true, true, true, true])
+check('the drop-down\'s See all sits in its header next to Read all; the page\'s and Shop\'s Read/Unread button shows the state (no dot there)',
+  [/\{!page && \(\n\s+<Link to="\/notifications"/.test(list), list.indexOf('Read all\n') < list.indexOf('to="/notifications"'), /const button = mode !== 'dropdown'/.test(list),
+    /\{unread && !button && /.test(list), !/CircleCheck/.test(list)], [true, true, true, true, true])
 check('a notice opens its thing by the kind\'s fixed way (a popup by id, else noticeRoute) — never an address from the row',
   [/navigate\(noticeRoute\(n\)\)/.test(list), !/href=\{n\./.test(list), !/navigate\(n\./.test(list)], [true, true, true])
 check('the Claude key\'s dates sit on the Anthropic card (connections live in one place)', /<ClaudeKeyDates \/>/.test(read('src/features/developer/components/ConnectionsTab.tsx')), true)

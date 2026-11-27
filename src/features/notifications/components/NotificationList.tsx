@@ -8,14 +8,17 @@ import { todayStr } from '../../../shared/utils/dateUtils'
 import { noticeDetail, noticeRoute, noticeTitle, type NoticeKind } from '../notificationKinds'
 import type { Notice } from '../api/notificationsApi'
 import {
-  useActOnNotice, useDropdownNotices, useMarkAllNoticesRead, useMarkNotice, usePageNotices,
+  useActOnNotice, useDropdownNotices, useMarkAllNoticesRead, useMarkNotice, usePageNotices, useShopNotices,
 } from '../hooks/useNotifications'
 
-// THE notifications list (owner, 12.11.2026: "same job, one component"): the bell's drop-down and the Notifications
-// page render this one component. `dropdown` shows the newest few with "See all"; `page` adds the All | Unread switch,
-// each row's Read / Unread button and Show more. A mode hides a part, never copies it.
+// THE notifications list (owner, 12.11.2026: "same job, one component"): the bell's drop-down, the Notifications page
+// and Shop → Needs a look render this one component. `dropdown` shows the newest few with "See all"; `page` adds the
+// All | Unread switch, each row's Read / Unread button and Show more; `shop` (owner, 27.11.2026: "the same notices
+// list as the bell") is the unread ones of the Shop's kinds, compact — no header, each row's Read button, nothing when
+// there are none (Needs a look says that itself), and Needs a look's row geometry (its icon tile's size and place, its
+// title's weight), so the two kinds of rows line up in one sheet. A mode hides a part, never copies it.
 
-export type NotificationListMode = 'dropdown' | 'page'
+export type NotificationListMode = 'dropdown' | 'page' | 'shop'
 
 const KIND_ICON: Record<NoticeKind, ReactNode> = {
   shop_bought_draft: <ShoppingBag />,
@@ -32,18 +35,22 @@ const SHOWS_PROBLEM: ReadonlySet<NoticeKind> = new Set(['sign_in_failed', 'claud
 export function NotificationList({ mode, onDone }: { mode: NotificationListMode; onDone?: () => void }) {
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
   const page = mode === 'page'
-  const dropdown = useDropdownNotices(!page)
-  const paged = usePageNotices(filter === 'unread')
-  const rows: Notice[] = page ? (paged.data?.pages.flat() ?? []) : (dropdown.data ?? [])
-  const loading = page ? paged.isLoading : dropdown.isLoading
-  const failed = page ? paged.isError : dropdown.isError
-  const retry = () => void (page ? paged.refetch() : dropdown.refetch())
+  const shop = mode === 'shop'
+  const dropdown = useDropdownNotices(mode === 'dropdown')
+  const paged = usePageNotices(filter === 'unread', page)
+  const shopQ = useShopNotices(shop)
+  const q = page ? paged : shop ? shopQ : dropdown
+  const rows: Notice[] = page ? (paged.data?.pages.flat() ?? []) : ((shop ? shopQ.data : dropdown.data) ?? [])
+  const retry = () => void q.refetch()
   const readAll = useMarkAllNoticesRead()
   const today = todayStr()
 
+  // Shop's list sits among Needs a look's rows: no header, and nothing at all while it has none.
+  if (shop && !q.isError && (q.isLoading || rows.length === 0)) return null
+
   const body = (
     <div className={cx('flex min-w-0 flex-col', page ? 'gap-2' : 'gap-1')}>
-      <div className={cx('flex items-center gap-2', !page && 'px-1.5 pt-0.5')}>
+      {!shop && <div className={cx('flex items-center gap-2', !page && 'px-1.5 pt-0.5')}>
         {page
           ? <SegmentedControl size="sm" label="Show" value={filter} onChange={setFilter}
               options={[{ value: 'all', label: 'All', tip: 'All notifications' }, { value: 'unread', label: 'Unread', tip: 'Unread notifications only' }]} />
@@ -63,14 +70,14 @@ export function NotificationList({ mode, onDone }: { mode: NotificationListMode;
           className="icon-btn h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [&_svg]:h-[18px] [&_svg]:w-[18px]">
           <Settings2 aria-hidden />
         </Link>
-      </div>
+      </div>}
 
-      {failed ? (
+      {q.isError ? (
         <p role="alert" className="flex items-center gap-2 px-2 py-2 text-meta text-fg-muted">
           Notifications could not be read.
           <Button size="sm" variant="ghost" onClick={retry}>Try again</Button>
         </p>
-      ) : loading ? (
+      ) : q.isLoading ? (
         <ul aria-busy="true" className="flex flex-col gap-1">
           {Array.from({ length: page ? 4 : 3 }, (_, i) => <li key={i}><Skeleton className="h-14 w-full rounded-row" /></li>)}
         </ul>
@@ -80,8 +87,8 @@ export function NotificationList({ mode, onDone }: { mode: NotificationListMode;
           {filter === 'unread' ? 'Nothing unread.' : 'No notifications yet.'}
         </p>
       ) : (
-        <ul className={cx('flex flex-col', page ? 'gap-1' : 'gap-0.5')}>
-          {rows.map(n => <NoticeRow key={n.id} n={n} today={today} page={page} onDone={onDone} />)}
+        <ul className={cx('flex flex-col', shop ? '-mx-2' : page ? 'gap-1' : 'gap-0.5')}>
+          {rows.map(n => <NoticeRow key={n.id} n={n} today={today} mode={mode} onDone={onDone} />)}
         </ul>
       )}
 
@@ -95,43 +102,48 @@ export function NotificationList({ mode, onDone }: { mode: NotificationListMode;
   return page ? <Card>{body}</Card> : body
 }
 
-function NoticeRow({ n, today, page, onDone }: { n: Notice; today: string; page: boolean; onDone?: () => void }) {
+function NoticeRow({ n, today, mode, onDone }: { n: Notice; today: string; mode: NotificationListMode; onDone?: () => void }) {
   const modal = useEntityModal()
   const navigate = useNavigate()
   const act = useActOnNotice()
   const mark = useMarkNotice()
   const unread = !n.read_at
+  // The drop-down marks unread with a dot; the page and Shop give each row its Read / Unread button instead.
+  const button = mode !== 'dropdown'
+  // Among Needs a look's rows (NeedsALookSheet's LookRow): its padding, a 28 px tile and its title weight — every row
+  // there is unread, so the weight would tell nothing.
+  const shop = mode === 'shop'
 
   // The way to the thing is fixed per kind (notificationKinds.ts): a Shop thing or a film opens its own popup, the
   // rest their page. Never a URL from the row.
   function open() {
     if (!n.acted_at || unread) act.mutate(n.id)
     onDone?.()
-    if (n.kind === 'shop_bought_draft' && n.link_id && n.subject) modal.open({ kind: 'shop-item', id: n.link_id })
+    // A purchase a plan bought: its record at the purchase, to check what the draft left for the owner.
+    if (n.kind === 'shop_bought_draft' && n.link_id && n.subject) modal.open({ kind: 'shop-item', id: n.link_id, section: 'purchase' })
     else if ((n.kind === 'follow_new_title' || n.kind === 'follow_trailer') && n.subject_tmdb) modal.open({ kind: 'media', tmdbId: n.subject_tmdb, mediaType: 'movie' })
     else navigate(noticeRoute(n))
   }
 
   return (
     <li className="flex min-w-0 items-center gap-1">
-      <button type="button" onClick={open} className="row row-interactive min-w-0 flex-1 items-start gap-2.5 py-2 text-left">
+      <button type="button" onClick={open} className={cx('row row-interactive min-w-0 flex-1 items-start gap-2.5 py-2 text-left', shop && 'px-2')}>
         <span aria-hidden data-tone={SHOWS_PROBLEM.has(n.kind) ? 'danger' : undefined}
-          className={cx('mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-control bg-surface-2 [&_svg]:h-4 [&_svg]:w-4',
+          className={cx('mt-0.5 grid shrink-0 place-items-center rounded-control bg-surface-2 [&_svg]:h-4 [&_svg]:w-4', shop ? 'h-7 w-7' : 'h-8 w-8',
             SHOWS_PROBLEM.has(n.kind) ? 'tone-text' : 'text-fg-2')}>
           {KIND_ICON[n.kind]}
         </span>
         <span className="min-w-0 flex-1">
-          <Truncate className={cx('text-body', unread ? 'font-semibold text-fg' : 'font-medium text-fg-2')}>{noticeTitle(n, today)}</Truncate>
+          <Truncate className={cx('text-body', shop ? 'font-medium text-fg' : unread ? 'font-semibold text-fg' : 'font-medium text-fg-2')}>{noticeTitle(n, today)}</Truncate>
           {/* Two lines: the title, then the detail and when (the date stays whole, the detail is cut). */}
           <span className="flex min-w-0 items-baseline gap-1 text-meta text-fg-muted">
             <Truncate className="min-w-0">{noticeDetail(n)}</Truncate>
             <span className="shrink-0 tabular-nums">· {formatDateTime(n.created_at)}</span>
           </span>
         </span>
-        {/* The drop-down marks unread with a dot; on the page the Read/Unread button shows it. */}
-        {unread && !page && <span className="mt-2 shrink-0" title="Unread"><ToneDot tone="info" /><span className="sr-only">Unread</span></span>}
+        {unread && !button && <span className="mt-2 shrink-0" title="Unread"><ToneDot tone="info" /><span className="sr-only">Unread</span></span>}
       </button>
-      {page && (
+      {button && (
         <IconButton size="sm" label={unread ? 'Unread: mark it read' : 'Read: mark it unread'}
           onClick={() => mark.mutate({ id: n.id, read: unread })}>
           {unread ? <span data-tone="info" className="tone-text"><Circle className="fill-current" /></span> : <Circle />}

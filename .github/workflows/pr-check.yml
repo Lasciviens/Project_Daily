@@ -545,9 +545,9 @@ jobs:
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
-      # Migration 212 (notifications, Phase 3 B1–B3): the kinds and their shapes, the browser's read_at/acted_at only,
-      # followed-film notices from the server only, the 14/7/1-day warnings, a service rejecting a sign-in, push-send's
-      # claim and the timers. 212 runs twice.
+      # Migrations 212 (notifications, Phase 3 B1–B3) and 214 (PlayStation's refused sign-in and its settle, the feed's
+      # kinds): the kinds and their shapes, the browser's read_at/acted_at only, followed-film notices from the server
+      # only, the 14/7/1-day warnings, a service rejecting a sign-in, push-send's claim and the timers. Each runs twice.
       - name: Notifications database scenarios
         run: node scripts/verify-db-notifications.mjs
         env:

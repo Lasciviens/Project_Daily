@@ -56,17 +56,21 @@ export function noticeFromRow(r: Record<string, unknown>): Notice | null {
 const clean = (rows: unknown): Notice[] =>
   (Array.isArray(rows) ? rows : []).map(r => noticeFromRow(r as Record<string, unknown>)).filter((n): n is Notice => n !== null)
 
-/** The newest notices (the bell: a few; the page: a page of them, older ones with `before`). */
-export async function fetchNotices(o: { limit: number; before?: string | null; unreadOnly?: boolean }): Promise<Notice[]> {
-  const { data, error } = await supabase.rpc('notification_feed', { p_limit: o.limit, p_before: o.before ?? null, p_unread_only: !!o.unreadOnly })
-  if (!error) return clean(data)
+/** The newest notices (the bell: a few; the page: a page of them, older ones with `before`; Shop: only its `kinds`). */
+export async function fetchNotices(o: { limit: number; before?: string | null; unreadOnly?: boolean; kinds?: readonly NoticeKind[] }): Promise<Notice[]> {
+  // `p_kinds` only when asked for: a database before 214 has no such argument (its feed answers the other reads).
+  const { data, error } = await supabase.rpc('notification_feed', {
+    p_limit: o.limit, p_before: o.before ?? null, p_unread_only: !!o.unreadOnly, ...(o.kinds ? { p_kinds: [...o.kinds] } : {}),
+  })
+  if (!error) return clean(data).filter(n => !o.kinds || o.kinds.includes(n.kind))
   if (isMissingTable(error)) return []
   if (!isMissingFunction(error)) throw error
-  // Before 212: 211's columns, no names.
+  // Before 212 (or, asked for kinds, before 214): 211's columns, no names. Remove once 214 is live.
   let q = supabase.from('notifications').select('id, kind, link_kind, link_id, created_at, read_at')
     .order('created_at', { ascending: false }).limit(o.limit)
   if (o.before) q = q.lt('created_at', o.before)
   if (o.unreadOnly) q = q.is('read_at', null)
+  if (o.kinds) q = q.in('kind', [...o.kinds])
   const old = await q
   if (old.error) {
     if (isMissingTable(old.error)) return []

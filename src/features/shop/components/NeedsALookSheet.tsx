@@ -4,7 +4,8 @@ import { AlarmClock, ArrowUpRight, Check, ChevronDown, ChevronRight, MoreHorizon
 import { MetaLine, Skeleton, Truncate, cx } from '../../../shared/ui'
 import { ModalShell } from '../../../shared/modals'
 import { formatDate } from '../../../shared/utils/dateFormat'
-import { lookLine, SNOOZE_DAYS, type Look, type LookThing, type RecordFact } from '../shopSuggestions'
+import { NotificationList } from '../../notifications/components/NotificationList'
+import { isUrgentLook, lookCount, lookLine, SNOOZE_DAYS, type Look, type LookThing, type RecordFact } from '../shopSuggestions'
 import { LookIcon } from './lookIcon'
 import { wrapLong } from './lookFacts'
 import { isShownLink } from '../storeRows'
@@ -12,8 +13,9 @@ import { addDays } from '../ownModel'
 import type { LookActions, LookState } from './NeedsALook'
 
 // Needs a look's sheet: every row with its one action, and Snooze (a week, or until the day before its deadline) ·
-// Got it behind ⋯. Its own chunk (`lazyPart` in NeedsALook.tsx): only the header's button and its count are in the
-// Shop page's first download (owner, 23.11.2026; the 400 kB budget).
+// Got it behind ⋯; the Shop's unread notices after the urgent rows, as the bell's own list (`NotificationList` in its
+// `shop` mode — owner, 27.11.2026: "the same notices list as the bell"). Its own chunk (`lazyPart` in NeedsALook.tsx):
+// only the header's button and its count are in the Shop page's first download (owner, 23.11.2026; the 400 kB budget).
 
 const ACTION: Record<Look['action'], string> = { open: 'Open', bought: 'Bought', value: 'Update', list: 'Show', claim: 'Claim' }
 
@@ -166,19 +168,25 @@ function LookList({ looks, hidden, limit, today, actions }: { looks: readonly Lo
 
 const NOTHING = 'Nothing needs a look right now.'
 
-/** Every row of Needs a look in a sheet — opened from the header's button. */
-export function NeedsALookSheet({ open, onClose, looks, hidden, loading, failed, onRetry, today, actions }: LookState & { open: boolean; onClose: () => void; actions: LookActions }) {
+/** Every row of Needs a look in a sheet — opened from the header's button: the urgent rows, the notices, the rest. */
+export function NeedsALookSheet({ open, onClose, looks, hidden, notices, loading, failed, onRetry, today, actions }: LookState & { open: boolean; onClose: () => void; actions: LookActions }) {
   const line = lookLine(looks)
+  const { count } = lookCount(looks, notices)
+  const urgent = looks.filter(isUrgentLook)
+  const rest = looks.filter(l => !isUrgentLook(l))
   return (
     <ModalShell open={open} onClose={onClose} title="Needs a look"
-      subtitle={failed ? undefined : looks.length ? `${looks.length} to look at${line.claim ? ` · ${line.claim}` : ''}` : undefined}>
+      subtitle={failed ? undefined : count ? `${count} to look at${line.claim ? ` · ${line.claim}` : ''}` : undefined}>
       {loading
         ? <div aria-busy="true"><LookSkeleton rows={3} /></div>
         : failed
           ? <p className="py-1"><LookFailed onRetry={onRetry} /></p>
           : <>
-            {!looks.length && <p className="pb-1 text-body text-fg-muted">{NOTHING}</p>}
-            <LookList looks={looks} hidden={hidden} today={today} actions={actions} />
+            {!count && <p className="pb-1 text-body text-fg-muted">{NOTHING}</p>}
+            <LookList looks={urgent} hidden={[]} today={today} actions={actions} />
+            {/* A notice opens its thing: the sheet closes first, as a row's own action does. */}
+            <NotificationList mode="shop" onDone={onClose} />
+            <LookList looks={rest} hidden={hidden} today={today} actions={actions} />
           </>}
     </ModalShell>
   )
