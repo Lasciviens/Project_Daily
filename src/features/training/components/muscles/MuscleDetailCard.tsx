@@ -2,21 +2,21 @@ import { formatDate } from '../../../../shared/utils/dateFormat'
 import { todayStr } from '../../../../shared/utils/dateUtils'
 import { Clock, Flag } from 'lucide-react'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
-import { BANDS_META, labelForSlug, movementPatternLabel } from '../../muscleMap'
+import { labelForSlug, movementPatternLabel } from '../../muscleMap'
+import { VOLUME_BANDS, VOLUME_TARGET } from '../../plan/volumeBands'
 import { useBandColors } from '../muscleBandColors'
 import { MuscleExerciseList } from './MuscleExerciseList'
 import { FLAG_META, TREND_TONE, bandGuidance, daysAgoText, trendIcon, type MuscleRead } from './muscleVolumeModel'
 
 /** One selected muscle: status, plain guidance, cues, exercises and days. */
-export function MuscleDetailCard({ read, windowDays, priorHasData, isExperienceAdjusted }: {
+export function MuscleDetailCard({ read, windowDays, priorHasData }: {
   read: MuscleRead
   windowDays: number
   priorHasData: boolean
-  isExperienceAdjusted: boolean
 }) {
   const bandColors = useBandColors()
-  const { slug, weekly, band, landmarks: L, gap, restriction, dates, sessions, freqPerWeek, daysSince, trend } = read
-  const meta = restriction ? FLAG_META[restriction.weight] : BANDS_META[band]
+  const { slug, weekly, band, gap, restriction, dates, sessions, freqPerWeek, daysSince, trend } = read
+  const meta = restriction ? FLAG_META[restriction.weight] : { label: VOLUME_BANDS[band].label, desc: VOLUME_BANDS[band].note }
   const metaColor = restriction ? bandColors.flag[restriction.weight] : bandColors.bands[band]
 
   return (
@@ -29,7 +29,7 @@ export function MuscleDetailCard({ read, windowDays, priorHasData, isExperienceA
           </span>
         </div>
         <div className="shrink-0 text-right">
-          <p className="text-kpi font-bold leading-none tabular-nums text-fg">{weekly.toFixed(1)}</p>
+          <p className="text-kpi font-bold leading-none tabular-nums text-fg">{Math.round(weekly)}</p>
           <p className="mt-0.5 text-micro font-normal text-fg-muted">sets / week</p>
         </div>
       </div>
@@ -57,26 +57,15 @@ export function MuscleDetailCard({ read, windowDays, priorHasData, isExperienceA
 
         <p className="flex items-start gap-1 text-body text-fg-2">
           <span>
-            {bandGuidance(band, L)}
-            {gap?.kind === 'add' && (restriction
+            {bandGuidance(band)}
+            {gap && (restriction
               ? ' An active limitation reaches this muscle, so a low number may be deliberate.'
               : ` That's about ${gap.sets} more sets a week — roughly ${gap.sessions === 1 ? 'one more session' : `${gap.sessions} more sessions`}.`)}
-            {gap?.kind === 'cut' && ` If you're not recovering well, drop about ${gap.sets} sets.`}
           </span>
           <InfoBubble>
-            {BANDS_META[band].desc}
-            {L && (
-              <>
-                <br /><br />
-                Weekly-set landmarks — maintain {L.mv} · start growing (MEV) {L.mev} · best range up to (MAV) {L.mav} · usual ceiling (MRV) {L.mrv}. Population guidance, not personalised. Assumes your sets were reasonably hard.
-                {isExperienceAdjusted && (
-                  <>
-                    <br /><br />
-                    Adjusted ±15% for your experience level — an unvalidated adjustment on top of an already-heuristic baseline, not a measured number.
-                  </>
-                )}
-              </>
-            )}
+            Weekly hard sets, in words: {VOLUME_BANDS.slice(1).map(b => `${b.range} ${b.label.toLowerCase()}`).join(' · ')}. None of
+            these is an error — more sets add less and less. Ranges from a large meta-regression of training studies; guidance for
+            most people, not personalised. Assumes your sets were reasonably hard.
           </InfoBubble>
         </p>
 
@@ -102,12 +91,12 @@ export function MuscleDetailCard({ read, windowDays, priorHasData, isExperienceA
         </div>
 
         <p className="rounded-row bg-surface-2 px-2.5 py-1.5 text-meta font-semibold text-fg">
-          Bottom line: {gap?.kind === 'add'
+          Bottom line: {gap
             ? restriction
               ? `work within your limitation — pick ${labelForSlug(slug)} exercises that respect it before adding sets.`
               : `add ~${gap.sets} sets of ${labelForSlug(slug)} work (≈ ${gap.sessions === 1 ? 'one more session' : `${gap.sessions} sessions`}).`
-            : gap?.kind === 'cut'
-              ? `hold volume here; only trim if recovery's suffering.`
+            : weekly < VOLUME_TARGET.min - 0.5
+              ? `this still builds muscle; more sets toward ${VOLUME_TARGET.min} add a little more.`
               : `keep it here — progress load (reps then weight), not more sets.`}
         </p>
 

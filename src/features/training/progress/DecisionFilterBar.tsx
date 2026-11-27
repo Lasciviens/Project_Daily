@@ -4,7 +4,7 @@ import {
 } from './decisionFilters'
 import type { EvidenceLevel } from '../progress-engine/types'
 
-// The decision table's search, sort and filters. Sized by the card's own
+// The exercise list's search and filters (behind its Filters disclosure; the list has one order, the next session's). Sized by the card's own
 // width: below 40rem a 2-column grid with each label above its select, the
 // selects in pairs (Muscle | Routine, Evidence | Window); wider, one wrapping
 // row of inline label + select pairs. Which exercises a filter keeps is
@@ -33,16 +33,13 @@ interface Props {
   onChange: (patch: Partial<DecisionFilters>) => void
   onClear: () => void
   active: boolean
-  sort: string
-  sortOptions: readonly { id: string; label: string }[]
-  onSortChange: (id: string) => void
   muscles: readonly MuscleOption[]
   routines: readonly RoutineOption[]
   shown: number
   total: number
 }
 
-export function DecisionFilterBar({ filters, onChange, onClear, active, sort, sortOptions, onSortChange, muscles, routines, shown, total }: Props) {
+export function DecisionFilterBar({ filters, onChange, onClear, active, muscles, routines, shown, total }: Props) {
   const showMuscle = muscles.length > 0
   const showRoutine = showsRoutineFilter(routines)
   return (
@@ -51,12 +48,6 @@ export function DecisionFilterBar({ filters, onChange, onClear, active, sort, so
         type="text" value={filters.query} onChange={e => onChange({ query: e.target.value })} placeholder="Search exercise…" aria-label="Search exercise"
         className="input col-span-2 w-full @[40rem]:w-56"
       />
-      <label className={cx(FILTER_LABEL, 'col-span-2')}>
-        Sort:
-        <select value={sort} onChange={e => onSortChange(e.target.value)} className={FILTER_SELECT}>
-          {sortOptions.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-        </select>
-      </label>
       {showMuscle && (
         <label className={cx(FILTER_LABEL, !showRoutine && 'col-span-2')}>
           Muscle:

@@ -59,9 +59,9 @@ const BOARDS = [
   ['Books · Stats', Bk.STATS_BOARD, Bk.STATS_SECTIONS, false],
   ['Books · Kobo', Bk.KOBO_BOARD, Bk.KOBO_SECTIONS, false],
   ...Object.entries(H.HEALTH_BOARDS).map(([id, b]) => [`Health · ${id}`, b.board, b.sections, id === 'overview']),
-  ['Training · Next', T.NEXT_BOARD, T.NEXT_SECTIONS, true],
-  ['Training · Program', T.PROGRAM_BOARD, T.PROGRAM_SECTIONS, false],
-  ['Training · Progress', T.PROGRESS_BOARD, T.PROGRESS_SECTIONS, false],
+  ['Training · Today', T.NEXT_BOARD, T.NEXT_SECTIONS, true],
+  ['Training · Plan', T.PROGRAM_BOARD, T.PROGRAM_SECTIONS, false],
+  ['Training · Results', T.RESULTS_BOARD, T.RESULTS_SECTIONS, false],
   ['Training · Log', T.LOG_BOARD, T.LOG_SECTIONS, false],
   ['Training · Coach', T.COACH_BOARD, T.COACH_SECTIONS, false],
 ]
@@ -131,26 +131,25 @@ check('Health Activity: each tier-3 grid sits under an always-present card at 19
   const minis = ['more', 'mobility', 'habits']
   return cols.every(c => !minis.includes(c.stack[0]))
 }))
-check('Training Next: the session and its context lead in the rail, the exercise cards span the rest', [2, 3, 4].every(s => {
+check('Training Today: the session and its context lead in the rail, the exercise cards span the rest', [2, 3, 4].every(s => {
   const l = B.resolveBoardLayout(T.NEXT_BOARD, s)
   return l.lead === 1 && eq(l.columns[0].stack, ['session', 'week', 'recovery', 'alerts']) && l.columns[1].stack[0] === 'exercises' && l.columns[1].span === s - 1
 }))
-check('Training Next: phone order unchanged', eq(T.NEXT_BOARD[1], ['session', 'week', 'recovery', 'alerts', 'exercises', 'note']))
+check('Training Today: phone order unchanged', eq(T.NEXT_BOARD[1], ['session', 'week', 'recovery', 'alerts', 'exercises', 'note']))
 check('Training Program: routines stack in the main column, never a band under the tallest column', [2, 3, 4].every(s => {
   const l = B.resolveBoardLayout(T.PROGRAM_BOARD, s)
   return l.bottom.length === 0 && l.columns[0].stack.includes('routines') && l.columns[0].stack[0] === 'current'
 }))
 check('Training Program: main stops at 42rem (its cards are capped there)', [2, 3, 4].every(s => B.resolveBoardLayout(T.PROGRAM_BOARD, s).main === '42rem'))
-check('Training Progress: decisions + body map in main, summaries in the rail (1280–1920)', [2, 3].every(s => {
-  const l = B.resolveBoardLayout(T.PROGRESS_BOARD, s)
-  return eq(l.columns[0].stack, ['decisions', 'muscles']) && l.columns[1].stack[0] === 'improvement' && eq(l.bottom, ['charts'])
+check('Training Results: the three cards first on a phone, then the list, the details last', eq(T.RESULTS_BOARD[1], ['watch', 'lifts', 'sets', 'consistency', 'exercises', 'more']))
+check('Training Results (1280–1920): Main lifts over the list in main, Consistency first in the rail, the details band last', [2, 3].every(s => {
+  const l = B.resolveBoardLayout(T.RESULTS_BOARD, s)
+  return eq(l.columns[0].stack, ['lifts', 'exercises']) && l.columns[1].stack[0] === 'consistency' && l.columns.some(c => c.stack.includes('sets')) && eq(l.bottom, ['more'])
 }))
-check('Training Progress at 2450: table in main, body map across the next two tracks, summaries last', (() => {
-  const l = B.resolveBoardLayout(T.PROGRESS_BOARD, 4)
-  return eq(l.columns[0].stack, ['decisions']) && l.columns[0].span === 1 && eq(l.columns[1].stack, ['muscles']) && l.columns[1].span === 2
-    && eq(l.columns[2].stack, ['improvement', 'overview', 'recency']) && eq(l.bottom, ['charts'])
+check('Training Results at 2450: the list in main, each card its own track beside it', (() => {
+  const l = B.resolveBoardLayout(T.RESULTS_BOARD, 4)
+  return eq(l.columns.map(c => c.stack), [['exercises'], ['lifts'], ['consistency'], ['sets']]) && eq(l.bottom, ['more'])
 })())
-check('Training Progress: phone order unchanged', eq(T.PROGRESS_BOARD[1], ['improvement', 'overview', 'decisions', 'muscles', 'recency', 'charts']))
 
 // A section that can be empty (no data yet, nothing missed) must never sit
 // between two always-present cards: its empty track belongs at the far right.

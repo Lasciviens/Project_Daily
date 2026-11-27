@@ -139,7 +139,7 @@ const thinBar = (s) => /(^|[\s'"`])scroll-x\b/.test(s)
   // `.scroll-x` shows a thin bar with a mouse: kept only for chip and tab rows (and two non-rows).
   const THIN_BAR_OK = [
     'src/features/football/pages/FootballPage.tsx', 'src/features/projects/components/TableBlock.tsx', 'src/features/projects/components/SectionChips.tsx',
-    'src/features/training/components/RepRangeDistributionChart.tsx', 'src/features/training/components/StravaTab.tsx', 'src/features/training/progress/ExerciseDecisionTable.tsx',
+    'src/features/training/components/RepRangeDistributionChart.tsx', 'src/features/training/components/StravaTab.tsx', 'src/features/training/progress/ExerciseList.tsx',
     'src/features/training/pages/TrainingPage.tsx', 'src/features/recipes/components/IngredientList.tsx', 'src/features/recipes/components/MealPlanWeek.tsx',
     'src/features/recipes/components/LibraryTabFilters.tsx', 'src/features/recipes/components/CookMode.tsx', 'src/features/developer/components/MemoryTab.tsx',
     'src/features/developer/pages/DeveloperPage.tsx', 'src/features/media/components/LibraryView.tsx', 'src/features/media/components/stats/MediaStatsView.tsx',

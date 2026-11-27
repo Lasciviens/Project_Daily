@@ -4,14 +4,16 @@
  *
  * One fixed palette, not theme tokens: the diagram always sits on a dark stage
  * (bg-scrim) in both themes, and the light-theme tone values are too dark and
- * too close to each other there — after the restyle below-maintenance (cyan),
- * maintenance (teal) and optimal (green) looked alike and untrained grey was
+ * too close to each other there — after the restyle the low bands (cyan,
+ * teal) and green looked alike and untrained grey was
  * brighter than trained muscles. The bands are a category the user reads by
  * colour, so they stay literal in this one constant (THEME.md §2, identity
  * colours). Flags are violet so they never read as a status colour.
  */
 export const BODY_MAP_COLORS = {
-  bands: ['#4b5563', '#3b82f6', '#14b8a6', '#22c55e', '#f59e0b', '#ef4444'] as const,
+  // S18's bands (plan/volumeBands.ts): not trained, below minimum, low, target, high, very high — a cool-to-warm scale
+  // with no red or amber: no band is an error (27.11.2026).
+  bands: ['#4b5563', '#3b82f6', '#14b8a6', '#22c55e', '#a3e635', '#facc15'] as const,
   flag: { avoid: '#7c3aed', limit: '#a78bfa' },
   untrained: '#4b5563',
 } as const

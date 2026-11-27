@@ -6,16 +6,13 @@ import { Dumbbell } from 'lucide-react'
 import { useHevyExerciseTemplates } from '../hooks/useHevyExerciseTemplates'
 import { useRecentHevyWorkouts } from '../hooks/useHevyWorkouts'
 import { useMuscleVolume } from '../hooks/useMuscleVolume'
-import { useAthleteProfile, useAthleteLimitations } from '../hooks/useAthleteProfile'
+import { useAthleteLimitations } from '../hooks/useAthleteProfile'
 import { useBandColors } from './muscleBandColors'
 import { SectionLabel, SegmentedControl } from '../../../shared/ui'
 import { DateInput } from '../../../shared/components/DateInput'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { todayStr } from '../../../shared/utils/dateUtils'
-import {
-  MUSCLE_LANDMARKS, SIDE_SLUGS, labelForSlug, MAJOR_MUSCLES,
-  scaleLandmarksForExperience, EXPERIENCE_MULTIPLIER, restrictionsBySlug, type Landmarks,
-} from '../muscleMap'
+import { SIDE_SLUGS, labelForSlug, MAJOR_MUSCLES, restrictionsBySlug } from '../muscleMap'
 import {
   PRESETS, BAND_WORD, aggregateVolume, bandOf, buildTplById, buildVerdict, computeBalance, presetWindowIso, readMuscle, weeklyOf,
   type MuscleReadContext, type Period, type VolumeRow,
@@ -28,13 +25,14 @@ import { MuscleBalanceCard } from './muscles/MuscleBalanceCard'
 import { MuscleDetailCard } from './muscles/MuscleDetailCard'
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  "Worked muscles" — weekly HARD-SET VOLUME per muscle vs evidence-based
-//  landmarks (MV/MEV/MAV/MRV). Verdict-first for a non-expert (a plain
+//  "Worked muscles" — the body map: weekly HARD-SET VOLUME per muscle in S18's
+//  words (plan/volumeBands.ts, the same as Results' Weekly sets card; no band is
+//  an error, none is red). Verdict-first for a non-expert (a plain
 //  headline + up to 3 fixes), jargon in info bubbles, plus three cues a plain
 //  average destroys — FREQUENCY, TREND (vs the prior equal window) and DAYS
 //  SINCE trained. Measures VOLUME, not effort/recovery/growth.
 //  The math lives in muscles/muscleVolumeModel.ts on top of muscleMap.ts's
-//  shared band/landmark/restriction helpers (the ones Training Analysis and
+//  shared counting and restriction helpers (the ones Training Analysis and
 //  the AI coach read), so the screens can't disagree.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -81,12 +79,8 @@ export function WorkedMuscles() {
   const { data: recentWorkouts = [] } = useRecentHevyWorkouts()
   const lastAt = recentWorkouts[0]?.start_time ?? recentWorkouts[0]?.hevy_created_at ?? null
 
-  // Experience level scales MEV/MRV (a no-op when unset). Limitations are
-  // active-only; restrictionsBySlug applies the shared rule (monitor flags
-  // nothing, free-text patterns resolved, worst case wins).
-  const { data: athleteProfile } = useAthleteProfile()
-  const experienceLevel = athleteProfile?.experience_level ?? null
-  const isExperienceAdjusted = experienceLevel != null && EXPERIENCE_MULTIPLIER[experienceLevel] !== 1
+  // Limitations are active-only; restrictionsBySlug applies the shared rule (monitor flags nothing, free-text
+  // patterns resolved, worst case wins).
   const { data: limitations = [] } = useAthleteLimitations(true)
   const restrictions = useMemo(() => restrictionsBySlug(limitations), [limitations])
 
@@ -107,14 +101,8 @@ export function WorkedMuscles() {
     priorPerSlug: prior.perSlug,
     weeks,
     today: anchorDay,
-    // Every band and landmark number reads MUSCLE_LANDMARKS through here, so
-    // the diagram colour and a muscle's own info bubble always agree.
-    landmarksFor: (slug: string): Landmarks | undefined => {
-      const L0 = MUSCLE_LANDMARKS[slug]
-      return L0 ? scaleLandmarksForExperience(L0, experienceLevel) : undefined
-    },
     restrictions,
-  }), [current.perSlug, prior.perSlug, weeks, anchorDay, experienceLevel, restrictions])
+  }), [current.perSlug, prior.perSlug, weeks, anchorDay, restrictions])
 
   const bodyData = useMemo<ExtendedBodyPart[]>(() => {
     // A flagged muscle is shown even at 0 sets — the flag itself is the point.
@@ -190,7 +178,7 @@ export function WorkedMuscles() {
           />
           <span className="flex items-center gap-1 text-meta text-fg-muted">
             sets / week
-            <InfoBubble><p>Everything is shown as <strong>sets per week</strong>: credited sets in the {windowDays}-day window ÷ {weeks.toFixed(1)} weeks, so it lines up with the weekly landmarks.</p></InfoBubble>
+            <InfoBubble><p>Everything is shown as <strong>sets per week</strong>: credited sets in the {windowDays}-day window ÷ {weeks.toFixed(1)} weeks, so it lines up with the weekly ranges (under 4 below minimum · 4–9 low, still works · 10–20 target · 21–30 high · over 30 very high).</p></InfoBubble>
           </span>
         </div>
 
@@ -215,8 +203,8 @@ export function WorkedMuscles() {
             : workoutCount > 0
               ? <>
                   <strong className="tabular-nums text-fg">{workoutCount}</strong> workout{workoutCount !== 1 ? 's' : ''} · {windowLabel} ·
-                  {' '}<strong data-tone="success" className="tone-text tabular-nums">{buckets.inGrowth}</strong> in growth range · <span className="tabular-nums">{buckets.close} close</span> · <span data-tone="warn" className="tone-text tabular-nums">{buckets.needWork} need work</span>
-                  <InfoBubble><p>Of the {buckets.inGrowth + buckets.close + buckets.needWork} major muscle groups: <strong>in growth range</strong> = at/above the growth-minimum (MEV); <strong>close</strong> = maintenance, just under; <strong>need work</strong> = below or untrained. Not everyone needs all in range at once. ({totalWorkingSets} working sets total.)</p></InfoBubble>
+                  {' '}<strong data-tone="success" className="tone-text tabular-nums">{buckets.inGrowth}</strong> at target or above · <span className="tabular-nums">{buckets.close} low</span> · <span className="tabular-nums">{buckets.needWork} below minimum</span>
+                  <InfoBubble><p>Of the {buckets.inGrowth + buckets.close + buckets.needWork} main muscle groups: <strong>at target or above</strong> = 10+ hard sets a week; <strong>low</strong> = 4–9, which still builds muscle; <strong>below minimum</strong> = under 4, or not trained. Not everyone needs all at target at once. ({totalWorkingSets} working sets total.)</p></InfoBubble>
                 </>
               : `No workouts logged ${windowLabel}.`}
         </p>
@@ -231,7 +219,7 @@ export function WorkedMuscles() {
                 <button key={m.slug} type="button" onClick={() => toggle(m.slug)} aria-pressed={selected.has(m.slug)}
                   className="pill-tab gap-1.5 border border-line px-3 text-meta aria-pressed:border-transparent">
                   <span className="h-2 w-2 rounded-full" style={{ backgroundColor: bandColors.bands[m.band] }} />
-                  {labelForSlug(m.slug)} · {m.wk.toFixed(1)}/wk · {BAND_WORD[m.band]}
+                  {labelForSlug(m.slug)} · {Math.round(m.wk)}/wk · {BAND_WORD[m.band]}
                 </button>
               ))}
             </div>
@@ -247,7 +235,6 @@ export function WorkedMuscles() {
                 read={readMuscle(ctx, slug)}
                 windowDays={windowDays}
                 priorHasData={priorHasData}
-                isExperienceAdjusted={isExperienceAdjusted}
               />
             ))}
           </div>

@@ -13,7 +13,7 @@ export function MuscleVerdictBanner({ verdict }: { verdict: Verdict }) {
         <Target className="h-4 w-4 shrink-0 text-fg-muted" aria-hidden />{verdict.headline}
         <InfoBubble>
           <p className="mb-1 font-semibold text-fg">How this is judged</p>
-          <p>Each muscle's weekly hard working sets are compared to typical growth landmarks (MEV–MAV–MRV). This measures <strong>volume only</strong> — not how hard you pushed each set, nor recovery. Landmarks are population guidance (±several sets), not personalised targets.</p>
+          <p>Each muscle's weekly hard working sets, in words: under 4 below minimum · 4–9 low, still works · 10–20 target · 21–30 high · over 30 very high. Only a muscle below the minimum gets a line here — none of the ranges is an error. This measures <strong>volume only</strong> — not how hard you pushed each set, nor recovery.</p>
         </InfoBubble>
       </p>
       {verdict.bullets.length > 0 && (
