@@ -335,7 +335,7 @@ export async function undoPlanSkip(s: { taskId?: string | null; skipId?: string 
 // ── Moving the rest of the cycle (213, the owner's tap) ──────────────────────
 
 /** One session a move changed, as the database answered it. */
-export interface ShiftMove { task: string; title: string; from: string; to: string }
+export interface ShiftMove { task: string; title: string; from: string; to: string; workout?: string | null }
 
 /** Moves the anchor's cycle `days` later (a missed day) or earlier (done early) in the data — tasks and their slots,
  *  in one call (training_shift_sessions checks the same as sessionState.shiftOffer and refuses with its reason). */
@@ -350,7 +350,7 @@ export async function shiftTrainingSessions(anchorTaskId: string, days: number):
 
 /** Undo of a move: each session back on its day while it still reads the moved day. Answers how many moved back. */
 export async function undoTrainingShift(moves: readonly ShiftMove[]): Promise<number> {
-  const { data, error } = await supabase.rpc('training_shift_undo', { p_moves: moves.map(m => ({ task: m.task, from: m.from, to: m.to })) })
+  const { data, error } = await supabase.rpc('training_shift_undo', { p_moves: moves.map(m => ({ task: m.task, from: m.from, to: m.to, workout: m.workout ?? null })) })
   if (error) throw isMissingRpc(error) ? new Error('migration 213 not applied') : error
   drainICloudSoon()
   return typeof data === 'number' ? data : 0

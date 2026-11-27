@@ -367,8 +367,10 @@ create trigger trg_tasks_workout_owner
 --     and every session of the current program still to do in its cycle (its day and the six after) move p_days later,
 --     the gaps between them kept; a session on a day one of them lands on moves too (the cycle rolls on, also into the
 --     next week, at most 27 days from the anchor).
---   p_days < 0 (Pull): p_anchor was done early by its workout, exactly -p_days days early; the sessions still to do in
---     the six days after it move as many days earlier — never onto a day already past.
+--   p_days < 0 (Pull): p_anchor was done early by its workout, exactly -p_days days early; it moves to the day it was
+--     done, and the sessions still to do in the six days after it move as many days earlier — never onto a day already
+--     past.
+-- A move that would take a session 7 or more days from its first day is refused (167 would skip it there instead).
 -- Never two sessions on one day: a day a session would land on that holds a session done, or one that isn't moving,
 -- refuses the whole move (nothing changes). A day of a weekly plan is made a session of its own first (142's split,
 -- item_occurrence), as the app's Move does. SECURITY INVOKER: row security and every query's own-user filter decide;
@@ -395,6 +397,8 @@ declare
   i         int;
 begin
   if v_user is null then raise exception 'Sign in first' using errcode = '42501'; end if;
+  -- One move (or Undo) at a time per account: two taps never interleave.
+  perform pg_advisory_xact_lock(hashtext(v_user::text));
   if p_anchor is null or p_days is null or p_days = 0 or p_days < -6 or p_days > 14 then
     raise exception 'A move is 1–14 days later or 1–6 days earlier' using errcode = '22023';
   end if;
@@ -425,6 +429,8 @@ begin
     if a.status <> 'done' or v_wday is null or v_wday - d0 <> p_days then
       raise exception 'This session was not done that many days early' using errcode = '22023';
     end if;
+    -- The anchor goes to the day it was done (one truth: never two sessions on one day).
+    v_ids := array[a.id]; v_from := array[d0]; v_targets := array[v_wday];
   end if;
 
   -- The sessions that move, day by day: the program's sessions still to do (a weekly plan's day from today on made a
@@ -459,13 +465,19 @@ begin
     d := d + 1;
   end loop;
 
-  if p_days < 0 and cardinality(v_ids) = 0 then
+  if p_days < 0 and cardinality(v_ids) = 1 then
     raise exception 'Nothing to pull earlier' using errcode = '22023';
   end if;
-  -- Never two sessions on one day, never onto a day already past (pulling earlier).
+  -- Never two sessions on one day, never onto a day already past (pulling earlier, the anchor aside: it goes to the
+  -- day it was done), never 7 or more days after a session's first day (167 would skip it there and move that week's
+  -- session instead — not what a Move says).
   for i in 1 .. cardinality(v_ids) loop
-    if p_days < 0 and v_targets[i] < v_today then
+    if p_days < 0 and i > 1 and v_targets[i] < v_today then
       raise exception 'A session would land on a day already past' using errcode = '22023';
+    end if;
+    if v_targets[i] >= coalesce((select t.first_plan_date from public.tasks t where t.id = v_ids[i] and t.user_id = v_user), v_from[i]) + 7 then
+      raise exception '% would move 7 or more days from its first day — move it on its own', coalesce((select t.title from public.tasks t where t.id = v_ids[i]), 'A session')
+        using errcode = '22023';
     end if;
     if exists (select 1 from public.tasks t
                 where t.user_id = v_user and t.id <> all(v_ids) and t.id <> a.id and t.status <> 'cancelled'
@@ -476,17 +488,23 @@ begin
   end loop;
 
   -- Move each by its slot (142 moves the task along), else its day (166 splits a repeat's day moved without one);
-  -- the last first, so a session never passes over another.
-  for i in reverse cardinality(v_ids) .. 1 loop
-    if exists (select 1 from public.time_blocks b where b.task_id = v_ids[i] and b.user_id = v_user) then
-      update public.time_blocks set date = date + p_days where task_id = v_ids[i] and user_id = v_user;
-    else
-      update public.tasks set due_date = due_date + p_days where id = v_ids[i] and user_id = v_user;
-    end if;
-  end loop;
-  -- What moved, as it reads now (167's rules may have answered a move past its week).
+  -- the last first moving later, the first first moving earlier, so a session never passes over another.
   for i in 1 .. cardinality(v_ids) loop
-    select v_moves || jsonb_build_object('task', t.id, 'title', t.title, 'from', v_from[i],
+    declare
+      k   int := case when p_days > 0 then cardinality(v_ids) + 1 - i else i end;
+      by_ int := v_targets[k] - v_from[k];
+    begin
+      if exists (select 1 from public.time_blocks b where b.task_id = v_ids[k] and b.user_id = v_user) then
+        update public.time_blocks set date = date + by_ where task_id = v_ids[k] and user_id = v_user;
+      else
+        update public.tasks set due_date = due_date + by_ where id = v_ids[k] and user_id = v_user;
+      end if;
+    end;
+  end loop;
+  -- What moved, as it reads now, with the workout each held (Undo moves a session back only while it still holds the
+  -- same one).
+  for i in 1 .. cardinality(v_ids) loop
+    select v_moves || jsonb_build_object('task', t.id, 'title', t.title, 'from', v_from[i], 'workout', t.hevy_workout_id,
              'to', coalesce((select min(b.date) from public.time_blocks b where b.task_id = t.id and b.user_id = v_user), t.due_date))
       into v_moves
       from public.tasks t where t.id = v_ids[i] and t.user_id = v_user;
@@ -498,7 +516,9 @@ revoke all on function public.training_shift_sessions(uuid, integer, date) from 
 grant execute on function public.training_shift_sessions(uuid, integer, date) to authenticated;
 
 -- Undo of a move: each session back from `to` to `from` — only the caller's training sessions, only one that still
--- reads `to` (a second Undo, or a session moved again since, changes nothing), at most 30, a day within 27 days.
+-- reads `to` and holds the workout it held then (a second Undo, a session moved again or done since, changes nothing),
+-- never onto a day another session now holds; at most 30, a day within 27 days. A weekly plan's day the move split
+-- stays a session of its own (on its old day again: the same on every screen).
 create or replace function public.training_shift_undo(p_moves jsonb)
 returns integer
 language plpgsql
@@ -515,20 +535,38 @@ declare
   n      int := 0;
 begin
   if v_user is null then raise exception 'Sign in first' using errcode = '42501'; end if;
+  perform pg_advisory_xact_lock(hashtext(v_user::text));
   if p_moves is null or jsonb_typeof(p_moves) <> 'array' or jsonb_array_length(p_moves) > 30 then
     raise exception 'Undo takes the list a move answered' using errcode = '22023';
   end if;
+  -- Check every element first; then move them back from the end that frees a day first (the last first when they
+  -- go back later, the first first when they go back earlier), so a session never lands where another still waits.
   for m in select x from jsonb_array_elements(p_moves) x loop
     if jsonb_typeof(m) <> 'object' or coalesce(m ->> 'task', '') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-       or coalesce(m ->> 'from', '') !~ '^\d{4}-\d{2}-\d{2}$' or coalesce(m ->> 'to', '') !~ '^\d{4}-\d{2}-\d{2}$' then
+       or coalesce(m ->> 'from', '') !~ '^\d{4}-\d{2}-\d{2}$' or coalesce(m ->> 'to', '') !~ '^\d{4}-\d{2}-\d{2}$'
+       or (m ? 'workout' and jsonb_typeof(m -> 'workout') not in ('string', 'null')) then
       raise exception 'Undo takes the list a move answered' using errcode = '22023';
     end if;
+    if abs((m ->> 'to')::date - (m ->> 'from')::date) > 27 then raise exception 'Undo takes the list a move answered' using errcode = '22023'; end if;
+  end loop;
+  for m in
+    select x from jsonb_array_elements(p_moves) x
+     order by case when (x ->> 'from')::date > (x ->> 'to')::date then -((x ->> 'to')::date - date '2000-01-01')
+                   else (x ->> 'to')::date - date '2000-01-01' end
+  loop
     v_task := (m ->> 'task')::uuid; v_from := (m ->> 'from')::date; v_to := (m ->> 'to')::date;
-    if abs(v_to - v_from) > 27 then raise exception 'Undo takes the list a move answered' using errcode = '22023'; end if;
+    -- Only a session that still reads `to` and holds the workout it held when it moved (one done since stays where it
+    -- was done), and never onto a day another session of the account now holds.
     select coalesce((select min(b.date) from public.time_blocks b where b.task_id = t.id and b.user_id = v_user), t.due_date) into v_now
       from public.tasks t
-     where t.id = v_task and t.user_id = v_user and (t.hevy_routine_id is not null or t.source_type = 'training_session');
+     where t.id = v_task and t.user_id = v_user and (t.hevy_routine_id is not null or t.source_type = 'training_session')
+       and t.hevy_workout_id is not distinct from (m ->> 'workout');
     continue when v_now is distinct from v_to or v_from = v_to;
+    continue when exists (
+      select 1 from public.tasks o
+       where o.user_id = v_user and o.id <> v_task and o.status <> 'cancelled'
+         and (o.hevy_routine_id is not null or o.source_type = 'training_session')
+         and coalesce((select min(b.date) from public.time_blocks b where b.task_id = o.id and b.user_id = v_user), o.due_date) = v_from);
     if exists (select 1 from public.time_blocks b where b.task_id = v_task and b.user_id = v_user) then
       update public.time_blocks set date = date + (v_from - v_to) where task_id = v_task and user_id = v_user;
     else

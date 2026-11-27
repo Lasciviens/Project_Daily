@@ -333,6 +333,27 @@ eq(S.weekStartOf('2026-03-29'), '2026-03-23', 'across the DST change')
     eq(S.shiftOfferWords(w.offer).question, 'Upper A done a day early — pull the rest one day earlier?', 'the Pull question')
     eq(S.shiftResultLine(['Lower A', 'Upper B'], -1), 'Moved Lower A, Upper B one day earlier', 'the result line, from what the database answered')
   }
+  // Pull is offered while every session still lands today or later — also the day after the early workout.
+  {
+    const s = at('2026-11-24')
+    const w = week('2026-11-24', [s('ua', '2026-11-25', { taskStatus: 'done', taskWorkoutId: 'w1' }, { workoutDate: '2026-11-23' }), s('la', '2026-11-26'), s('ub', '2026-11-28')])
+    eq([w.offer?.days, w.offer?.moving.map(m => m.routineId)], [-2, ['la', 'ub']], 'done 2 days early yesterday: Pull still offered (Lower A lands today)')
+    const late = week('2026-11-25', [at('2026-11-25')('ua', '2026-11-25', { taskStatus: 'done', taskWorkoutId: 'w1' }, { workoutDate: '2026-11-23' }), at('2026-11-25')('la', '2026-11-26')])
+    eq(late.offer, null, 'no Pull once a session would land on a day already past')
+  }
+  // Pull counts the anchor: it goes to its workout's day — a session that isn't moving there means no offer.
+  {
+    const s = at('2026-11-23')
+    const w = week('2026-11-23', [s('ua', '2026-11-24', { taskStatus: 'done', taskWorkoutId: 'w1' }, { workoutDate: '2026-11-23' }),
+      s('lb', '2026-11-23', {}, { taskId: null, routineId: 'lb' }), s('la', '2026-11-26')])
+    eq(w.offer?.days ?? null, null, 'Pull would put Upper A on a day Lower B still holds: no offer (never two on one day)')
+  }
+  // Never 7 or more days from a session's first day (167 would skip it there): no Move then.
+  {
+    const s = at('2026-11-27')
+    const w = week('2026-11-27', [s('la', '2026-11-21', {}, {}), s('ub', '2026-11-23', { firstDate: '2026-11-22' }, { firstDate: '2026-11-22' })])
+    eq(w.offer, null, 'a Move that would take Upper B 7 days from its first day is not offered')
+  }
   // Skipped over: a later session of the week was done first — no Move then.
   {
     const s = at('2026-11-25')

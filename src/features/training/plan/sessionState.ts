@@ -330,6 +330,8 @@ export interface WeekSessionInput {
   insteadTitle?: string | null
   /** Its task (the database's id) — what a move names. */
   taskId?: string | null
+  /** Its task's first day (167); a move never takes it 7 or more days from it. */
+  firstDate?: string | null
 }
 
 export interface WeekSession extends WeekSessionInput {
@@ -346,7 +348,7 @@ export interface ShiftOffer {
   days: number
   /** The session the move starts from (its task is what the database is given). */
   anchor: WeekSession
-  /** The sessions of the week that would move, in day order. */
+  /** The sessions still to do that would move, in day order (a Pull also takes the anchor to the day it was done). */
   moving: WeekSession[]
 }
 
@@ -409,10 +411,11 @@ function shiftOfferOf(sessions: readonly WeekSession[], ctx: { today: string; tr
   // A weekly plan's day with no task yet moves too (the database splits it first); the anchor needs its task.
   const inProgram = (s: WeekSession) => !!s.routineId && (!ctx.program || ctx.program.includes(s.routineId))
   const toDo = (s: WeekSession) => STILL_TO_DO.has(s.status.state)
-  const fits = (moving: WeekSession[], days: number, anchor: WeekSession) => moving.every(m => {
-    const to = shiftDay(m.date, days)
-    return !sessions.some(o => o !== anchor && !moving.includes(o) && o.date === to && o.status.state !== 'skipped')
-  })
+  // Each session that moves, with the day it lands on. Never two on one day (a session there that isn't moving and
+  // isn't skipped), never 7 or more days from its first day (167 would skip it there — the database refuses too).
+  const fits = (moves: readonly { s: WeekSession; to: string }[]) => moves.every(({ s, to }) =>
+    to < shiftDay(s.firstDate ?? s.date, 7)
+    && !sessions.some(o => !moves.some(m => m.s === o) && o.date === to && o.status.state !== 'skipped'))
   const missed = sessions.filter(s => inProgram(s) && !!s.taskId && toDo(s) && s.date < ctx.today && !s.skippedOver)
     .sort((a, b) => a.date.localeCompare(b.date))[0]
   if (missed) {
@@ -420,15 +423,21 @@ function shiftOfferOf(sessions: readonly WeekSession[], ctx: { today: string; tr
     const end = shiftDay(missed.date, CYCLE_DAYS)
     const moving = sessions.filter(s => inProgram(s) && toDo(s) && s.date >= missed.date && s.date <= end)
       .sort((a, b) => a.date.localeCompare(b.date))
-    if (days >= 1 && days <= 14 && fits(moving, days, missed)) return { days, anchor: missed, moving }
+    if (days >= 1 && days <= 14 && fits(moving.map(m => ({ s: m, to: shiftDay(m.date, days) })))) return { days, anchor: missed, moving }
   }
-  const early = sessions.find(s => inProgram(s) && !!s.taskId && s.status.state === 'done' && s.workoutDate === ctx.today && (s.shift ?? 0) < 0)
-  if (early && early.shift != null && early.shift >= -6) {
+  // Pull: the latest session done early by its workout; it goes to the day it was done, the rest as many days earlier
+  // — offered while every one of them still lands today or later.
+  const early = sessions
+    .filter(s => inProgram(s) && !!s.taskId && s.status.state === 'done' && !!s.workoutDate && (s.shift ?? 0) < 0 && (s.shift ?? 0) >= -6)
+    .sort((a, b) => (b.workoutDate ?? '').localeCompare(a.workoutDate ?? ''))[0]
+  if (early && early.shift != null && early.workoutDate) {
+    const days = early.shift
     const end = shiftDay(early.date, CYCLE_DAYS)
     const moving = sessions.filter(s => inProgram(s) && toDo(s) && s.date > early.date && s.date <= end)
       .sort((a, b) => a.date.localeCompare(b.date))
-    if (moving.length > 0 && moving.every(m => shiftDay(m.date, early.shift!) >= ctx.today) && fits(moving, early.shift, early)) {
-      return { days: early.shift, anchor: early, moving }
+    const moves = [{ s: early, to: early.workoutDate }, ...moving.map(m => ({ s: m, to: shiftDay(m.date, days) }))]
+    if (moving.length > 0 && moving.every(m => shiftDay(m.date, days) >= ctx.today) && fits(moves)) {
+      return { days, anchor: early, moving }
     }
   }
   return null
@@ -450,7 +459,7 @@ export function shiftOfferWords(o: ShiftOffer): { question: string; button: stri
   return {
     question: `${o.anchor.title} done ${dayWord(o.days).replace('one day', 'a day')} early — pull the rest ${dayWord(o.days)} earlier?`,
     button: 'Pull',
-    tip: `Pull ${o.moving.map(m => m.title).join(', ')} ${dayWord(o.days)} earlier`,
+    tip: `Pull ${o.anchor.title} to ${formatWeekdayDate(o.anchor.workoutDate ?? o.anchor.date)} and ${o.moving.map(m => m.title).join(', ')} ${dayWord(o.days)} earlier`,
   }
 }
 

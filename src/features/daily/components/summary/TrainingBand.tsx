@@ -196,8 +196,8 @@ export function TrainingBand({ date }: { date: string }) {
           </StatBox>
         </div>
       </div>
-      {/* The day's week, session by session (the strip Training's Next and Log show). */}
-      <ThisWeekStrip date={date} where="daily" className="mt-1" />
+      {/* The day's week, session by session (the strip Training's Next and Log show) — under the box that names the week. */}
+      <ThisWeekStrip date={date} where="daily" heading={false} className="mt-1" />
     </Cell>
   )
 }

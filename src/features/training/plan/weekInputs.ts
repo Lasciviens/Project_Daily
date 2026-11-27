@@ -3,7 +3,7 @@
 // builder for the This week strip (useTrainingWeek) and the coach's MISSED line (coachData), so the two never
 // disagree (scripts/verify-training-session.cjs).
 
-import { matchDaySessions, planRoutineId, planStartHHMM } from '../components/calendar/calendarSessions'
+import { matchDaySessions, planRoutineId, planStartHHMM, planTaskOf } from '../components/calendar/calendarSessions'
 import { planWeek, sessionStatus, type TrainingWeek, type WeekSessionInput } from './sessionState'
 import { workoutLocalDay } from '../workoutDates'
 import { trainingProgramOrder } from './nextRule'
@@ -63,7 +63,8 @@ export function buildTrainingWeek(input: {
       const key = `${plan.id}@${d}`
       planOf.set(key, plan)
       const taskId = plan.timeBlock?.task_id ?? plan.dayTask?.id ?? null
-      inputs.push({ key, title: (routineId && titleOf.get(routineId)) || plan.title, routineId, date: d, taskId, ...rest })
+      const firstDate = planTaskOf(plan)?.firstDate ?? null
+      inputs.push({ key, title: (routineId && titleOf.get(routineId)) || plan.title, routineId, date: d, taskId, firstDate, ...rest })
     }
     for (const s of day.sessions) {
       for (const plan of s.plans) add(plan, { status: sessionStatus({ date: d, taskStatus: 'done', taskWorkoutId: s.workout.id, today }), workoutDate: d })

@@ -304,8 +304,15 @@ select t_ok(t_linked(t_p(920)) = 't6', 'T6 Upper A done today, a day early (213'
 set role authenticated;
 insert into public.t_moves values ('t6', public.training_shift_sessions(t_p(920), -1, t_d(0)));
 reset role;
-select t_ok(t_day(t_p(920)) = t_d(1) and t_day(t_p(921)) = t_d(1) and t_day(t_p(922)) = t_d(3),
-  'T6 Pull: the open sessions after it move one day earlier (+2, +4 → +1, +3), the done one stays');
+select t_ok(t_day(t_p(920)) = t_d(0) and t_day(t_p(921)) = t_d(1) and t_day(t_p(922)) = t_d(3)
+        and t_linked(t_p(920)) = 't6' and (t_task(t_p(920))).status = 'done'
+        and jsonb_array_length((select v -> 'moves' from public.t_moves where k = 't6')) = 3,
+  'T6 Pull: the done one moves to the day it was done (+1 → 0), the rest one day earlier (+2, +4 → +1, +3) — never two on one day');
+set role authenticated;
+select t_ok(public.training_shift_undo((select v -> 'moves' from public.t_moves where k = 't6')) = 3
+        and t_day(t_p(920)) = t_d(1) and t_day(t_p(921)) = t_d(2) and t_day(t_p(922)) = t_d(4) and t_linked(t_p(920)) = 't6',
+  'T6 Undo of a Pull puts the done session back on its planned day too, still done by its workout');
+reset role;
 set role authenticated;
 select t_ok(t_refused($$select public.training_shift_sessions(public.t_p(920), -2, public.t_d(0))$$) like '22023%',
   'T6 a pull of another size than how early it was done is refused');
@@ -322,6 +329,33 @@ select t_ok(t_refused($$select public.training_shift_sessions(public.t_p(930), 1
   'T7 a done session on the day it would land: refused, nothing moves');
 select t_ok(t_refused($$select public.training_shift_sessions(public.t_p(930), 3, public.t_d(0))$$) like '22023%',
   'T7 never later than tomorrow (today when it is free)');
+reset role;
+select t_clear();
+
+-- T8 never 7 or more days from a session's first day (167 would skip it there instead): refused, nothing moves.
+select t_clear();
+select t_plan(940, 'la', t_d(-6));
+select t_plan(941, 'lb', t_d(-5));
+update public.tasks set due_date = t_d(-4) where id = t_p(941);
+set role authenticated;
+select t_ok(t_refused($$select public.training_shift_sessions(public.t_p(940), 6, public.t_d(0))$$) like '22023%'
+        and t_day(t_p(940)) = t_d(-6) and t_day(t_p(941)) = t_d(-4),
+  'T8 a Move taking Lower B (first day −5, now −4) to +2 — 7 days from its first day — is refused, nothing moves');
+reset role;
+
+-- T9 Undo leaves a session done since the move where it was done, and never lands on a day another session holds.
+select t_clear();
+select t_plan(950, 'la', t_d(-1));
+select t_plan(951, 'ub', t_d(1));
+set role authenticated;
+insert into public.t_moves values ('t9', public.training_shift_sessions(t_p(950), 1, t_d(0)));
+reset role;
+select t_work('t9', 'la', t_d(0), '07:00');
+select t_plan(952, 'lb', t_d(1));
+set role authenticated;
+select t_ok(public.training_shift_undo((select v -> 'moves' from public.t_moves where k = 't9')) = 0
+        and t_day(t_p(950)) = t_d(0) and t_linked(t_p(950)) = 't9' and t_day(t_p(951)) = t_d(2),
+  'T9 Undo: Lower A, done since on its new day, stays; Upper B stays too — another session now sits on its old day');
 reset role;
 select t_clear();
 

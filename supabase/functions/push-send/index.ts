@@ -90,7 +90,7 @@ async function nextTrainingFor(userId: string, today: string): Promise<(NextCand
       .eq('user_id', userId).eq('category', 'training'),
     supabase.from('hevy_routines').select('id, title').eq('user_id', userId),
   ])
-  if (tasks.error || templates.error) throw tasks.error ?? templates.error
+  if (tasks.error || templates.error || routines.error) throw tasks.error ?? templates.error ?? routines.error
   const rs = ((routines.data ?? []) as AnyRecord[]).map(r => ({ id: String(r.id), title: String(r.title ?? '') }))
   const byTitle = new Map(rs.map(r => [r.title.trim().toLowerCase(), r.id]))
   const tpl = (templates.data ?? []) as AnyRecord[] as Parameters<typeof trainingCandidatesFrom>[0]['templates']

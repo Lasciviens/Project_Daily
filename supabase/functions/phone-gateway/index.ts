@@ -698,7 +698,8 @@ async function buildPhoneBrief(userId: string): Promise<string> {
     // The app's "next" (training/plan/nextRule.ts, mirrored below): a session whose day has come first — a missed one
     // still counting before today's — then the later ones by day.
     const pick = await nextTrainingFor(userId, today)
-    if (pick && pick.date <= today) trainingToday = { title: pick.title, startTime: pick.startTime }
+    // A missed session still open is today's training, but never with its own (past) day's time.
+    if (pick && pick.date <= today) trainingToday = { title: pick.title, startTime: pick.date === today ? pick.startTime : null }
     const next = pick && pick.date > today ? pick : null
     const weekAt = oslo00(mondayOfDay(today))
     const [hevyWeek, stravaWeek, lastHevy, profile] = await Promise.all([
@@ -755,7 +756,7 @@ async function nextTrainingFor(userId: string, today: string): Promise<(NextCand
       .eq('user_id', userId).eq('category', 'training'),
     supabase.from('hevy_routines').select('id, title').eq('user_id', userId),
   ])
-  if (tasks.error || templates.error) throw tasks.error ?? templates.error
+  if (tasks.error || templates.error || routines.error) throw tasks.error ?? templates.error ?? routines.error
   const rs = ((routines.data ?? []) as AnyRecord[]).map(r => ({ id: String(r.id), title: String(r.title ?? '') }))
   const byTitle = new Map(rs.map(r => [r.title.trim().toLowerCase(), r.id]))
   const tpl = (templates.data ?? []) as AnyRecord[] as Parameters<typeof trainingCandidatesFrom>[0]['templates']

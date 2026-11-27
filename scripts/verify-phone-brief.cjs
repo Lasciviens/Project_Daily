@@ -125,7 +125,7 @@ const tables = (over = {}) => structuredClone({
     const own = db.tasks.filter(t => t.user_id === 'owner' && (t.hevy_routine_id || t.source_type === 'training_session'))
       .map(t => ({ ...t, blocks: db.time_blocks.filter(b => b.task_id === t.id) }))
     const pick = NEXT.pickNextCandidate(NEXT.trainingCandidatesFrom({ today: TODAY, to: '2026-12-02', isOpen: st => isOpenTask({ status: st }), tasks: own, templates: [], routines: db.hevy_routines ?? [] }), [], TODAY)
-    const todayBlock = pick && pick.date <= TODAY ? { title: pick.title, start_time: `${pick.startTime}:00` } : null
+    const todayBlock = pick && pick.date <= TODAY ? { title: pick.title, start_time: pick.date === TODAY && pick.startTime ? `${pick.startTime}:00` : null } : null
     const next = pick && pick.date > TODAY ? pick : null
     const timed = db.time_blocks.filter(b => b.date === TODAY && b.start_time && b.task?.status !== 'cancelled')
     const hour = 11
@@ -141,7 +141,7 @@ const tables = (over = {}) => structuredClone({
       failedReads: [],
       schedule: { next: first ? { title: first.title, startLabel: first.start_time.slice(0, 5), startHour: Number(first.start_time.slice(0, 2)) + Number(first.start_time.slice(3, 5)) / 60, inProgress: Number(first.start_time.slice(0, 2)) + Number(first.start_time.slice(3, 5)) / 60 <= hour } : null, remainingCount: ahead.length },
       training: {
-        today: todayBlock ? { title: todayBlock.title, startTime: todayBlock.start_time.slice(0, 5) } : null,
+        today: todayBlock ? { title: todayBlock.title, startTime: todayBlock.start_time ? todayBlock.start_time.slice(0, 5) : null } : null,
         next: next && !todayBlock ? { title: next.title, date: next.date, dayLabel: 'Friday' } : null,
         daysSinceLastWorkout: last ? Math.round((Date.parse(`${TODAY}T12:00:00Z`) - Date.parse(`${new Date(last.start_time).toLocaleDateString('en-CA')}T12:00:00Z`)) / 86_400_000) : null, weekSessions: last || week > 0 ? week : null, weekTarget: db.athlete_profile[0]?.training_days_per_week ?? null,
       },
@@ -173,7 +173,7 @@ const tables = (over = {}) => structuredClone({
   const missed = tables(); missed.tasks.push(task('Lower A', { due_date: '2026-11-17', due_time: '18:00:00', hevy_routine_id: 'la', source_type: 'training_session', first_plan_date: '2026-11-17' }))
   missed.hevy_routines.push({ user_id: 'owner', id: 'la', title: 'Lower A' })
   text = await compare('a missed session yesterday', missed)
-  check('…the missed Lower A (still open in its week) is today\'s training on the phone, as in the app', /Training today at 18:00: Lower A/.test(text), text)
+  check('…the missed Lower A (still open in its week) is today\'s training on the phone, as in the app — without yesterday\'s time', /Training today: Lower A/.test(text) && !/Training today at 18:00: Lower A/.test(text), text)
   text = await compare('a long break', late)
   check('…eight days since the last workout is said, with no sessions this week', /8 days since your last workout/.test(text), text)
   // The gateway reads only the owner's rows.

@@ -21,6 +21,8 @@ import { NextReadsAhead } from './NextReadsAhead'
 
 function whenText(date: string, startTime: string | null, today: string): string {
   const d = daysBetween(today, date)
+  // A missed session still open reads as Daily's does: "Open since Thu 26.11.2026" (never its past time).
+  if (d < 0) return `Open since ${formatWeekdayDate(date)}`
   const day = d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : formatWeekdayDate(date, 'long')
   return startTime ? `${day} · ${startTime}` : day
 }

@@ -62,7 +62,8 @@ function ShiftOfferLine({ offer }: { offer: ShiftOffer }) {
 }
 
 /** The week of `date` (today's by default) as chips. `where`: where it is shown, for the room it keeps while it loads. */
-export function ThisWeekStrip({ date, where, className }: { date?: string; where: string; className?: string }) {
+/** `heading={false}`: a card that names the week itself (Daily's "This week" box) shows only the chips. */
+export function ThisWeekStrip({ date, where, className, heading = true }: { date?: string; where: string; className?: string; heading?: boolean }) {
   const { week, planOf, isLoading, isError } = useTrainingWeek(date)
   const today = useTodayStr()
   const thisWeek = week.monday === mondayOfStr(today)
@@ -72,7 +73,7 @@ export function ThisWeekStrip({ date, where, className }: { date?: string; where
       skeleton={<Skeleton rounded="rounded-card" className="h-14 w-full" />}>
       {week.sessions.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <p className="section-label flex items-center gap-1.5">
+          {heading && <p className="section-label flex items-center gap-1.5">
             {label}
             <InfoBubble>
               Your planned sessions, on the days they are planned. A workout counts as its session from <b>2 days early</b>
@@ -81,7 +82,7 @@ export function ThisWeekStrip({ date, where, className }: { date?: string; where
               passed undone, or a session was done early, you can move the rest of the cycle later or earlier, the rest
               days kept — only when you tap it, with Undo. A missed session never lowers your progress.
             </InfoBubble>
-          </p>
+          </p>}
           <ul className="flex flex-wrap gap-1.5" aria-label={`${label}: the planned sessions`}>
             {week.sessions.map(s => <Chip key={s.key} s={s} plan={planOf.get(s.key)} />)}
           </ul>
