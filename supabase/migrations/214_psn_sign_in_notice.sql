@@ -1,4 +1,4 @@
--- 213 · PlayStation's refused sign-in becomes a notice, and the feed reads chosen kinds (owner, 27.11.2026:
+-- 214 · PlayStation's refused sign-in becomes a notice, and the feed reads chosen kinds (owner, 27.11.2026:
 -- "PlayStation: should it also tell you when its sign-in fails?" — "yes"; "Shop → Needs a look: should it show the same
 -- notices list as the bell, instead of its own?" — "yes"; docs/features/notifications.md).
 --

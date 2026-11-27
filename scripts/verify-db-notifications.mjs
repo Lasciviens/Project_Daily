@@ -1,9 +1,9 @@
 // Runs migration 212's scenarios (notifications, Phase 3 B1–B3: the kinds and their shapes, the browser's read and
 // read_at/acted_at only, followed-film notices from the server only, where each kind goes, the Claude key's dates, the
-// nightly 14/7/1-day warnings, a service rejecting a sign-in, push-send's claim and the timers) and migration 213's
+// nightly 14/7/1-day warnings, a service rejecting a sign-in, push-send's claim and the timers) and migration 214's
 // (PlayStation's refused sign-in and its settle, the feed's kinds) on a throwaway Postgres:
 // scripts/db-tests/one-item/base.sql, notifications/seed.sql, the real 091/101 (psn_tokens) and 119 (media follows),
-// 211's notifications section, then the real 212 twice, the real 213 twice and notifications/scenarios.sql.
+// 211's notifications section, then the real 212 twice, the real 214 twice and notifications/scenarios.sql.
 //   VERIFY_DB_URL=postgresql://… node scripts/verify-db-notifications.mjs
 // CI (PR check) passes its Postgres service as DEPLOY_TEST_DB_URL. With no database URL it runs the static checks and passes.
 import { execFileSync, spawnSync } from 'node:child_process'
@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const mig = f => join(root, 'supabase/migrations', f)
 const mig212 = mig('212_notifications.sql')
-const mig213 = mig('213_psn_sign_in_notice.sql')
+const mig214 = mig('214_psn_sign_in_notice.sql')
 const fail = msg => { console.error(`verify-db-notifications: ${msg}`); process.exit(1) }
 
 // Static, for each migration: one transaction, no dropped table or column, the rights of every function.
@@ -72,10 +72,10 @@ const lint = sql => {
   if (problems.length) fail(`migration 212 has ${problems.join('; ')}`)
 }
 
-// 213: PlayStation joins the services a sign-in can fail for — every allow-list names the same services, and a fresh
+// 214: PlayStation joins the services a sign-in can fail for — every allow-list names the same services, and a fresh
 // sign-in in psn_tokens settles it; the feed is dropped and made again with its old rights and the kinds.
 {
-  const sql = readFileSync(mig213, 'utf8').replace(/--.*$/gm, '')
+  const sql = readFileSync(mig214, 'utf8').replace(/--.*$/gm, '')
   const problems = lint(sql)
   const list = re => (sql.match(re)?.[1] ?? '').match(/'(\w+)'/g)?.map(x => x.slice(1, -1)).sort().join(',')
   const failed = list(/when 'sign_in_failed'\s+then [^\n]*service in \(([^)]*)\)/)
@@ -90,7 +90,7 @@ const lint = sql => {
     || !/grant execute on function public\.notification_feed\(integer, timestamptz, boolean, text\[\]\) to authenticated, service_role;/.test(sql)) {
     problems.push('the feed is not made again with its rights')
   }
-  if (problems.length) fail(`migration 213 has ${problems.join('; ')}`)
+  if (problems.length) fail(`migration 214 has ${problems.join('; ')}`)
 }
 
 const url = process.env.VERIFY_DB_URL || process.env.DEPLOY_TEST_DB_URL
@@ -123,8 +123,8 @@ try {
   step('211 notifications', () => psql(a, ['-c', notifications211]))
   step('212 first run', () => psql(a, ['-f', mig212]))
   step('212 second run', () => psql(a, ['-f', mig212]))
-  step('213 first run', () => psql(a, ['-f', mig213]))
-  step('213 second run', () => psql(a, ['-f', mig213]))
+  step('214 first run', () => psql(a, ['-f', mig214]))
+  step('214 second run', () => psql(a, ['-f', mig214]))
   step('scenarios', () => {
     const run = spawnSync('psql', [a, '-v', 'ON_ERROR_STOP=1', '-q', '-f', join(root, 'scripts/db-tests/notifications/scenarios.sql')], { encoding: 'utf8' })
     passed = (run.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
@@ -137,4 +137,4 @@ try {
   if (!process.env.KEEP_DB) try { psql(url, ['-c', `drop database if exists ${name}`]) } catch { /* best effort */ }
 }
 if (code) process.exit(code)
-console.log(`verify-db-notifications: static checks passed; 212 and 213 ran twice and ${passed} scenarios passed`)
+console.log(`verify-db-notifications: static checks passed; 212 and 214 ran twice and ${passed} scenarios passed`)

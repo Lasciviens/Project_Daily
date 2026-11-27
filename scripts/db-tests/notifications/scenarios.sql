@@ -1,4 +1,4 @@
--- Migrations 212 (notifications, Phase 3 B1–B3) and 213 (PlayStation's refused sign-in, the feed's kinds) after each ran
+-- Migrations 212 (notifications, Phase 3 B1–B3) and 214 (PlayStation's refused sign-in, the feed's kinds) after each ran
 -- twice (scripts/verify-db-notifications.mjs), on 211's
 -- notifications section, psn_tokens (091/101), media follows (119) and the stand-ins of notifications/seed.sql. Setup and
 -- checks run as the superuser (the service role's stand-in: a writer without row security); app reads and writes run
@@ -279,7 +279,7 @@ set role authenticated;
 select public.t_ok(public.t_refused($q$select public.notify_service_settle(auth.uid(), 'anthropic')$q$) = '42501', 'the browser cannot call the settle');
 reset role;
 
--- ── 213: PlayStation's refused sign-in ───────────────────────────────────────
+-- ── 214: PlayStation's refused sign-in ───────────────────────────────────────
 select public.t_ok(public.notify_service_problem('00000000-0000-0000-0000-000000000001', 'psn') is not null, 'PlayStation refused the sign-in: a notice');
 select public.t_ok((select kind || ':' || service || ':' || coalesce(due_on::text, '-') || ':' || coalesce(link_kind, '-')
                       from public.notifications where kind = 'sign_in_failed' and service = 'psn') = 'sign_in_failed:psn:-:-',
@@ -308,13 +308,13 @@ select public.t_ok(public.t_refused($q$update public.psn_tokens set refresh_toke
 select public.t_ok(public.t_refused($q$select public.notify_service_problem(auth.uid(), 'psn')$q$) = '42501', 'the browser cannot make a PlayStation notice');
 reset role;
 
--- ── 213: the feed reads chosen kinds ─────────────────────────────────────────
+-- ── 214: the feed reads chosen kinds ─────────────────────────────────────────
 set role authenticated;
 select public.t_ok((select count(*) from public.notification_feed(200, null, false, array['shop_bought_draft'])) > 0
   and (select bool_and(kind = 'shop_bought_draft') from public.notification_feed(200, null, false, array['shop_bought_draft'])),
   'the Shop''s read: only the Shop''s kinds');
 select public.t_ok((select count(*) from public.notification_feed(200, null, false, null)) = (select count(*) from public.notification_feed(200, null, false)),
-  'no kinds: every kind (the website before 213 sends none)');
+  'no kinds: every kind (the website before 214 sends none)');
 select public.t_ok((select count(*) from public.notification_feed(200, null, false, array['phishing'])) = 0, 'an unknown kind matches nothing');
 select public.t_ok((select count(*) from public.notification_feed(p_limit => 30, p_before => null, p_unread_only => true)) >= 0,
   'the old named call (three arguments) still reaches the feed');

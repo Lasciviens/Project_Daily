@@ -142,7 +142,7 @@ function isReauth(err: { code?: number; message?: string }): boolean {
   return REAUTH_RE.test(err.message ?? '') || err.code === 2241164
 }
 
-// A refused sign-in tells the owner through the bell (212/213): a service code only — the database builds the notice,
+// A refused sign-in tells the owner through the bell (212/214): a service code only — the database builds the notice,
 // at most one a day, and a fresh sign-in written to psn_tokens settles it. Best effort: never changes the answer.
 async function notifySignInFailed(db: SupabaseClient, userId: string): Promise<void> {
   const { error } = await db.rpc('notify_service_problem', { p_user: userId, p_service: 'psn' })
@@ -263,7 +263,7 @@ Deno.serve(async (req: Request) => {
       // psn-api hands back Sony's token answer without checking it (2.18.1: `raw.access_token` of whatever came back),
       // so a refused refresh token arrives as an answer with no access token — the stored sign-in is gone and only a
       // fresh npsso brings it back. Nothing is written then (writing would move the expiry of a dead token and fire
-      // 213's settle). A network failure or a page that isn't JSON throws instead and is no sign-in failure.
+      // 214's settle). A network failure or a page that isn't JSON throws instead and is no sign-in failure.
       if (typeof refreshed.accessToken !== 'string' || !refreshed.accessToken) {
         await notifySignInFailed(supabase, userId)
         return json({ error: 'reauth_required', sonyMessage: 'PlayStation refused the stored sign-in' })

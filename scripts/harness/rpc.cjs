@@ -215,7 +215,7 @@ const RPCS = {
     return [...groups.values()].map(({ duration_sum, ...g }) => ({ ...g, avg_duration_ms: g.timed_calls ? Math.round(duration_sum / g.timed_calls) : 0 })).sort((x, y) => x.day.localeCompare(y.day))
   },
 
-  // 212: the bell's read — the owner's notices newest first, with the thing's name (and a film's TMDB id); 213: only
+  // 212: the bell's read — the owner's notices newest first, with the thing's name (and a film's TMDB id); 214: only
   // `p_kinds` when given (Shop → Needs a look).
   notification_feed: (a, store) => {
     const before = a.p_before ? Date.parse(a.p_before) : Infinity

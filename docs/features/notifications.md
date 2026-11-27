@@ -2,7 +2,7 @@
 
 The owner asked for one place where the app tells him what needs a look, and for the choice of how each kind reaches
 him ("Notifications B1–B3", one PR, 26.11.2026; the plan's owner decisions of 25.11.2026). Migration `212`; the
-table itself is `211`'s. Migration `213` (27.11.2026) added PlayStation's refused sign-in and the feed's kinds for Shop.
+table itself is `211`'s. Migration `214` (27.11.2026) added PlayStation's refused sign-in and the feed's kinds for Shop.
 
 ## What the owner sees
 
@@ -46,7 +46,7 @@ table itself is `211`'s. Migration `213` (27.11.2026) added PlayStation's refuse
 
 | Kind | Made by | Default | Opens |
 |---|---|---|---|
-| `sign_in_failed` | Trakt (401 / `invalid_grant`), Strava (a 401 to the refresh — a 400's body is undocumented, `docs/integrations/strava.md`), Google (`google-tasks-sync`, `calendar-token`: `invalid_grant`), Apple Calendar (the iCloud timer: Apple refused the password), PlayStation (213: `psn-api`'s refresh answered without an access token) — through `notify_service_problem`. "PlayStation needs you to sign in again · Connect it again in Settings → Subscriptions" | Now | Settings → Subscriptions |
+| `sign_in_failed` | Trakt (401 / `invalid_grant`), Strava (a 401 to the refresh — a 400's body is undocumented, `docs/integrations/strava.md`), Google (`google-tasks-sync`, `calendar-token`: `invalid_grant`), Apple Calendar (the iCloud timer: Apple refused the password), PlayStation (214: `psn-api`'s refresh answered without an access token) — through `notify_service_problem`. "PlayStation needs you to sign in again · Connect it again in Settings → Subscriptions" | Now | Settings → Subscriptions |
 | `sign_in_expiring` | The nightly job: PlayStation's `psn_tokens.npsso_expires_at`, 14, 7 and 1 days before | Morning | Settings → Subscriptions |
 | `claude_key_rejected` | `claude` when Anthropic rejects the key | Now | Settings → Subscriptions |
 | `claude_key_expiring` | The nightly job: the key's end day as typed, 14, 7 and 1 days before | Morning | Settings → Subscriptions |
@@ -70,10 +70,10 @@ block (`<notification-text>`: titles, second lines, routes, the push and the mor
   and goes through it. The browser reads its own rows and may set `read_at` and `acted_at` (a column grant), nothing
   else; it can't insert or delete.
 - `notification_feed(limit, before, unread_only, kinds)` (SECURITY INVOKER) is the screen's read: the caller's own rows,
-  newest first, at most 200, with the thing's name (`notification_subject`) and a film's TMDB id; `kinds` (213, null =
-  all) narrows them for Shop. 213 dropped the three-argument function and made it again with the fourth argument (two
+  newest first, at most 200, with the thing's name (`notification_subject`) and a film's TMDB id; `kinds` (214, null =
+  all) narrows them for Shop. 214 dropped the three-argument function and made it again with the fourth argument (two
   would make PostgREST's call ambiguous); a call without kinds is answered by its default. Before 212 (or, asked for
-  kinds, before 213) the app reads 211's columns without names; before 211 it shows none.
+  kinds, before 214) the app reads 211's columns without names; before 211 it shows none.
 - `notification_prefs` (account, kind → channel; audited, owner lock). `notification_channel(user, kind)` = the
   owner's choice, else the default.
 - `integration_expiry` (account, service `anthropic` → start day, duration, `ends_on`, optional `key_hint`; audited,
@@ -100,14 +100,14 @@ block (`<notification-text>`: titles, second lines, routes, the push and the mor
   allow-list) writes at most one per service and Oslo day, and none while an unread one about that service is there.
   The functions call it best effort: a failure there never changes their answer.
 - **Reconnecting settles it:** a fresh sign-in written to `trakt_tokens`, `strava_tokens`, `user_calendar_tokens`,
-  `icloud_credentials` or `psn_tokens` (213; a connect, or a refresh that worked — each writes the refresh token or the
+  `icloud_credentials` or `psn_tokens` (214; a connect, or a refresh that worked — each writes the refresh token or the
   password) reads that service's unread failure notice; `claude` calls `notify_service_settle(user, 'anthropic')` after
   a call Anthropic answered, which reads "key rejected" (never a trigger on the ledger, 194's rule).
-- **PlayStation (213, owner 27.11.2026: "should it also tell you when its sign-in fails?" — "yes"):** `psn-api` refreshes
+- **PlayStation (214, owner 27.11.2026: "should it also tell you when its sign-in fails?" — "yes"):** `psn-api` refreshes
   the access token (about an hour) from the stored refresh token. The community `psn-api` package (2.18.1) hands back
   Sony's token answer without checking it, so a refused refresh token comes back as an answer with **no access token**
   (Sony documents nothing; the shape is the package's source). That is the refusal: `psn-api` calls
-  `notify_service_problem(user, 'psn')`, answers `reauth_required` as before and **writes nothing** (before 213 it wrote
+  `notify_service_problem(user, 'psn')`, answers `reauth_required` as before and **writes nothing** (before 214 it wrote
   the dead answer back, moving the token's expiry an hour on and firing nothing useful). A network failure or a page
   that is not JSON throws and is no sign-in failure. The function only runs when the app asks (Games), so the notice
   comes the first time the app uses PlayStation after the sign-in died — not on a timer. The nightly 14/7/1-day
@@ -141,7 +141,7 @@ block (`<notification-text>`: titles, second lines, routes, the push and the mor
   the event's title only as text.
 - **A sync function** passes only a service code; the database refuses any other value and builds the dedupe key
   itself.
-- **`psn_tokens`' settle trigger (213):** the table is the service role's (140 revoked the browser), so only `psn-api`'s
+- **`psn_tokens`' settle trigger (214):** the table is the service role's (140 revoked the browser), so only `psn-api`'s
   own writes fire it; a forged write could at worst read the owner's own PlayStation failure notice early — never write,
   re-point or delete a notice, and never another account's (scoped to the written row's `user_id`, SECURITY INVOKER,
   `search_path ''`).
@@ -157,6 +157,6 @@ block (`<notification-text>`: titles, second lines, routes, the push and the mor
 
 `verify-notifications` (the registry's words and routes, the row check, the key's end day, the producers — PlayStation's
 refusal point too —, push-send's path and the verbatim block, one list for the bell, the page and Shop) and
-`verify-db-notifications` (212 and 213 twice each, the shapes, the browser's rights, the follow trigger, the prefs, the key
+`verify-db-notifications` (212 and 214 twice each, the shapes, the browser's rights, the follow trigger, the prefs, the key
 dates, the 14/7/1 warnings, the service problems — PlayStation's and its settle —, the feed's kinds, the claim and the
 timers; PR check with `DEPLOY_TEST_DB_URL`). `verify-shop-suggestions` checks the sheet renders the bell's list.

@@ -58,14 +58,14 @@ const clean = (rows: unknown): Notice[] =>
 
 /** The newest notices (the bell: a few; the page: a page of them, older ones with `before`; Shop: only its `kinds`). */
 export async function fetchNotices(o: { limit: number; before?: string | null; unreadOnly?: boolean; kinds?: readonly NoticeKind[] }): Promise<Notice[]> {
-  // `p_kinds` only when asked for: a database before 213 has no such argument (its feed answers the other reads).
+  // `p_kinds` only when asked for: a database before 214 has no such argument (its feed answers the other reads).
   const { data, error } = await supabase.rpc('notification_feed', {
     p_limit: o.limit, p_before: o.before ?? null, p_unread_only: !!o.unreadOnly, ...(o.kinds ? { p_kinds: [...o.kinds] } : {}),
   })
   if (!error) return clean(data).filter(n => !o.kinds || o.kinds.includes(n.kind))
   if (isMissingTable(error)) return []
   if (!isMissingFunction(error)) throw error
-  // Before 212 (or, asked for kinds, before 213): 211's columns, no names. Remove once 213 is live.
+  // Before 212 (or, asked for kinds, before 214): 211's columns, no names. Remove once 214 is live.
   let q = supabase.from('notifications').select('id, kind, link_kind, link_id, created_at, read_at')
     .order('created_at', { ascending: false }).limit(o.limit)
   if (o.before) q = q.lt('created_at', o.before)
