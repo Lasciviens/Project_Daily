@@ -54,7 +54,7 @@ export function shiftMonth(m: { year: number; month: number }, delta: number): {
   return { year: Math.floor(total / 12), month: ((total % 12) + 12) % 12 }
 }
 
-export type DayMark = 'done' | 'today' | 'pending' | 'missed' | 'upcoming' | 'skipped'
+export type DayMark = 'done' | 'today' | 'pending' | 'missed' | 'upcoming' | 'elsewhere' | 'skipped'
 
 export const DAY_MARK_LABEL: Record<DayMark, string> = {
   done:     'Trained',
@@ -62,6 +62,7 @@ export const DAY_MARK_LABEL: Record<DayMark, string> = {
   pending:  SESSION_LABEL.pending,
   upcoming: 'Planned',
   missed:   'Missed plan',
+  elsewhere: 'Done another day',
   skipped:  SESSION_LABEL.skipped,
 }
 
@@ -73,12 +74,14 @@ const MARK_OF: Record<SessionState, DayMark> = {
  * ONE mark per day, strongest first: a logged workout (or a plan done) →
  * done; else a plan still open today → today; a past plan a late workout
  * still completes → pending; a past plan nothing covered → missed; a future
- * plan → upcoming; a day whose plans were all skipped → skipped (grey).
+ * plan → upcoming; a plan a workout on ANOTHER day closed → elsewhere, its
+ * own neutral mark — nothing was trained that day (owner, 27.11.2026: "2
+ * training on one day?"); a day whose plans were all skipped → skipped (grey).
  */
-export function dayMarkOf(day: { sessions: readonly unknown[]; openPlans: readonly { status: SessionState }[] }): DayMark | null {
+export function dayMarkOf(day: { sessions: readonly unknown[]; openPlans: readonly { status: SessionState; doneByOther?: unknown }[] }): DayMark | null {
   if (day.sessions.length > 0) return 'done'
-  const marks = new Set(day.openPlans.map(o => MARK_OF[o.status]))
-  for (const s of ['done', 'today', 'pending', 'missed', 'upcoming', 'skipped'] as const) if (marks.has(s)) return s
+  const marks = new Set(day.openPlans.map(o => (o.doneByOther ? 'elsewhere' : MARK_OF[o.status])))
+  for (const s of ['done', 'today', 'pending', 'missed', 'upcoming', 'elsewhere', 'skipped'] as const) if (marks.has(s)) return s
   return null
 }
 

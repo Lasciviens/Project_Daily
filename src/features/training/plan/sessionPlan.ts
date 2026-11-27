@@ -10,9 +10,10 @@
 // targets.ts), this only lines it up with the routine.
 //
 // RPE (logged per set in Hevy) is read into one light note — near your limit /
-// room to push (lastSessionEffort); "Last time" shows the sets without their RPE
-// (owner, 27.11.2026, on the Next card: "dont show RPE here" — every other screen
-// and the coach snapshot keep it). The note
+// room to push (lastSessionEffort), which keeps its RPE wording; "Last time" shows
+// the sets without their RPE, on the Next card and in the planned-session popup
+// (owner, 27.11.2026, on the Next card: "dont show RPE here", and the popup too —
+// Progress, the workout and the coach snapshot keep it). The note
 // is informational and NEVER changes the target: the owner decided that no
 // decision depends on RPE (the engine reads none — a rated and an unrated
 // exercise must get the same target), RPE is self-reported and people misjudge

@@ -457,9 +457,14 @@ console.log('\n== A plan a late workout closed: "Done <day>" on its day, "Planne
   check('…and its note reads "Planned for 24.11.2026 16:45"', sr.coveredPlanNote(thu.sessions[0].plans, thu.sessions[0].workout, thu.sessions[0].plannedElsewhere) === 'Planned for 24.11.2026 16:45',
     sr.coveredPlanNote(thu.sessions[0].plans, thu.sessions[0].workout, thu.sessions[0].plannedElsewhere))
   check('Tuesday\'s Upper A gets no such note (it closed nothing)', sr.coveredPlanNote(tue.sessions[0].plans, tue.sessions[0].workout, tue.sessions[0].plannedElsewhere) === null)
-  // The workout outside what was read (another month): still done elsewhere, opens it, the word without a day.
+  // The workout outside what was read: not "elsewhere" until its day is known, so the view doesn't flip once it loads.
   const unread = cm.dayDataFor('2026-11-24', new Date('2026-11-24T12:00:00'), [upper], [], plansByDate, T).openPlans[0]
-  check('a workout not read yet: still opens it, "Done" until its day is known', unread.doneByOther?.workoutId === 'w-lower' && unread.doneByOther.date === null && sr.planStateWord(unread.status, unread.doneByOther) === 'Done')
+  check('a workout whose day is unknown: treated as not elsewhere (plain "Done")', unread.doneByOther === null && sr.planStateWord(unread.status, unread.doneByOther) === 'Done')
+  check('doneElsewhere: workout day unknown → null', sr.doneElsewhere({ state: 'done', doneBy: 'workout', workoutId: 'w' }, '2026-11-24', () => null) === null && sr.doneElsewhere({ state: 'done', doneBy: 'workout', workoutId: 'w' }, '2026-11-24', () => undefined) === null)
+  // Its own neutral mark: the plan's day is not a training day.
+  check('a plan done by a workout on another day gets its own neutral mark, never "Trained"', mg.dayMarkOf({ sessions: [], openPlans: [open] }) === 'elsewhere' && mg.DAY_MARK_LABEL.elsewhere === 'Done another day')
+  check('…Tuesday itself still reads Trained (its own Upper A)', mg.dayMarkOf(tue) === 'done')
+  check('…a plan done on its own day (or by Strava) stays "done"', mg.dayMarkOf({ sessions: [], openPlans: [{ status: 'done', doneByOther: null }] }) === 'done')
   // Done on its own day, by hand, or by Strava: never "done elsewhere".
   check('doneElsewhere: a workout on the plan\'s own day → null', sr.doneElsewhere({ state: 'done', doneBy: 'workout', workoutId: 'w' }, '2026-11-24', () => '2026-11-24') === null)
   check('doneElsewhere: ticked by hand → null', sr.doneElsewhere({ state: 'done', doneBy: 'hand', workoutId: null }, '2026-11-24', () => '2026-11-26') === null)
@@ -475,6 +480,9 @@ console.log('\n== A plan a late workout closed: "Done <day>" on its day, "Planne
   check('Daily\'s training row: useDoneElsewhere + planStateWord, opens the workout', /useDoneElsewhere\(status, plan\.info\.date\)/.test(rows) && /planStateWord\(mark, elsewhere\)/.test(rows) && /workoutId: elsewhere\.workoutId/.test(rows))
   const band = read('src/features/daily/components/summary/TrainingBand.tsx')
   check('Daily\'s Training card: the same words and the same tap', /planStateWord\(open\.status, elsewhere\)/.test(band) && /workoutId: elsewhere\.workoutId/.test(band))
+  check('Daily\'s Training card on the workout\'s day: "Planned for …" (plansClosedBy + plannedOnNote, plans read from 6 days before)', /plansClosedBy\(session\.workout\.id, plans\.data, date\)\.map\(plannedOnNote\)/.test(band) && /shiftDateStr\(date, -6\)/.test(band))
+  const glyph = read('src/features/training/components/calendar/DayMarkGlyph.tsx')
+  check('the "elsewhere" mark is neutral (no success colour)', /elsewhere: *'[^']*border-line-strong'/.test(glyph) && !/elsewhere: *'[^']*success/.test(glyph))
   const view = read('src/features/training/components/session/TrainingSessionView.tsx')
   check('the session popup passes the plans of earlier days to coveredPlanNote', /coveredPlanNote\(plans, workout, plannedElsewhere\)/.test(view))
 }
