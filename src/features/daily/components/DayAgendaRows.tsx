@@ -15,6 +15,8 @@ import type { RepeatDayAction } from '../../items/itemTypes'
 import { TrainingPlanMenu } from '../../training/components/session/TrainingPlanActions'
 import { useTrainingPlanActions } from '../../training/hooks/useTrainingPlanActions'
 import { SESSION_LABEL, SESSION_TONE, sessionActions, sessionStatus } from '../../training/plan/sessionState'
+import { planStateWord } from '../../training/sessionRef'
+import { useDoneElsewhere } from '../../training/hooks/useDoneElsewhere'
 import { planFacts } from '../../training/plan/planFacts'
 import type { TrainingPlanRef } from '../../training/api/trainingPlanApi'
 import type { useDayPlanContext } from '../../training/hooks/usePlanContext'
@@ -274,7 +276,11 @@ export function TrainingRow({ row, planCtx, nowHour, active }: { row: DayRow; pl
   const can = sessionActions(status, { hasTask: plan.target.kind === 'task', weekly: !!weekly })
   const isDone = status.state === 'done'
   const mark = isDone || status.state === 'skipped' || status.state === 'missed' ? status.state : null
-  const open = () => modal.open({ kind: 'training-session', plan: { kind: i.kind === 'recurring' ? 'recurring' : 'block', id: i.canonicalId, date: plan.info.date } })
+  // Closed by a workout on another day (a late workout completes its week's plan): "Done 26.11.2026", opens that workout.
+  const elsewhere = useDoneElsewhere(status, plan.info.date)
+  const open = () => (elsewhere
+    ? modal.open({ kind: 'training-session', workoutId: elsewhere.workoutId })
+    : modal.open({ kind: 'training-session', plan: { kind: i.kind === 'recurring' ? 'recurring' : 'block', id: i.canonicalId, date: plan.info.date } }))
   const toggle = () => {
     if (!isDone && can.includes('done')) void actions.markDone(plan).catch(() => {})
     else if (isDone && can.includes('reopen')) void actions.reopen(plan).catch(() => {})
@@ -286,7 +292,7 @@ export function TrainingRow({ row, planCtx, nowHour, active }: { row: DayRow; pl
         label={isDone ? (canToggle ? 'Reopen the session' : 'Done by a workout') : canToggle ? 'Mark the session done' : SESSION_LABEL[status.state]} />}
       title={row.title}
       icons={<>{(i.kind === 'recurring' || row.repeat) && <RepeatMark rule={i.template} day={i.planDate} />}{active && <NowWord />}</>}
-      pills={mark ? <TonePill tone={SESSION_TONE[mark]}>{SESSION_LABEL[mark]}</TonePill> : undefined}
+      pills={mark ? <TonePill tone={SESSION_TONE[mark]}>{planStateWord(mark, elsewhere)}</TonePill> : undefined}
       menu={<div className="-my-2 flex shrink-0 items-center" onClick={e => e.stopPropagation()}><TrainingPlanMenu plan={plan} status={status} weekly={weekly} skipId={facts.skipId} /></div>}
       onOpen={open}
       dim={isDone || status.state === 'skipped'}

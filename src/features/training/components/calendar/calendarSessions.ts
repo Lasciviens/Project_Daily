@@ -15,12 +15,17 @@ import { planFacts } from '../../plan/planFacts'
 import type { HevyWorkout } from '../../types.hevy'
 import type { CalendarPlanItem } from './calendarModel'
 import type { TimeBlock } from '../../../daily/types'
+import type { DoneElsewhere, PlanOnDay } from '../../sessionRef'
 
 export interface DaySession {
   workout: HevyWorkout
   /** The plans this workout covers (usually one; two when the same session
    *  was planned twice — a one-off block and a recurring slot). */
   plans: CalendarPlanItem[]
+  /** Plans of earlier days this workout closed (a late workout completes its
+   *  week's open plan, 141/167) — set by the calendar (dayDataFor), which reads
+   *  more than one day. */
+  plannedElsewhere?: PlanOnDay[]
 }
 
 export interface OpenPlan {
@@ -31,6 +36,9 @@ export interface OpenPlan {
    *  session above. */
   status: SessionState
   session: SessionStatus
+  /** Done by a workout on another day (sessionRef.doneElsewhere) — set by the
+   *  calendar (dayDataFor), which reads more than one day. */
+  doneByOther?: DoneElsewhere | null
 }
 
 export interface DaySessions {

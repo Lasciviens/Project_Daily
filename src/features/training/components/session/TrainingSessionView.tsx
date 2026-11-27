@@ -92,7 +92,7 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
   const shown = anchor.request
   const orphan = anchor.orphanTask
   const task = anchor.task
-  const { resolved, todayStr, hasActivity } = useSessionDay(shown, anchor.date, anchor.planRow)
+  const { resolved, todayStr, hasActivity, plannedElsewhere } = useSessionDay(shown, anchor.date, anchor.planRow)
   const workoutQ = useHevyWorkoutDetail(resolved?.kind === 'workout' ? resolved.workoutId : null)
   const routinesQ = useHevyRoutines()
   const { data: program } = useCurrentProgramRoutines()
@@ -219,10 +219,11 @@ export function TrainingSessionView({ request, onClose }: { request: SessionRequ
     if (workoutQ.isError) {
       body = <div className="flex flex-col items-start gap-3"><p className="text-body text-fg-2">Couldn’t load this workout.</p><Button size="sm" onClick={() => { void workoutQ.refetch() }}>Try again</Button></div>
     } else if (workout) {
+      const note = coveredPlanNote(plans, workout, plannedElsewhere)
       body = (
         <div className="flex flex-col gap-4">
           <StatusLine pill={<TonePill tone={WORKOUT_TONE}>{SESSION_LABEL.done}</TonePill>}>
-            {plans.length > 0 && <span className="min-w-0">{coveredPlanNote(plans, workout)}</span>}
+            {note && <span className="min-w-0">{note}</span>}
           </StatusLine>
           {workout.description && <Truncate as="p" lines={2} className="whitespace-pre-line text-meta text-fg-muted">{workout.description}</Truncate>}
           <WorkoutSessionBody workout={workout} />

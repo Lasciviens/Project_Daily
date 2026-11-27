@@ -7,6 +7,7 @@ import { useEntityModal } from '../../../../shared/modals'
 import { formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import { localDayOf, shiftDateStr, todayStr } from '../../../../shared/utils/dateUtils'
 import { useHevyWorkoutsRange } from '../../../training/hooks/useHevyWorkouts'
+import { useDoneElsewhere } from '../../../training/hooks/useDoneElsewhere'
 import { useHevyRoutines } from '../../../training/hooks/useHevyRoutines'
 import { useStravaActivities } from '../../../training/hooks/useStravaActivities'
 import { useAthleteProfile } from '../../../training/hooks/useAthleteProfile'
@@ -19,8 +20,8 @@ import { pickNextTrainingSession } from '../../../training/trainingPlanModel'
 import { usePlanThis } from '../../../items/usePlanThis'
 import { matchDaySessions, planStartHHMM } from '../../../training/components/calendar/calendarSessions'
 import { getWorkoutDuration } from '../../../training/components/calendar/calendarModel'
-import { planRefOf } from '../../../training/sessionRef'
-import { SESSION_LABEL, SESSION_TONE } from '../../../training/plan/sessionState'
+import { planRefOf, planStateWord } from '../../../training/sessionRef'
+import { SESSION_TONE } from '../../../training/plan/sessionState'
 import { computeLiftChanges, summarizeImprovement } from '../../../training/plan/improvement'
 import { localDayBoundsIso, workoutLocalDay } from '../../../training/workoutDates'
 import { mondayOf } from '../../../training/progressAggregate'
@@ -98,7 +99,10 @@ export function TrainingBand({ date }: { date: string }) {
 
   const loading = workouts.isLoading
   const session = dayView.today.sessions[0] ?? null
-  const open = dayView.today.openPlans.find(o => o.status !== 'done') ?? null
+  // A plan still to do first; else one a workout on another day closed ("Done 26.11.2026" — never "Rest day").
+  const open = dayView.today.openPlans.find(o => o.status !== 'done')
+    ?? dayView.today.openPlans.find(o => o.session.doneBy === 'workout') ?? null
+  const elsewhere = useDoneElsewhere(open?.session ?? null, date)
   const more = dayView.today.sessions.length + dayView.today.openPlans.length - 1
 
   return (
@@ -117,11 +121,14 @@ export function TrainingBand({ date }: { date: string }) {
             </StatBox>
           ) : open ? (
             <StatBox icon={<Dumbbell aria-hidden />} label={date === today ? 'Today' : formatWeekdayDate(date)}
-              ariaLabel={`${open.plan.title}, ${SESSION_LABEL[open.status]} — open the session`}
-              onClick={() => { const ref = planRefOf(open.plan, date); if (ref) modal.open({ kind: 'training-session', plan: ref }) }}>
+              ariaLabel={`${open.plan.title}, ${planStateWord(open.status, elsewhere)} — open the session`}
+              onClick={() => {
+                if (elsewhere) { modal.open({ kind: 'training-session', workoutId: elsewhere.workoutId }); return }
+                const ref = planRefOf(open.plan, date); if (ref) modal.open({ kind: 'training-session', plan: ref })
+              }}>
               <StatValue text>{open.plan.title}</StatValue>
               <StatNote tone={SESSION_TONE[open.status]}>
-                {[planStartHHMM(open.plan), SESSION_LABEL[open.status]].filter(Boolean).join(' · ')}{more > 0 ? ` · +${more} more` : ''}
+                {[planStartHHMM(open.plan), planStateWord(open.status, elsewhere)].filter(Boolean).join(' · ')}{more > 0 ? ` · +${more} more` : ''}
               </StatNote>
             </StatBox>
           ) : (

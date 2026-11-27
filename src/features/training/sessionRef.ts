@@ -11,8 +11,8 @@
 // a deliberate second step (the popup's ⋯ menu).
 
 import { matchDaySessions, planStartHHMM, planTaskOf, planWorkoutScore } from './components/calendar/calendarSessions'
-import { sessionStatus, type SessionState } from './plan/sessionState'
-import { formatWeekdayDate } from '../../shared/utils/dateFormat'
+import { sessionStatus, SESSION_LABEL, type SessionState, type SessionStatus } from './plan/sessionState'
+import { formatDate, formatWeekdayDate } from '../../shared/utils/dateFormat'
 import { repeatSummary } from '../daily/recurrence'
 import { formatDurationMinutes } from '../../shared/utils/formatDuration'
 import type { CalendarPlanItem } from './components/calendar/calendarModel'
@@ -151,17 +151,74 @@ export function planLabel(p: CalendarPlanItem): string {
  *  this session (routine or name), "Planned every week on Mon, 18:00" for a
  *  repeating plan (its own repeat, recurrence.repeatSummary — it may be
  *  monthly or every N weeks), and "In place of ⟳ Upper B · 17:30" when a
- *  different session was done on a planned day. null without plans. */
-export function coveredPlanNote(plans: readonly CalendarPlanItem[], workout: DayWorkout): string | null {
-  if (plans.length === 0) return null
-  return plans.map(p => {
-    if (planWorkoutScore(p, workout) === 0) return `In place of ${planLabel(p)}`
-    const t = planStartHHMM(p)
-    if (p.kind === 'recurring' && p.scheduleBlock) {
-      const summary = repeatSummary(p.scheduleBlock)
-      return `Planned ${summary.charAt(0).toLowerCase()}${summary.slice(1)}${t ? `, ${t}` : ''}`
-    }
-    return `Planned${t ? ` for ${t}` : ''}`
-  }).join(' · ')
+ *  different session was done on a planned day. A plan of an earlier day this
+ *  workout closed (`elsewhere`, plansClosedBy) reads "Planned for 24.11.2026
+ *  16:45". null without plans. */
+export function coveredPlanNote(plans: readonly CalendarPlanItem[], workout: DayWorkout, elsewhere: readonly PlanOnDay[] = []): string | null {
+  if (plans.length === 0 && elsewhere.length === 0) return null
+  return [
+    ...plans.map(p => {
+      if (planWorkoutScore(p, workout) === 0) return `In place of ${planLabel(p)}`
+      const t = planStartHHMM(p)
+      if (p.kind === 'recurring' && p.scheduleBlock) {
+        const summary = repeatSummary(p.scheduleBlock)
+        return `Planned ${summary.charAt(0).toLowerCase()}${summary.slice(1)}${t ? `, ${t}` : ''}`
+      }
+      return `Planned${t ? ` for ${t}` : ''}`
+    }),
+    ...elsewhere.map(plannedOnNote),
+  ].join(' · ')
+}
+
+// ─── A plan closed by a workout on another day ──────────────────────────────
+// A late workout completes its week's open plan (141/167; 211's
+// hevy_workout_completes_plan): the plan's day then reads done, but nothing was
+// trained on it. Owner, 27.11.2026, on a Log day showing "⟳ Lower A … 16:45 ·
+// Done" beside that day's Upper A: "2 trainings on one day?" — "this was done on
+// 26.11". Every view (the Log, Daily's row and Training card, the session popup)
+// says it with these words: the plan's day "Done 26.11.2026" (a tap opens that
+// workout), the workout's day "Planned for 24.11.2026 16:45".
+
+/** A plan with the day it falls on. */
+export interface PlanOnDay { plan: CalendarPlanItem; date: string }
+
+/** The workout that closed a plan on another day than the plan's own. `date`:
+ *  the workout's local day, null while it isn't known (not loaded). */
+export interface DoneElsewhere { workoutId: string; date: string | null }
+
+/** The workout that closed this plan when it was done on another day, else null
+ *  (not done by a workout, or done on its own day). `workoutDay`: the workout's
+ *  local day by id, or null when it isn't among what was read. */
+export function doneElsewhere(
+  status: Pick<SessionStatus, 'state' | 'doneBy' | 'workoutId'>,
+  planDate: string,
+  workoutDay: (workoutId: string) => string | null | undefined,
+): DoneElsewhere | null {
+  if (status.state !== 'done' || status.doneBy !== 'workout' || !status.workoutId) return null
+  const date = workoutDay(status.workoutId) ?? null
+  return date === planDate ? null : { workoutId: status.workoutId, date }
+}
+
+/** The status word of a plan: "Done 26.11.2026" when a workout on another day
+ *  closed it, else THE status word (SESSION_LABEL). */
+export function planStateWord(state: SessionState, elsewhere: DoneElsewhere | null): string {
+  return state === 'done' && elsewhere?.date ? `Done ${formatDate(elsewhere.date)}` : SESSION_LABEL[state]
+}
+
+/** "Planned for 24.11.2026 16:45" — a plan of another day that a workout closed. */
+export function plannedOnNote({ plan, date }: PlanOnDay): string {
+  const t = planStartHHMM(plan)
+  return `Planned for ${formatDate(date)}${t ? ` ${t}` : ''}`
+}
+
+/** The plans of OTHER days than `day` that this workout closed (their task's
+ *  workout, 141) — oldest first. */
+export function plansClosedBy(workoutId: string, plansByDate: ReadonlyMap<string, readonly CalendarPlanItem[]>, day: string): PlanOnDay[] {
+  const out: PlanOnDay[] = []
+  for (const [date, plans] of plansByDate) {
+    if (date === day) continue
+    for (const plan of plans) if (planTaskOf(plan)?.workoutId === workoutId) out.push({ plan, date })
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date) || a.plan.id.localeCompare(b.plan.id))
 }
 

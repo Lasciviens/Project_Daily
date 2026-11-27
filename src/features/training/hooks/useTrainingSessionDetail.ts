@@ -3,7 +3,7 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { linkedTimeBlockQuery, useScheduleBlock, useTimeBlock } from '../../daily/hooks/useSchedule'
 import { useTaskById } from '../../todo/hooks/useTodos'
 import type { Task } from '../../todo/types'
-import { localDayOf } from '../../../shared/utils/dateUtils'
+import { localDayOf, shiftDateStr } from '../../../shared/utils/dateUtils'
 import { qk, STALE } from '../../../shared/query'
 import { fetchOccurrence } from '../api/trainingPlanApi'
 import { useHevyWorkoutDetail, useHevyWorkoutsRange } from './useHevyWorkouts'
@@ -13,7 +13,7 @@ import { useTrainingPlansByDate } from './useTrainingPlans'
 import { useHevyRoutines } from './useHevyRoutines'
 import { usePlanContext } from './usePlanContext'
 import { localDayBoundsIso, workoutLocalDay } from '../workoutDates'
-import { resolveTrainingSession, sessionForTask, type ResolvedSession, type SessionPlanRef } from '../sessionRef'
+import { plansClosedBy, resolveTrainingSession, sessionForTask, type PlanOnDay, type ResolvedSession, type SessionPlanRef } from '../sessionRef'
 import { planStartHHMM } from '../components/calendar/calendarSessions'
 import type { CalendarPlanItem } from '../components/calendar/calendarModel'
 
@@ -126,6 +126,8 @@ export interface SessionDay {
   todayStr: string
   /** A Strava activity that day (sessionState: it stands in for a plan with no task). */
   hasActivity: boolean
+  /** A workout: the plans of earlier days it closed ("Planned for 24.11.2026 16:45", sessionRef.plansClosedBy). */
+  plannedElsewhere: PlanOnDay[]
 }
 
 /**
@@ -139,7 +141,8 @@ export function useSessionDay(req: SessionRequest, date: string | null, planRow:
   const todayStr = useTodayStr()
   const day = date ?? req.plan?.date ?? todayStr
   const workoutsQ = useHevyWorkoutsRange(day, day, { enabled: !!date })
-  const plans = useTrainingPlansByDate(day, day)
+  // The week before it too: a late workout closes its week's open plan (141/167), shown as "Planned for …".
+  const plans = useTrainingPlansByDate(shiftDateStr(day, -6), day)
   const bounds = useMemo(() => localDayBoundsIso(day, day), [day])
   const stravaQ = useStravaActivities({ from: bounds.fromISO, to: bounds.toISO, limit: 50 }, { enabled: !!date })
   // A weekly plan's routine, matched by its title as the Log calendar does (167:
@@ -169,5 +172,8 @@ export function useSessionDay(req: SessionRequest, date: string | null, planRow:
     })
   }, [isLoading, req.workoutId, req.plan, day, todayStr, dayPlans, workouts, hasActivity, planRow, routineOfPlan])
 
-  return { resolved, todayStr, hasActivity }
+  const shownWorkoutId = resolved?.kind === 'workout' ? resolved.workoutId : null
+  const plannedElsewhere = useMemo(() => (shownWorkoutId ? plansClosedBy(shownWorkoutId, plans.data, day) : []), [shownWorkoutId, plans.data, day])
+
+  return { resolved, todayStr, hasActivity, plannedElsewhere }
 }
