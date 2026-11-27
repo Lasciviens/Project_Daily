@@ -378,6 +378,10 @@
     @apply w-full border-0 border-b border-transparent bg-transparent p-0 pb-1 text-fg placeholder:text-fg-faint
            transition-colors duration-100 focus:border-accent-500 focus:outline-none;
   }
+  /* A search with no box (typingHints' type="search"): no native × (Escape and the row's own × clear it) and no
+     rounded search look. */
+  .input-bare[type='search'] { -webkit-appearance: none; appearance: none; }
+  .input-bare[type='search']::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
   .field-label { @apply block text-micro font-semibold uppercase tracking-[0.08em] text-fg-muted mb-1.5; }
 
   /* Eyebrow label for card and group headings. */

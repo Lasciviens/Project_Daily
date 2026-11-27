@@ -16,6 +16,7 @@ import { FieldMark, MarkIcon } from './FieldMark'
 import { ChoiceRow, NoteRow, Panel, Row, TapRow } from './ItemRows'
 import type { PanelKey } from './TimeSection'
 import { fieldGoes, type FieldGoes } from './itemScreenRules'
+import { typingHints } from './fieldStyles'
 
 const goesOf = (target: GoogleTarget, app: CalendarApp, dated: boolean): FieldGoes => fieldGoes('calendar', { target, calendarApp: app, dated })
 
@@ -78,8 +79,8 @@ export function GoogleListRow({ value, typing, onPick, onNew, onType, onDone, op
   if (typing) {
     return (
       <Row label="New list" mark={mark}>
-        <input autoFocus value={value} onChange={e => onType(e.target.value)} placeholder="Its name" maxLength={100}
-          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onDone() } }} onBlur={onDone} enterKeyHint="done"
+        <input autoFocus value={value} onChange={e => onType(e.target.value)} placeholder="Title" maxLength={100} {...typingHints('list')}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onDone() } }} onBlur={onDone}
           aria-label="New Google Tasks list" className="input-bare w-40 min-w-0 pb-0 text-right text-lead" />
       </Row>
     )

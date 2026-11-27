@@ -21,6 +21,24 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-27 · v33 · The look on a phone (owner, 27.11.2026, from the iPhone:
+//                    "Real visual issues as you can see.. Work until it is
+//                    perfect! Things dont stand where they have to, either
+//                    not fitting or scaling issues. Also flaws like attached
+//                    screenshot"). Display only — no save or data path
+//                    changes. The harness at Display scale 80 % (rem shrinks,
+//                    px text doesn't) reproduces the screenshots: the time
+//                    wheel now measures its rows (a 32px constant showed
+//                    18 : 20 for 14:15); the Starts / Ends pills are em-sized
+//                    and grow for their text; With's placeholder fits; the
+//                    timeline's hour labels are whole and centred on their
+//                    ticks, the now line under the item's bar; the searches'
+//                    lists stay under their field, sized above the keyboard
+//                    (FieldOptions); every typed field takes typingHints
+//                    against the "AutoFill Contact" bar (untested on a
+//                    device). The marks keep the peeking banner (24.11).
+//                    Checked by scripts/audit-item-screen.mjs and
+//                    verify-item-screen §12.
 //  2026-11-27 · v32 · Category add-on fields (owner, 27.11.2026: "Category
 //                    decides how the task's add-on fields would show up";
 //                    "bring category to top on the task screen"; migration

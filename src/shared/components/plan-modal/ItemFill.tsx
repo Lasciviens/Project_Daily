@@ -12,6 +12,7 @@ import { useMotion } from '../../hooks/useMotion'
 import { FILL_TEXT_MAX } from '../../../features/items/itemFill'
 import { LINE } from './ItemRows'
 import type { ItemFillState } from './useItemFill'
+import { typingHints } from './fieldStyles'
 
 /** ✨ beside the title: opens the field (or closes it); quiet while a fill waits to be kept. Small, like the URL row's
  *  ↗: a bigger one pushes the title's hint onto a second line at 402 px. */
@@ -69,7 +70,7 @@ function FillField({ fill, className }: { fill: ItemFillState; className?: strin
         aria-label="Describe the item in a sentence — day, time, place, reminders"
         onChange={e => setText(e.target.value.replace(/\s*\n+\s*/g, ' '))}
         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); send() } }}
-        autoComplete="off" enterKeyHint="go"
+        {...typingHints('describe', 'sentence', 'go')}
         className="input-bare min-w-0 flex-1 resize-none overflow-hidden border-b-0 py-1.5 text-lead"
       />
       <Button size="sm" onClick={send} loading={fill.busy} disabled={!text.trim()}>{fill.busy ? 'Filling…' : 'Fill'}</Button>

@@ -17,12 +17,14 @@
 //  through planForm.withDetails.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useState, type ReactNode } from 'react'
-import { Combobox, ComboboxInput, ComboboxOption, ComboboxOptions } from '@headlessui/react'
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { Combobox, ComboboxInput, ComboboxOption } from '@headlessui/react'
 import { Plus, User, X } from 'lucide-react'
 import { SegmentedControl, Truncate } from '../../ui'
 import { ChoiceRow, LINE, Panel, Row, TapRow } from './ItemRows'
 import { ChipSelect } from './fields'
+import { typingHints } from './fieldStyles'
+import { FieldOptions } from '../FieldOptions'
 import { CATEGORY_LABELS } from './planModal.config'
 import { withCategory, withDetails, withMediaType, type DetailsForm, type PendingTitle, type PlanForm } from './planForm'
 import { PlaceRow } from './PlaceRow'
@@ -129,11 +131,11 @@ export function DetailsSection({ form, patch, mark, placeMark }: {
       )}
       {fields.includes('seats') && (
         <TextRow label="Seats" tip="Seats: where you sit (row and seat)" value={form.details.seats} max={DETAIL_LIMITS.text} mark={mark}
-          placeholder="e.g. H12–H13" onChange={seats => set({ seats })} />
+          placeholder="e.g. H12–H13" kind="code" onChange={seats => set({ seats })} />
       )}
       {fields.includes('booking') && (
         <TextRow label="Booking" tip="Booking: the booking reference" value={form.details.booking} max={DETAIL_LIMITS.text} mark={mark}
-          placeholder="Reference" onChange={booking => set({ booking })} />
+          placeholder="Reference" kind="code" onChange={booking => set({ booking })} />
       )}
     </>
   )
@@ -251,17 +253,18 @@ function SearchCombo({ label, autoFocus, onPick, onClose, query, setQuery, setFo
   options: Option[]
   note: string | null
 }) {
+  const field = useRef<HTMLInputElement>(null)
   return (
     <Combobox<Option | null> value={null} immediate
       onChange={o => { if (o) onPick(o.pick) }}
       onClose={() => { if (!query) { setFocused(false); onClose() } }}>
       <div className="relative min-w-0 flex-1">
-        <ComboboxInput autoFocus={autoFocus} aria-label={`${label}: search`} placeholder="Search" maxLength={80} value={query}
+        <ComboboxInput ref={field} autoFocus={autoFocus} aria-label={`${label}: search`} placeholder="Search" maxLength={80} value={query}
           onFocus={() => setFocused(true)} onChange={e => setQuery(e.target.value)}
           onKeyDown={e => { if (e.key === 'Escape' && query) { e.stopPropagation(); setQuery('') } }}
-          autoComplete="off" enterKeyHint="search" className={`${INPUT} w-full`} />
+          {...typingHints(`q-${label.toLowerCase()}`, 'search')} className={`${INPUT} w-full`} />
         {(options.length > 0 || note) && (
-          <ComboboxOptions modal={false} anchor={{ to: 'bottom end', gap: 8, padding: 12 }} className="menu z-toast max-h-72 min-w-[15rem] overflow-y-auto">
+          <FieldOptions field={field} gap={8} className="min-w-[15rem]">
             {note && <p className="px-3 py-2 text-meta text-fg-muted">{note}</p>}
             {options.map(o => (
               <ComboboxOption key={o.key} value={o} className="menu-item cursor-pointer data-[focus]:bg-surface-hover">
@@ -272,7 +275,7 @@ function SearchCombo({ label, autoFocus, onPick, onClose, query, setQuery, setFo
                 </span>
               </ComboboxOption>
             ))}
-          </ComboboxOptions>
+          </FieldOptions>
         )}
       </div>
     </Combobox>
@@ -292,9 +295,9 @@ function EpisodeRow({ link, mark, onChange }: { link: { kind: ItemLinkKind; id: 
   return (
     <Row label="Episode" mark={mark}>
       <span className="flex items-center gap-1 text-meta text-fg-muted" title={link.season != null && link.episode != null ? episodeCode(link.season, link.episode) : 'Episode: the whole show, or one episode'}>
-        S<input aria-label="Season" inputMode="numeric" maxLength={3} value={s} placeholder="–" className={box}
+        S<input aria-label="Season" {...typingHints('season', 'none')} inputMode="numeric" maxLength={3} value={s} placeholder="–" className={box}
           onChange={ev => { setS(ev.target.value); send(ev.target.value, e) }} />
-        E<input aria-label="Episode" inputMode="numeric" maxLength={4} value={e} placeholder="–" className={box}
+        E<input aria-label="Episode" {...typingHints('episode', 'none')} inputMode="numeric" maxLength={4} value={e} placeholder="–" className={box}
           onChange={ev => { setE(ev.target.value); send(s, ev.target.value) }} />
       </span>
     </Row>
@@ -302,7 +305,7 @@ function EpisodeRow({ link, mark, onChange }: { link: { kind: ItemLinkKind; id: 
 }
 
 /** A short text with no box (On, Seats, Booking); `offered`: earlier values to pick from as it is typed. */
-function TextRow({ label, tip, value, max, mark, placeholder, offered, onChange }: {
+function TextRow({ label, tip, value, max, mark, placeholder, offered, kind = 'sentence', onChange }: {
   label: string
   tip: string
   value: string
@@ -310,12 +313,15 @@ function TextRow({ label, tip, value, max, mark, placeholder, offered, onChange 
   mark?: ReactNode
   placeholder: string
   offered?: readonly string[]
+  /** How the keyboard capitalises it (typingHints). */
+  kind?: 'sentence' | 'code'
   onChange: (v: string) => void
 }) {
   const [focused, setFocused] = useState(false)
+  const field = useRef<HTMLInputElement>(null)
   const list = focused && offered ? suggestionsFor(offered, value).slice(0, 8) : []
   const input = (
-    <ComboboxInputOrPlain combo={!!offered} aria-label={tip} title={tip} placeholder={placeholder} maxLength={max} value={value}
+    <ComboboxInputOrPlain combo={!!offered} field={field} hints={typingHints(label.toLowerCase(), kind)} aria-label={tip} title={tip} placeholder={placeholder} maxLength={max} value={value}
       onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); const t = cleanText(value, max); if ((t ?? '') !== value) onChange(t ?? '') }}
       onChange={v => onChange(v)} />
   )
@@ -326,13 +332,13 @@ function TextRow({ label, tip, value, max, mark, placeholder, offered, onChange 
           <div className="relative min-w-0 flex-1">
             {input}
             {list.length > 0 && (
-              <ComboboxOptions modal={false} anchor={{ to: 'bottom end', gap: 6, padding: 12 }} className="menu z-toast min-w-[10rem]">
+              <FieldOptions field={field} className="min-w-[10rem]">
                 {list.map(v => (
                   <ComboboxOption key={v} value={v} className="menu-item cursor-pointer data-[focus]:bg-surface-hover">
                     <bdi className="min-w-0 flex-1"><Truncate>{v}</Truncate></bdi>
                   </ComboboxOption>
                 ))}
-              </ComboboxOptions>
+              </FieldOptions>
             )}
           </div>
         </Combobox>
@@ -341,8 +347,10 @@ function TextRow({ label, tip, value, max, mark, placeholder, offered, onChange 
   )
 }
 
-function ComboboxInputOrPlain({ combo, onChange, ...rest }: {
+function ComboboxInputOrPlain({ combo, field, hints, onChange, ...rest }: {
   combo: boolean
+  field: RefObject<HTMLInputElement | null>
+  hints: ReturnType<typeof typingHints>
   'aria-label': string
   title: string
   placeholder: string
@@ -352,10 +360,10 @@ function ComboboxInputOrPlain({ combo, onChange, ...rest }: {
   onBlur: () => void
   onChange: (v: string) => void
 }) {
-  const props = { ...rest, autoComplete: 'off', enterKeyHint: 'done' as const, className: `${INPUT} w-full` }
+  const props = { ...rest, ...hints, className: `${INPUT} w-full` }
   return combo
-    ? <ComboboxInput {...props} onChange={e => onChange(e.target.value)} />
-    : <input {...props} onChange={e => onChange(e.target.value)} />
+    ? <ComboboxInput ref={field} {...props} onChange={e => onChange(e.target.value)} />
+    : <input ref={field} {...props} onChange={e => onChange(e.target.value)} />
 }
 
 /** With who: names as small chips (× takes one off) and a field after them; earlier names are offered as they type. */
@@ -368,6 +376,7 @@ function NamesRow({ value, mark, known, onChange }: { value: string[]; mark?: Re
   // A name typed that isn't picked yet nor offered as it is: "Add …" first, so Enter adds what was typed.
   const isNew = !!typed && !has(typed) && !offered.some(o => o.toLowerCase() === typed.toLowerCase())
   const add = (n: string) => { onChange(cleanNames([...value, n]) ?? []); setQuery('') }
+  const field = useRef<HTMLInputElement>(null)
   return (
     <Row label="With" mark={mark} wide>
       <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5 py-1.5">
@@ -384,8 +393,11 @@ function NamesRow({ value, mark, known, onChange }: { value: string[]; mark?: Re
         {value.length < DETAIL_LIMITS.names && (
           <Combobox<string | null> value={null} onChange={n => { if (n) add(n) }} onClose={() => { if (!query) setFocused(false) }} immediate>
             <div className="relative min-w-0">
-              <ComboboxInput aria-label="With: add a name" title="With: who you go or play with — earlier names are offered"
-                placeholder={value.length ? 'Add' : 'Add a name'} maxLength={DETAIL_LIMITS.name + 10} value={query}
+              {/* The owner saw "AutoFill Contact" over this field and its old three-word placeholder cut ("Add a nam",
+                  27.11.2026). iOS guesses contact fields from a field's words too, so none says "name" (untested on a
+                  device). One short word, in a field sized in em to hold it at any Display scale. */}
+              <ComboboxInput ref={field} aria-label="With: who goes with you" title="With: who you go or play with — earlier ones are offered"
+                placeholder="Add" maxLength={DETAIL_LIMITS.name + 10} value={query}
                 onFocus={() => setFocused(true)} onChange={e => setQuery(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && isNew && offered.length === 0) { e.preventDefault(); add(typed) }
@@ -393,11 +405,11 @@ function NamesRow({ value, mark, known, onChange }: { value: string[]; mark?: Re
                 }}
                 // A name typed and never Entered is kept when the field is left, never dropped without a word.
                 onBlur={() => { if (typed && !has(typed)) add(typed); setFocused(false); setQuery('') }}
-                autoComplete="off" enterKeyHint="done"
+                {...typingHints('with', 'words')}
                 // Narrow beside the names (no line of its own on a phone), wider while typing.
-                className={`input-bare pb-0 text-right text-lead transition-[width] motion-reduce:transition-none ${value.length ? 'w-10 focus:w-24' : 'w-24'}`} />
+                className="input-bare w-[3em] pb-0 text-right text-lead transition-[width] focus:w-[8em] motion-reduce:transition-none" />
               {(isNew || offered.length > 0) && (
-                <ComboboxOptions modal={false} anchor={{ to: 'bottom end', gap: 6, padding: 12 }} className="menu z-toast min-w-[12rem]">
+                <FieldOptions field={field} className="min-w-[12rem]">
                   {isNew && offered.length > 0 && (
                     <ComboboxOption value={typed} className="menu-item cursor-pointer data-[focus]:bg-surface-hover">
                       <Plus aria-hidden className="h-4 w-4 shrink-0" /><Truncate className="min-w-0 flex-1" fullText={`Add “${typed}”`}>Add “<bdi>{typed}</bdi>”</Truncate>
@@ -408,7 +420,7 @@ function NamesRow({ value, mark, known, onChange }: { value: string[]; mark?: Re
                       <User aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" /><bdi className="min-w-0 flex-1"><Truncate>{n}</Truncate></bdi>
                     </ComboboxOption>
                   ))}
-                </ComboboxOptions>
+                </FieldOptions>
               )}
             </div>
           </Combobox>
@@ -430,7 +442,7 @@ function CostRow({ cost, currency, mark, onCost, onCurrency }: {
   const problem = 'problem' in read ? read.problem : null
   return (
     <Row label="Cost" mark={mark}>
-      <input aria-label="Cost: what it cost — kept with the plan, never counted as spending" title={problem ?? 'Cost: kept with the plan, never counted as spending'}
+      <input {...typingHints('cost', 'none')} aria-label="Cost: what it cost — kept with the plan, never counted as spending" title={problem ?? 'Cost: kept with the plan, never counted as spending'}
         inputMode="decimal" maxLength={12} value={cost} placeholder="0" onChange={e => onCost(e.target.value)}
         data-tone={problem ? 'danger' : undefined} className={`${INPUT} w-20 tabular-nums ${problem ? 'tone-text' : ''}`} />
       <ChipSelect<DetailCurrency> label="Currency" value={currency} options={DETAIL_CURRENCIES.map(c => ({ value: c, label: c }))} onChange={onCurrency} />

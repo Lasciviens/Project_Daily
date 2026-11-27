@@ -135,8 +135,10 @@ export function NoteRow({ children, tone }: { children: ReactNode; tone?: 'dange
 }
 
 /**
- * A Starts / Ends pill: a date (`wide`) or a time, each of one width — nothing jumps sideways as values change.
- * Open while its wheel or month shows; struck through red when the end can't be.
+ * A Starts / Ends pill: a date (`wide`) or a time, each at least one width — nothing jumps sideways as values change —
+ * and wider only when its text needs it, never cut ("Wed 25.11.2026" ran into the time pill in the owner's screenshot,
+ * 27.11.2026; the harness at Display scale 80 % reproduces it). Sized in em, all of it: the pill follows its own px
+ * text, not the Display scale. Open while its wheel or month shows; struck through red when the end can't be.
  */
 export function Pill({ children, label, open, onClick, wide, bad, disabled }: {
   children: ReactNode
@@ -150,8 +152,8 @@ export function Pill({ children, label, open, onClick, wide, bad, disabled }: {
   return (
     <button type="button" onClick={onClick} aria-expanded={open} aria-label={label} disabled={disabled}
       className={cx(
-        'inline-flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-control px-2 text-lead tabular-nums transition-colors',
-        wide ? 'w-[8.5rem]' : 'w-[4.25rem]',
+        'inline-flex h-[2.125em] shrink-0 items-center justify-center whitespace-nowrap rounded-control px-[0.5em] text-lead tabular-nums transition-colors',
+        wide ? 'min-w-[9.6em]' : 'min-w-[4.5em]',
         bad ? 'bg-danger-soft text-danger line-through'
           : open ? 'bg-accent-50 text-accent-600'
           : 'bg-surface-2 text-fg hover:bg-surface-hover',

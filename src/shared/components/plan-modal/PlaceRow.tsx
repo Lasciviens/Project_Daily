@@ -10,10 +10,12 @@
 //  "Cinema" and offers the places of earlier cinema trips first (215).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useState, type ReactNode } from 'react'
-import { Combobox, ComboboxInput, ComboboxOption, ComboboxOptions } from '@headlessui/react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Combobox, ComboboxInput, ComboboxOption } from '@headlessui/react'
 import { Briefcase, Clapperboard, Home, MapPin, MapPinOff, Pencil, X } from 'lucide-react'
 import { Truncate } from '../../ui'
+import { FieldOptions } from '../FieldOptions'
+import { typingHints } from './fieldStyles'
 import { placeFromGeo, placeFromSaved, placeFromText, placeLabel, placeOfRow, type ItemPlace } from '../../../features/items/itemPlace'
 import { useStopSearch } from '../../../features/home/hooks/useTransitQueries'
 import { placeLine } from '../../../features/home/api/enturGeocoder'
@@ -79,6 +81,7 @@ function PlaceSearch({ onPick, onClose, autoFocus, label, earlier }: {
   earlier?: readonly unknown[]
 }) {
   const [query, setQuery] = useState('')
+  const field = useRef<HTMLInputElement>(null)
   const [debounced, setDebounced] = useState('')
   // 300 ms: a search per pause in typing, not per key (as the transit card's).
   useEffect(() => { const id = setTimeout(() => setDebounced(query.trim()), 300); return () => clearTimeout(id) }, [query])
@@ -122,6 +125,7 @@ function PlaceSearch({ onPick, onClose, autoFocus, label, earlier }: {
     <Combobox<Choice | null> value={null} onChange={c => { if (c) onPick(c.place) }} onClose={() => { if (!query) onClose() }} immediate>
       <div className="relative min-w-0 flex-1">
         <ComboboxInput
+          ref={field}
           autoFocus={autoFocus}
           aria-label={`${label}: search a place`}
           placeholder={label}
@@ -132,13 +136,12 @@ function PlaceSearch({ onPick, onClose, autoFocus, label, earlier }: {
           // Leaving the field with words typed and nothing picked (another row, closing the screen) keeps them as a typed
           // place — never dropped without a word (as the labels do); a picked option keeps the focus here, so it never adds twice.
           onBlur={() => { if (typed) onPick(typed); else onClose() }}
-          autoComplete="off"
-          enterKeyHint="search"
+          {...typingHints('q-place', 'search')}
           className="input-bare pb-0 text-lead"
         />
         {(choices.length > 0 || note) && (
-          // Not modal (as the screen's other pickers). Below the row: the Location group sits near the top of the screen.
-          <ComboboxOptions modal={false} anchor={{ to: 'bottom start', gap: 8, padding: 12 }} className="menu z-toast max-h-72 min-w-[15rem] overflow-y-auto">
+          // Not modal (as the screen's other pickers). Below the row, sized to what the keyboard leaves (FieldOptions).
+          <FieldOptions field={field} align="start" gap={8} className="min-w-[15rem]">
             {note && <p className="px-3 py-2 text-meta text-fg-muted">{note}</p>}
             {choices.map(c => (
               <ComboboxOption key={c.key} value={c} className="menu-item cursor-pointer data-[focus]:bg-surface-hover">
@@ -153,7 +156,7 @@ function PlaceSearch({ onPick, onClose, autoFocus, label, earlier }: {
                 </span>
               </ComboboxOption>
             ))}
-          </ComboboxOptions>
+          </FieldOptions>
         )}
       </div>
     </Combobox>
