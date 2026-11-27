@@ -14,7 +14,7 @@ shows it wherever a logged set appears (" @ RPE 8/9/10", one formatter:
 - It never caps, lowers, or otherwise changes a decision, a next target or
   `evidence.recommendation`, whether a set was rated or not, and there is no
   "effort not tracked" caveat.
-- Outside the engine it is context only: Training → Next adds an
+- Outside the engine it is context only: Training → Today adds an
   informational "near your limit" (average ≥ 9.5) or "room to push" (≤ 7)
   note that never changes the target, and the coach snapshot carries the
   same numbers.
@@ -61,7 +61,7 @@ next to the decisions, never from the engine:
   such a lift in scope). **Routine** keeps the exercises that routine holds;
   routines are picked by id (two routines may share a name, shown as
   "Upper A", "Upper A (2)") and listed in the routine list's order (the
-  Program tab's). The filter shows only when the program has two or more
+  Plan tab's). The filter shows only when the program has two or more
   routines with logged exercises.
 
 Every filter combines with AND (search · evidence · window · muscle ·
