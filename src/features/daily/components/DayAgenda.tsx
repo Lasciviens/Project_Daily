@@ -18,7 +18,7 @@ import { aheadOnDay, buildDaySchedule, plannedMinutes } from '../daySchedule'
 import { buildDayRows, dayRowCounts, hourLabel, repeatDayKeys, repeatDayRequest, repeatsToDoOn, rowTimeZone, untilLabel, type DayRow } from '../dayItems'
 import { zoneTag } from '../../../shared/utils/timeZone'
 import {
-  ContinuationRow, LinkedTaskRow, NowMarker, RepeatRow, SlotRow, TimeGutter, TrainingRow,
+  CarriedRow, ContinuationRow, LinkedTaskRow, NowMarker, RepeatRow, SlotRow, TimeGutter, TrainingRow,
 } from './DayAgendaRows'
 import { OpenWishesRow, OpenWishesRowSkeleton, UndatedThisWeek, UndatedThisWeekSkeleton } from './DayAgendaExtras'
 
@@ -150,6 +150,8 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
   function renderRow(r: DayRow): ReactNode {
     // A continuation that carries its open overdue task (dayItems.continuationTakesTask) is that task's row today.
     if (r.spillover && !r.carriesTask) return <ContinuationRow row={r} past={isPast(r)} onOpen={() => openRow(r)} />
+    // A past day's row whose open task today's list carries (dayItems.carriedToToday): its old place, "On today".
+    if (r.carried && r.task) return <CarriedRow row={r} onOpen={() => openRow(r)} />
     switch (r.kind) {
       case 'training': return <TrainingRow row={r} planCtx={planCtx} nowHour={nowHour} active={isActive(r)} />
       case 'repeat':   return <RepeatRow row={r} active={isActive(r)} />

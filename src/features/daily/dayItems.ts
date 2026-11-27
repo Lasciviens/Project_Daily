@@ -22,6 +22,7 @@
 import { projectRecurringBlocksForDay, type RecurringBlockLike } from './components/dayAgendaProjection'
 import { addDaysIso, dayNumber } from './recurrence'
 import type { DayItem } from './daySchedule'
+import { isOverdueOn } from '../todo/taskRules'
 import type { Task, TaskStatus } from '../todo/types'
 
 /** What a row can still become. null = nothing to tick (a slot with no task). */
@@ -57,6 +58,9 @@ export interface DayRow<T extends RowTask = Task> {
    *  list only because it is open and overdue (its day was yesterday), so it
    *  sits here, once, instead of again under Anytime (continuationTakesTask). */
   carriesTask: boolean
+  /** On a past day: the row's task is still open and due before today, so it is on today's list (overdue) — its
+   *  live row is today's. Here it reads "On today", with no second tick (carriedToToday). */
+  carried:   boolean
   state:     RowState | null
   /** The task behind the row, when it has one. */
   task:      T | null
@@ -160,6 +164,19 @@ export function continuationTakesTask(task: Pick<RowTask, 'status' | 'due_date'>
 }
 
 /**
+ * Whether a row on a past day is its task's old place: the task is still open
+ * and due before today, so today's list carries it (overdue, `fetchTasksForDay`)
+ * and that is its live row (owner, 27.11.2026: "Watch: X2 movie" on 25.11's
+ * schedule and again on today's list read as a duplicate — "One truth! … if its
+ * moved it is moved!"). It stays on its day as a record (NEVER_HIDES), as "On
+ * today" with no tick of its own; Move to today moves the item itself
+ * (items/useMoveItemToDay). A task due today or later is not carried.
+ */
+export function carriedToToday(task: Pick<RowTask, 'status' | 'due_date'> | null, day: string, today: string): boolean {
+  return !!task && day < today && isOverdueOn(task, today)
+}
+
+/**
  * The day's rows. `tasks`: the day list (useDayTasks — open, done, cancelled);
  * `items`: the day schedule (buildDaySchedule); `linkedTasks`: the tasks of the
  * day's slots that are not on the day list (a slot on another day than its
@@ -194,7 +211,7 @@ export function buildDayRows<T extends RowTask>(input: {
       key: i.id, title: i.title,
       startHour: timed ? i.startHour : null,
       endHour: busy ? i.endHour : null,
-      busy, spillover: i.spillover, carriesTask: false, item: i, overlaps: false,
+      busy, spillover: i.spillover, carriesTask: false, carried: false, item: i, overlaps: false,
     }
     if (i.kind === 'recurring') {
       // A plan's day nobody edited on its own (those left the plan, 142) —
@@ -220,10 +237,12 @@ export function buildDayRows<T extends RowTask>(input: {
       ? { scheduleBlockId: b.schedule_block_id, date: b.occurrence_date, acted: true }
       : null
     const kind: RowKind = isTraining(i) ? 'training' : repeat ? 'repeat' : i.taskId ? 'task' : 'slot'
+    // A past day's slot whose task today's list carries: its old place, not a second live row.
+    const carried = kind === 'task' && !i.spillover && carriedToToday(task, day, today)
     // Missed is judged from the slot's day as it is now (a day moved forward
     // isn't missed); `repeat.date` stays the plan's own day (what a tick acts on).
     rows.push({
-      ...base, kind, task, repeat, carriesTask,
+      ...base, kind, task, repeat, carriesTask, carried,
       state: !i.taskId ? null : repeat ? repeatState(task ?? (status ? { status } : null), b?.date ?? repeat.date, today) : taskState(status),
     })
   }
@@ -240,6 +259,7 @@ export function buildDayRows<T extends RowTask>(input: {
     rows.push({
       key: `task:${t.id}`, kind: ofRepeat ? 'repeat' : 'task', title: t.title, startHour: at, endHour: null, busy: false,
       spillover: false, carriesTask: false, task: t, item: null, repeat: ofRepeat, overlaps: false,
+      carried: !ofRepeat && !isTrainingTaskRow(t) && carriedToToday(t, day, today),
       state: ofRepeat ? repeatState(t, t.due_date ?? t.occurrence_date!, today) : taskState(t.status),
     })
   }

@@ -290,6 +290,21 @@ export function itemFromRows(task?: TaskRow | null, block?: BlockRow | null, pla
   }
 }
 
+/** What an edit keeps when the field is left out — a move never sends them, so it can't rewrite them. */
+const KEPT_WHEN_ABSENT = ['labels', 'place', 'alerts', 'showAs', 'url', 'travelMinutes', 'timeZone', 'repeatEnd', 'link'] as const
+
+/**
+ * A one-off item moved to another day (owner, 27.11.2026: "if its moved it is moved!" — Move to today on an overdue
+ * row): the same item through the one save, only its day changed. Its time, length and a deadline elsewhere stay;
+ * the database moves the task's due along with the slot when the due was the slot's day (item_slot_moves_due), and
+ * the section follows the day (saveItemVia).
+ */
+export function movedToDay(item: ItemInput, day: string): ItemInput {
+  const moved: ItemInput = { ...item, scope: 'item', date: day, section: null }
+  for (const k of KEPT_WHEN_ABSENT) delete moved[k]
+  return moved
+}
+
 // ── What it says ─────────────────────────────────────────────────────────────
 
 /** 'HH:MM' + minutes → 'HH:MM' (wrapping past midnight). */

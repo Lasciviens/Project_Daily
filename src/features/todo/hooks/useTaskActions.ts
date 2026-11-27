@@ -1,9 +1,9 @@
 import { useEntityModal } from '../../../shared/modals'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { useTrainingPlanActions } from '../../training/hooks/useTrainingPlanActions'
-import { useRepeatDay } from '../../items/useItems'
+import { useMoveItemToDay, useRepeatDay } from '../../items/useItems'
 import type { TrainingPlanRef } from '../../training/api/trainingPlanApi'
-import { isOpenTask, isTrainingTask } from '../taskRules'
+import { isOpenTask, isTrainingTask, movesToToday } from '../taskRules'
 import { useDeleteTask, useToggleTask, useUpdateTask } from './useTodos'
 import type { Task, TaskStatus } from '../types'
 
@@ -49,6 +49,7 @@ export function useTaskActions() {
   const remove = useDeleteTask()
   const session = useTrainingPlanActions()
   const repeatDay = useRepeatDay()
+  const moveItem = useMoveItemToDay()
 
   const quietly = (p: Promise<unknown>) => p.then(() => undefined, () => undefined)
 
@@ -113,6 +114,13 @@ export function useTaskActions() {
     } }))
   }
 
+  /** An overdue item to today — its slot and its due, in the data (useMoveItemToDay says it, with Undo). */
+  function moveToToday(task: Task): Promise<void> {
+    const today = todayStr()
+    if (!movesToToday(task, today)) return Promise.resolve()
+    return quietly(moveItem.mutateAsync({ task, day: today }))
+  }
+
   /** Asks first, says what happened, offers Undo (the owner's rule for every delete). */
   async function removeTask(task: Task): Promise<void> {
     if (isTrainingTask(task)) return quietly(session.deleteSession(planRefForTask(task)))
@@ -125,10 +133,10 @@ export function useTaskActions() {
   const open = (task: Task) => (isTrainingTask(task) ? modal.open({ kind: 'training-session', taskId: task.id }) : edit(task))
 
   return {
-    setDone, cancel, reopen, setStatus, toggleFocus, remove: removeTask, edit, open,
+    setDone, cancel, reopen, setStatus, toggleFocus, remove: removeTask, edit, open, moveToToday,
     /** A training session's own: Move (asks the day and time), Skip (asks why). */
     move: (task: Task) => session.openMove(planRefForTask(task)),
     skip: (task: Task) => session.openSkip(planRefForTask(task)),
-    busy: toggle.isPending || update.isPending || remove.busy || session.busy || repeatDay.isPending,
+    busy: toggle.isPending || update.isPending || remove.busy || session.busy || repeatDay.isPending || moveItem.isPending,
   }
 }

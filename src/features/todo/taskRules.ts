@@ -46,6 +46,17 @@ export function isOverdueOn(task: Pick<Task, 'status' | 'due_date'>, today: stri
   return !!task.due_date && isOpenTask(task) && task.due_date < today
 }
 
+/**
+ * Whether a row offers Move to today (owner, 27.11.2026: "One truth! … if its moved it is moved!"): an overdue
+ * one-off item. A training session moves through its own Move…, and a repeat's day is never carried over (156).
+ */
+export function movesToToday(
+  task: Pick<Task, 'status' | 'due_date' | 'source_type' | 'hevy_routine_id'> & Partial<Pick<Task, 'schedule_block_id' | 'occurrence_date'>>,
+  today: string,
+): boolean {
+  return isOverdueOn(task, today) && !isTrainingTask(task) && !(task.schedule_block_id && task.occurrence_date)
+}
+
 /** isOverdueOn against the clock — safe to pass to `.filter` (one argument). */
 export function isOverdue(task: Pick<Task, 'status' | 'due_date'>): boolean {
   return isOverdueOn(task, todayStr())

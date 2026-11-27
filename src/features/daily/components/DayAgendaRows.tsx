@@ -11,6 +11,7 @@ import { addDaysIso, type RepeatRule } from '../recurrence'
 import { repeatEndNote } from '../../items/itemCalendarFields'
 import { useDeleteTimeBlock, useUpdateTimeBlock } from '../hooks/useSchedule'
 import { useRepeatDay } from '../../items/useItems'
+import { useTaskActions } from '../../todo/hooks/useTaskActions'
 import type { RepeatDayAction } from '../../items/itemTypes'
 import { TrainingPlanMenu } from '../../training/components/session/TrainingPlanActions'
 import { useTrainingPlanActions } from '../../training/hooks/useTrainingPlanActions'
@@ -344,6 +345,30 @@ export function LinkedTaskRow({ row }: { row: DayRow }) {
       title={row.title}
       onOpen={() => { if (taskId) modal.open({ kind: 'task', id: taskId }) }}
       dim={row.state !== 'open'}
+    />
+  )
+}
+
+/**
+ * A past day's row whose task is still open and overdue: today's list carries it, and that is its live row
+ * (dayItems.carriedToToday). Here it is the old place — "On today", no tick of its own; Move to today moves the
+ * item itself (owner, 27.11.2026: "One truth! … if its moved it is moved!").
+ */
+export function CarriedRow({ row, onOpen }: { row: DayRow; onOpen: () => void }) {
+  const act = useTaskActions()
+  const task = row.task!
+  const entries: MenuEntry[] = [
+    { key: 'today', label: 'Move to today', icon: <CalendarArrowUp />, disabled: act.busy, onSelect: () => { void act.moveToToday(task) } },
+    { key: 'edit', label: 'Edit…', icon: <Pencil />, onSelect: onOpen },
+  ]
+  return (
+    <RowShell
+      lead={<Mark label="Carried to today: still open, overdue"><CalendarArrowUp /></Mark>}
+      title={task.title}
+      pills={<TonePill tone="warn">On today</TonePill>}
+      menu={<RowMenu entries={entries} />}
+      onOpen={onOpen}
+      dim
     />
   )
 }

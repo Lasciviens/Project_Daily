@@ -140,6 +140,47 @@ console.log('\n== 6. A slot on another day than its task\'s date ==')
   eq(/r\.spillover && !r\.carriesTask\) return <ContinuationRow/.test(agenda), true, 'Daily draws a carrying continuation as the task\'s row (tick and actions)')
 }
 
+console.log('\n== 6b. An overdue task is today\'s: its old day shows "On today" (owner, 27.11.2026) ==')
+{
+  // The owner's rows as they are: ONE task and ONE slot, both on 25.11.2026 22:15 (5 minutes), read on 27.11.2026.
+  const NOW = '2026-11-27'
+  const x2 = { id: 'ab113b8f', title: 'Watch: X2 movie', status: 'open', due_date: '2026-11-25', due_time: '22:15:00', movie_entry_id: null }
+  const x2slot = block('ee56ccf6', { date: '2026-11-25', title: 'Watch: X2 movie', start_time: '22:15:00', duration_minutes: 5, task_id: x2.id })
+  const on = (d, { blocks = [], prevBlocks = [], open = [], linked = [] }) => D.buildDayRows({
+    day: d, today: NOW, tasks: { open, done: [], cancelled: [] }, linkedTasks: linked,
+    items: S.buildDaySchedule({ date: d, blocks, prevBlocks, templates: [] }),
+  })
+  const all = r => [...r.timed, ...r.anytime, ...r.done, ...r.cancelled]
+  const today = on(NOW, { open: [x2] })
+  eq([keys(today.timed), keys(today.anytime), all(today).map(r => r.carried)], [[], ['task:ab113b8f'], [false]],
+    'today (27.11): the overdue task is ONE live row, under Anytime (its old 22:15 is not today\'s time)')
+  const old = on('2026-11-25', { blocks: [x2slot], open: [x2] })
+  eq(old.timed.map(r => [r.key, r.kind, r.task?.id, r.carried, r.startHour]), [['ee56ccf6', 'task', 'ab113b8f', true, 22.25]],
+    'its old day (25.11): the slot stays at 22:15 as a record, marked carried — "On today", not a second live row')
+  eq(on('2026-11-26', { prevBlocks: [x2slot], linked: [x2] }).timed.length, 0, 'the day between (26.11): nothing — a 5-minute slot never spills past midnight')
+  // After Move to today: the slot is on 27.11, the database moved the due along (item_slot_moves_due).
+  const moved = { ...x2, due_date: NOW }
+  const after = on(NOW, { blocks: [{ ...x2slot, date: NOW }], open: [moved] })
+  eq([after.timed.map(r => [r.key, r.task?.id, r.carried, r.startHour]), keys(after.anytime)], [[['ee56ccf6', 'ab113b8f', false, 22.25]], []],
+    'after Move to today: ONE row today, in its slot at 22:15')
+  eq(all(on('2026-11-25', {})).length, 0, '…and its old day is empty (the data moved)')
+  // What carries and what doesn't.
+  eq(all(on('2026-11-25', { open: [{ ...x2, due_time: null }] })).map(r => [r.carried, r.state]), [[true, 'open']],
+    'a past day\'s open task with no slot is carried too (still listed: NEVER_HIDES)')
+  eq(all(on('2026-11-25', { blocks: [x2slot], linked: [{ ...x2, due_date: '2026-11-30' }] })).map(r => r.carried), [false],
+    'a past slot whose task is due later (a deadline ahead) is not carried')
+  eq(all(on('2026-11-25', { blocks: [x2slot], linked: [{ ...x2, status: 'done' }] })).map(r => [r.carried, r.state]), [[false, 'done']],
+    'a done task is its own record, never carried')
+  eq(all(on(NOW, { blocks: [{ ...x2slot, date: NOW }], open: [x2] })).map(r => r.carried), [false], 'on today nothing is carried')
+  eq(all(on('2026-11-25', { open: [{ ...x2, source_type: 'training_session' }] })).map(r => r.carried), [false], 'a training session keeps its own row and Move…')
+  eq(all(on('2026-11-25', { open: [{ ...x2, schedule_block_id: 'plan', occurrence_date: '2026-11-25' }] })).map(r => [r.kind, r.carried]), [['repeat', false]],
+    'a repeat\'s day is never carried (156: missed stays missed)')
+  eq([D.carriedToToday({ status: 'waiting', due_date: '2026-11-25' }, '2026-11-25', NOW), D.carriedToToday({ status: 'open', due_date: '2026-11-25' }, NOW, NOW)], [true, false],
+    'carriedToToday: any open status on a past day; never on today itself')
+  const agenda = require('fs').readFileSync(require('path').join(__dirname, '../src/features/daily/components/DayAgenda.tsx'), 'utf8')
+  eq(/if \(r\.carried && r\.task\) return <CarriedRow/.test(agenda), true, 'Daily draws a carried row as its old place ("On today", Move to today)')
+}
+
 console.log('\n== 7. Time with no length (155): a moment, never planned, never overlapping ==')
 {
   const r = day({ blocks: [block('meet', { start_time: '10:00:00', duration_minutes: 90 }), block('pill', { start_time: '10:30:00', busy: false }), block('call', { start_time: '11:00:00', duration_minutes: 60 })] })

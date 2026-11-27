@@ -97,6 +97,21 @@ check('…on Calendar through its Apple copy too (its area on Apple, 2b-2: moved
   && R.itemFromRows(null, null, { ...{ id: 'p0', title: 'x', days_of_week: [1], start_time: null, end_time: null, effective_from: '2026-10-18', repeat_kind: 'weekly' }, google_calendar_event_id: null, icloud_area: 'training', google_target: null }).google === 'calendar')
 check('a saved choice wins over the presence', R.itemFromRows(task({ google_target: 'tasks', google_sync_enabled: true }), blk(), null).google === 'tasks')
 check('a slot with no length → no length shown', R.itemFromRows(task(), blk({ busy: false, duration_minutes: 15, start_time: '14:00:00' }), null).durationMinutes === null)
+{
+  // Move to today (owner, 27.11.2026): the owner's "Watch: X2 movie", due and slot both 25.11.2026 22:15 (5 minutes).
+  const x2 = R.itemFromRows(task({ title: 'Watch: X2 movie', due_date: '2026-11-25', due_time: '22:15:00', labels: ['Movie'] }),
+    blk({ date: '2026-11-25', start_time: '22:15:00', duration_minutes: 5, time_zone: 'Europe/Oslo', place: null, alerts: [10] }), null)
+  const m = R.movedToDay(x2, '2026-11-27')
+  check('movedToDay: the same item (task + slot), only its day changed; time, length and no deadline kept',
+    m.taskId === 't1' && m.blockId === 'b1' && m.date === '2026-11-27' && m.time === '22:15' && m.durationMinutes === 5
+    && m.deadline === null && m.scope === 'item' && m.title === 'Watch: X2 movie' && m.google === x2.google)
+  check('…the section follows the new day (left to saveItemVia)', m.section === null)
+  check('…fields an edit keeps when absent are never sent (labels, place, alerts, zone, link…)',
+    ['labels', 'place', 'alerts', 'showAs', 'url', 'travelMinutes', 'timeZone', 'repeatEnd', 'link'].every(k => !(k in m)) && 'labels' in x2 && 'timeZone' in x2)
+  const dl = R.movedToDay(R.itemFromRows(task({ due_date: '2026-11-30', due_time: '12:00:00' }), blk({ date: '2026-11-25' }), null), '2026-11-27')
+  check('…a deadline elsewhere stays the deadline', dl.date === '2026-11-27' && dl.deadline?.date === '2026-11-30' && dl.deadline?.time === '12:00')
+  check('…no slot: the task\'s own day moves, its time kept', (() => { const n = R.movedToDay(R.itemFromRows(task(), null, null), '2026-11-27'); return n.blockId === null && n.date === '2026-11-27' && n.time === '09:00' })())
+}
 const pres = R.itemFromRows(task({ due_time: null }), blk({ start_time: null, busy: false }), null)
 check('an all-day presence → a day, no time', pres.time === null && pres.date === '2026-10-20' && pres.durationMinutes === null)
 check('a task with no slot: its time from due_time', R.itemFromRows(task({ due_time: '16:00:00' }), null, null).time === '16:00')
@@ -210,6 +225,9 @@ check('the Add sheet and every quick add (Home\'s, Work\'s, the search bar\'s) n
 // 03.11.2026: with no Google connection on the device, Home's quick add sent 'none' — an Apple area's event never went.
 check('Home\'s quick add tells its builder whether the item\'s area is on Apple Calendar (no Google connection needed for that)',
   /itemFromQuickAdd\(title, parse, day, googleConnected, calendarApp === 'apple'\)/.test(read('src/features/home/components/HomeDayCard.tsx')))
+check('Move to today is the one save over the item read again by id (task + slot), with Undo',
+  /export function useMoveItemToDay/.test(hooks) && /fetchTaskById\(task\.id\), qc\.fetchQuery\(linkedTimeBlockQuery\(task\.id\)\)/.test(hooks)
+  && /send\(movedToDay\(was, day\)\)/.test(hooks) && /toast\.undo\(`Moved to/.test(hooks))
 check('components never get supabase from here (no supabase import in the hooks)', !/integrations\/supabase/.test(hooks))
 
 console.log(`\n${passed} passed, ${failed} failed`)

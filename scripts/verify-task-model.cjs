@@ -52,6 +52,12 @@ eq(R.isOverdueOn(task({ due_date: '2026-10-11', status: 'waiting' }), TODAY), tr
 eq(R.isOverdueOn(task({ due_date: '2026-10-11', status: 'done' }), TODAY), false, 'done is never overdue')
 eq(R.isOverdueOn(task({ due_date: TODAY }), TODAY), false, 'due today is not overdue')
 eq([task({ due_date: '2000-01-01' })].filter(R.isOverdue).length, 1, 'isOverdue is safe as a .filter callback (one argument)')
+// Move to today (owner, 27.11.2026: "if its moved it is moved!"): an overdue one-off item only.
+eq(R.movesToToday(task({ due_date: '2026-10-11' }), TODAY), true, 'Move to today: an overdue task')
+eq(R.movesToToday(task({ due_date: TODAY }), TODAY) || R.movesToToday(task({ due_date: '2026-10-11', status: 'done' }), TODAY), false,
+  '…never one due today or closed')
+eq(R.movesToToday(task({ due_date: '2026-10-11', source_type: 'training_session' }), TODAY), false, '…never a training session (its own Move…)')
+eq(R.movesToToday(task({ due_date: '2026-10-11', schedule_block_id: 'p', occurrence_date: '2026-10-11' }), TODAY), false, '…never a repeat\'s day (156)')
 
 // ── Which day a task belongs to ──
 const onToday = t => R.onDay(t, TODAY, TODAY)

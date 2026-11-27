@@ -6,7 +6,7 @@ import { doneByWorkout, useTaskActions } from '../hooks/useTaskActions'
 import { ToneDot, TonePill, Truncate, cx } from '../../../shared/ui'
 import { DOMAIN_LABEL } from '../domainColors'
 import { DOMAIN_TONE, PRIORITY_LABEL, PRIORITY_TONE, STATUS_LABEL, STATUS_TONE, dueTone } from '../taskTones'
-import { isOverdue, isTrainingTask, dueLabel } from '../taskRules'
+import { isOverdue, isTrainingTask, dueLabel, movesToToday } from '../taskRules'
 import { TaskLabelPills } from './TaskLabelPills'
 import { todayStr, tomorrowStr } from '../../../shared/utils/dateUtils'
 import { windowRangeLabel } from '../../../shared/components/windowChips'
@@ -75,6 +75,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
     onCancel: () => { void act.cancel(task) },
     onReopen: () => { void act.reopen(task) },
     onDelete: () => { void act.remove(task) },
+    onMoveToToday: movesToToday(task, todayStr()) ? () => { void act.moveToToday(task) } : undefined,
     onMoveUp, onMoveDown, canMoveUp, canMoveDown,
     busy: act.busy,
     training: training ? {
