@@ -11,12 +11,12 @@
 --    Why a column and not a table: the details are one small value of one task — they are deleted, restored and
 --    undone with it (trg_audit on tasks, app_delete_rows, Activity's Undo) with no foreign key, owner lock, grants or
 --    restore order of their own, and a read of the task carries them (the item screen's one load).
--- B. task_details_ok(jsonb): the allow-list, for every writer (a CHECK on the column): an object; a category (when
+-- B. task_details_ok(jsonb): the allow-list, for every writer (a CHECK on the column): an object, not empty; a category (when
 --    there) from the slot's list and only its keys — without one, the add-on keys of Media or of Games, never both; per
 --    media type only its fields (cost, seats, booking, cinema: a cinema trip's); names ≤ 40 characters and ≤ 10 of
 --    them, seats / booking / cinema ≤ 60, On ≤ 30 — each with a character that is not a space, no control character
---    and no invisible format character (U+200B–U+200F, U+202A–U+202E, U+2060–U+2064, U+FEFF: a name that reads one way
---    and is stored another); a cost is {amount, currency}: 0 ≤ amount ≤ 1 000 000 with at most two decimals, the
+--    and no invisible format character (Unicode's Cf, every one — U+00AD, U+200B–U+200F, the direction overrides, the
+--    word joiners, U+FEFF, the tag characters …: a name that reads one way and is stored another); a cost is {amount, currency}: 0 ≤ amount ≤ 1 000 000 with at most two decimals, the
 --    currency from the list cinema visits use.
 --    The browser's copy of the rule is items/categoryDetails.cleanDetails (verify-item-details compares the lists).
 -- C. app_save_item(p_item, p_link, p_details): the one item save (the 2-argument function, unchanged: the save and its
@@ -46,7 +46,8 @@ as $$
      and char_length(p #>> '{}') <= p_max
      and (p #>> '{}') ~ '\S'
      and (p #>> '{}') !~ '[[:cntrl:]]'
-     and (p #>> '{}') !~ '[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]'
+     -- Unicode's format characters (Cf), every one (the browser's /\p{Cf}/u; verify-db-item-details compares the lists).
+     and (p #>> '{}') !~ '[\u00AD\u0600-\u0605\u061C\u06DD\u070F\u0890-\u0891\u08E2\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF\uFFF9-\uFFFB\U000110BD\U000110CD\U00013430-\U0001343F\U0001BCA0-\U0001BCA3\U0001D173-\U0001D17A\U000E0001\U000E0020-\U000E007F]'
 $$;
 revoke all on function public.task_details_text_ok(jsonb, integer) from public, anon;
 grant execute on function public.task_details_text_ok(jsonb, integer) to authenticated, service_role;
@@ -59,6 +60,7 @@ set search_path = ''
 as $$
   select p is not null
      and jsonb_typeof(p) = 'object'
+     and p <> '{}'::jsonb
      and char_length(p::text) <= 2000
      and (not p ? 'category' or (jsonb_typeof(p -> 'category') = 'string'
           and p ->> 'category' in ('daily', 'training', 'media', 'games', 'work', 'projects', 'football', 'other')))
@@ -67,12 +69,13 @@ as $$
      and not exists (
        select 1 from jsonb_object_keys(p) k
         where k <> 'category'
-          and not case coalesce(p ->> 'category', '')
-                    when 'media' then k in ('type', 'with') or (k in ('cost', 'seats', 'booking', 'cinema') and p ->> 'type' = 'cinema')
+          -- coalesce: a key the rule can't decide on (no type: NULL) is refused, never let through.
+          and not coalesce(case coalesce(p ->> 'category', '')
+                    when 'media' then k in ('type', 'with') or (k in ('cost', 'seats', 'booking', 'cinema') and coalesce(p ->> 'type', '') = 'cinema')
                     when 'games' then k in ('on', 'with')
-                    when '' then k in ('type', 'with', 'on') or (k in ('cost', 'seats', 'booking', 'cinema') and p ->> 'type' = 'cinema')
+                    when '' then k in ('type', 'with', 'on') or (k in ('cost', 'seats', 'booking', 'cinema') and coalesce(p ->> 'type', '') = 'cinema')
                     else false
-                  end)
+                  end, false))
      and (not p ? 'type' or p -> 'type' in ('"movie"'::jsonb, '"tv"'::jsonb, '"cinema"'::jsonb))
      and (not p ? 'with' or (
            jsonb_typeof(p -> 'with') = 'array'

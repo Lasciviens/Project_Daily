@@ -15,6 +15,20 @@ const mig210 = mig('210_task_links.sql')
 const mig211 = mig('211_linked_plans.sql')
 const mig215 = mig('215_item_details.sql')
 const fail = msg => { console.error(`verify-db-item-details: ${msg}`); process.exit(1) }
+// Every Unicode format character (Cf) this Node knows, as code points and as 215's regex class.
+const CF_POINTS = []
+for (let c = 0; c <= 0x10ffff; c++) if ((c < 0xd800 || c > 0xdfff) && /\p{Cf}/u.test(String.fromCodePoint(c))) CF_POINTS.push(c)
+const cfClass = () => {
+  const esc = c => (c <= 0xffff ? `\\u${c.toString(16).toUpperCase().padStart(4, '0')}` : `\\U${c.toString(16).toUpperCase().padStart(8, '0')}`)
+  const out = []
+  for (let i = 0; i < CF_POINTS.length; i++) {
+    let j = i
+    while (j + 1 < CF_POINTS.length && CF_POINTS[j + 1] === CF_POINTS[j] + 1) j++
+    out.push(CF_POINTS[i] === CF_POINTS[j] ? esc(CF_POINTS[i]) : `${esc(CF_POINTS[i])}-${esc(CF_POINTS[j])}`)
+    i = j
+  }
+  return `[${out.join('')}]`
+}
 const listOf = (text, re) => [...(text.match(re)?.[1] ?? '').matchAll(/'([A-Za-z_]+)'/g)].map(m => m[1]).sort().join(',')
 
 // Static: one transaction, nothing outside the database, no table, invoker rights, the lists the browser shares.
@@ -48,7 +62,9 @@ const listOf = (text, re) => [...(text.match(re)?.[1] ?? '').matchAll(/'([A-Za-z
   for (const [k, v] of Object.entries(want)) if (lim(k) !== v) problems.push(`DETAIL_LIMITS.${k} is ${lim(k)}, the database's ${v}`)
   if (!/task_details_text_ok\(n, 40\)/.test(sql) || !/between 1 and 10/.test(sql) || !/task_details_text_ok\(p -> 'seats', 60\)/.test(sql)
       || !/task_details_text_ok\(p -> 'on', 30\)/.test(sql) || !/task_details_text_ok\(p -> 'cinema', 60\)/.test(sql)
-      || !sql.includes("!~ '[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\uFEFF]'") || !/between 0 and 1000000/.test(sql)) problems.push('a limit in 215 moved (40 / 10 / 60 / 30 / 1 000 000)')
+      || !/between 0 and 1000000/.test(sql)) problems.push('a limit in 215 moved (40 / 10 / 60 / 30 / 1 000 000)')
+  if (!sql.includes(`!~ '${cfClass()}'`)) problems.push(`215's format characters differ from Unicode's Cf as Node knows it (${CF_POINTS.length} code points): ${cfClass()}`)
+  if (!/const INVISIBLE = \/\\p\{Cf\}\/u/.test(ts)) problems.push('categoryDetails.cleanText does not refuse every format character (/\\p{Cf}/u)')
   // "Cost not toward my spending no." (owner, 27.11.2026): no money read names a task's details.
   const money = ['src/features/shop', 'src/features/daily/monthLines.ts'].flatMap(p => {
     const full = join(root, p)
@@ -75,7 +91,8 @@ const section = (file, re, what) => {
 }
 const step = (name, fn) => { try { return fn() } catch (e) { console.error(`FAILED at ${name}:\n${(e.stderr || e.message).toString().split('\n').filter(l => /ERROR|LINE|CONTEXT|DETAIL/.test(l)).slice(0, 6).join('\n')}`); throw e } }
 const runScenarios = (target, file) => {
-  const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-q', '-f', file], { encoding: 'utf8' })
+  // The scenarios try every format character Node knows against 215's copy (:'cf').
+  const run = spawnSync('psql', [target, '-v', 'ON_ERROR_STOP=1', '-v', `cf={${CF_POINTS.join(',')}}`, '-q', '-f', file], { encoding: 'utf8' })
   const passed = (run.stderr.match(/NOTICE: {2}ok {2}/g) || []).length
   if (run.status !== 0) throw Object.assign(new Error('scenarios failed'), { stderr: run.stderr.split('\n').filter(l => /FAIL|ERROR|CONTEXT|LINE/.test(l)).join('\n') })
   return passed

@@ -177,6 +177,11 @@ select t_ok(public.t_err(format('select public.app_save_item(public.t_item(%L), 
     ('{"category":"media","type":"movie","cinema":"Ringen kino"}', 'a cinema on a movie at home'),
     ('{"type":"movie","on":"PS5"}', 'Media''s and Games'' keys together (no category)'),
     ('{"category":5}', 'a category that is not text'),
+    ('{}', 'empty details (none is null)'),
+    ('{"cinema":"Ringen kino"}', 'a cinema with no type (no category)'),
+    ('{"seats":"H12"}', 'seats with no type (no category)'),
+    ('{"cost":{"amount":1,"currency":"NOK"}}', 'a cost with no type (no category)'),
+    ('{"category":"media","booking":"AB12"}', 'a booking on Media with no type'),
     ('{"category":"media","with":"Ola"}', 'names that are not a list'),
     ('{"category":"media","with":[42]}', 'a name that is not text'),
     ('{"category":"media","type":"cinema","cost":{"amount":-1,"currency":"NOK"}}', 'a negative cost'),
@@ -213,7 +218,20 @@ insert into public.t_keep values ('o2', to_jsonb(public.t_err(format($$update pu
 select t_ok((select v #>> '{}' from public.t_keep where k = 'o2') = 'written'
     and public.t_details(public.t_id('game')) ->> 'on' = 'RP6',
   'O2 …nor by a direct write (row security: the update reaches no row)');
+insert into public.t_keep values ('o3', to_jsonb(public.t_err(format('select public.app_save_item(public.t_item(%L, %L), %L, %L)', 'Taken over',
+      jsonb_build_object('taskId', public.t_id('game')), '{"kind":"none"}', '{"category":"games"}'))), null);
 select set_config('test.uid', '', false);
+select t_ok((select v #>> '{}' from public.t_keep where k = 'o3') <> 'written'
+    and (select game_id from public.tasks where id = public.t_id('game')) = '50000000-0000-0000-0000-0000000000d1',
+  'O3 …nor take the owner''s game off it ({"kind":"none"}): refused, the link as it was');
+
+-- ═══ F. Every Unicode format character (Cf) Node knows (:'cf', from verify-db-item-details.mjs) ══════════════
+select t_ok(cardinality(:'cf'::int[]) >= 170
+    and not exists (select 1 from unnest(:'cf'::int[]) cp where public.task_details_text_ok(to_jsonb('Ola' || chr(cp)), 40))
+    and not exists (select 1 from unnest(:'cf'::int[]) cp where public.task_details_ok(jsonb_build_object('category', 'games', 'on', 'RP' || chr(cp) || '6'))),
+  'F1 every format character (Unicode Cf, as the browser''s /\p{Cf}/u knows them) is refused in a name and in On — the two copies can''t drift');
+select t_ok(public.task_details_text_ok(to_jsonb('Åse Ødegård-Ås'::text), 40) and public.task_details_text_ok(to_jsonb('Ola 🎬'::text), 40),
+  'F2 …while letters with marks and an emoji are taken');
 
 -- ═══ Q. Nothing leaves the app ═══════════════════════════════════════════════
 reset role;
@@ -253,5 +271,30 @@ begin
   perform t_ok(p ->> 'error' is null and public.t_details(public.t_id('cinema')) ->> 'seats' = 'H12–H13'
       and public.t_details(public.t_id('cinema')) ->> 'booking' = 'AB12CD',
     'U4 …and Undo this save puts the details back as they were before it');
+end $$;
+reset role;
+-- The unlink is undoable: Activity's Undo of the save that took the movie off brings the link back.
+set role authenticated;
+do $$
+declare r jsonb;
+begin
+  r := public.app_save_item(public.t_item('Watch Film Two again', '{"category":"media"}'), '{"kind":"movie","id":"10000000-0000-0000-0000-0000000000d2"}',
+    '{"category":"media","type":"movie"}');
+  insert into public.t_keep values ('relink', r, null);
+end $$;
+do $$
+begin
+  perform public.app_save_item(public.t_item('Watch Film Two again', jsonb_build_object('taskId', public.t_id('relink'))), '{"kind":"none"}', '{"category":"media","type":"movie"}');
+  insert into public.t_keep values ('unlink-tx', null, txid_current());
+end $$;
+do $$
+declare p jsonb; tx bigint := (select x.tx from public.t_keep x where x.k = 'unlink-tx');
+begin
+  perform t_ok((select movie_entry_id from public.tasks where id = public.t_id('relink')) is null, 'U5 the movie was taken off');
+  p := public.app_undo_transaction(tx);
+  perform t_ok(p ->> 'error' is null and p ->> 'confirm' is not null, 'U6 Activity: the save that took the movie off can be taken back');
+  p := public.app_undo_transaction(tx, true, p ->> 'confirm');
+  perform t_ok(p ->> 'error' is null and (select movie_entry_id from public.tasks where id = public.t_id('relink')) = '10000000-0000-0000-0000-0000000000d2',
+    'U7 …and Undo this save puts the link back');
 end $$;
 reset role;

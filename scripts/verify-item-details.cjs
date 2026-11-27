@@ -60,6 +60,10 @@ check('…details stored without a category (an item with a slot) read as Media\
 check('a cinema trip\'s cinema (≤ 60, an item with no slot); never on a movie at home',
   D.cleanDetails({ category: 'media', type: 'cinema', cinema: 'Ringen kino' }).cinema === 'Ringen kino'
   && !('cinema' in D.cleanDetails({ category: 'media', type: 'movie', cinema: 'Ringen kino' })) && !('cinema' in D.cleanDetails({ category: 'media', type: 'cinema', cinema: 'x'.repeat(61) })))
+const cf = []
+for (let c = 0; c <= 0x10ffff; c++) if ((c < 0xd800 || c > 0xdfff) && /\p{Cf}/u.test(String.fromCodePoint(c))) cf.push(c)
+check(`every invisible format character (Unicode Cf, ${cf.length} code points — U+00AD, U+061C, U+FFF9, U+E0001 …) is refused — 215's copy`,
+  cf.length >= 170 && cf.every(c => D.cleanText(`Ola${String.fromCodePoint(c)}`, 40) === undefined && D.cleanText(`${String.fromCodePoint(c)}Ola`, 40) === undefined))
 check('invisible format characters are refused (U+200B, U+200E, U+202E, U+2060, U+FEFF) — 215\'s copy',
   ['Ola\u200b', '\u200eOla', 'AB\u202eDC', 'RP\u20606', '\ufeffRP6'].every(t => D.cleanText(t, 60) === undefined) && D.cleanText('Åse Ødegård', 40) === 'Åse Ødegård')
 check('only the type\'s fields: a movie at home drops cost, seats, booking', same(D.cleanDetails({ ...full, type: 'movie' }), { category: 'media', type: 'movie', with: ['Ola', 'Kari Nordmann'] }))

@@ -87,11 +87,12 @@ export function defaultType(category: TimeBlockCategory): MediaType | undefined 
 }
 
 const CATEGORIES: readonly TimeBlockCategory[] = ['daily', 'training', 'media', 'games', 'work', 'projects', 'football', 'other']
-// Control characters, and the invisible format characters (Unicode Cf) that make a name read one way and be stored
-// another: zero-width ones, the direction overrides, the word joiners, the byte order mark (215's copy).
+// Control characters, and every invisible format character (Unicode Cf: the soft hyphen, the zero-width ones, the
+// direction overrides, the word joiners, the byte order mark, the tag characters …) that makes a name read one way and
+// be stored another (215's copy lists the same code points; verify-db-item-details compares them).
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/
-const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/
+const INVISIBLE = /\p{Cf}/u
 
 /** A short text as 215 takes it: trimmed, at most `max` characters, something that is not a space, no control character. */
 export function cleanText(v: unknown, max: number): string | undefined {
