@@ -536,6 +536,13 @@ jobs:
         run: node scripts/verify-db-linked-plans.mjs
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      # Migration 215 (an item's category add-on fields): tasks.details' allow-list for every writer, the save with its
+      # details (refused before anything is written), whose they are, nothing sent to Apple or Google, delete and
+      # Activity's Undo. 215 runs twice; no task hidden.
+      - name: Item details database scenarios
+        run: node scripts/verify-db-item-details.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
       # Migration 212 (notifications, Phase 3 B1–B3): the kinds and their shapes, the browser's read_at/acted_at only,
       # followed-film notices from the server only, the 14/7/1-day warnings, a service rejecting a sign-in, push-send's
