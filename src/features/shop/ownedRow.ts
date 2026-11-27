@@ -149,11 +149,12 @@ export function rowFacts(i: ShopItem, accessories: readonly ShopItem[], ctx: Mon
  * each day's rate (negative = it made money); null while an amount waits for its rate, is missing, or the day it left
  * isn't known.
  */
-export function leftMoney(i: ShopItem, accessories: readonly ShopItem[], ctx: MoneyCtx): { got: Amount; end: number | null } {
-  const together = i.sale_group ? accessories.filter(a => a.sale_group === i.sale_group) : []
+export function leftMoney(i: ShopItem, accessories: readonly ShopItem[], ctx: MoneyCtx): { got: Amount; end: number | null; withCosts: boolean; withAccessories: boolean } {
+  const together = i.sale_group ? accessories.filter(a => a.id !== i.id && a.sale_group === i.sale_group) : []
   const got = add(gotOf(i), ...together.map(a => gotOf(a)))
   const result = minus(add(costOf(i, ctx), ...together.map(a => costOf(a, ctx))), got)
-  return { got, end: complete(result) && i.disposed_on ? Math.round(result.nok) : null }
+  const withCosts = [i, ...together].some(x => (ctx.costs.get(x.id)?.length ?? 0) > 0)
+  return { got, end: complete(result) && i.disposed_on ? Math.round(result.nok) : null, withCosts, withAccessories: together.length > 0 }
 }
 
 /**
@@ -161,7 +162,8 @@ export function leftMoney(i: ShopItem, accessories: readonly ShopItem[], ctx: Mo
  * bought for price with valuta. Small text! And on right down corner shows result. Bought - Sold = end cost." — "Sold mark
  * is gray and almost unvisible. Make it green, shady green."): the banner "Sold 1 200 NOK" (the sale in its own currency,
  * the success tone), under the name (then one line) "Bought 4 490 NOK" in small text (what was paid in its own currency;
- * "Gift"), and in the bottom-right corner the end cost in NOK (`leftMoney`, the rows' rule): a cost neutral ("3 290 NOK"), money made in the success tone ("+300 NOK").
+ * "Gift"; "+ costs" / "+ accessories" when the end cost also counts extra costs or accessories sold with it, so
+ * Bought − Sold = end cost adds up visibly), and in the bottom-right corner the end cost in NOK (`leftMoney`, the rows' rule): a cost neutral ("3 290 NOK"), money made in the success tone ("+300 NOK").
  * Null for a thing not sold (given away, thrown away … keep the word on a neutral banner).
  */
 export interface SoldCard {
@@ -172,8 +174,11 @@ export interface SoldCard {
 export function soldCard(i: ShopItem, accessories: readonly ShopItem[], ctx: MoneyCtx): SoldCard | null {
   if (i.disposal !== 'sold') return null
   const ribbon = i.sale_price != null ? `Sold ${formatMoney(i.sale_price, i.sale_currency ?? currencyOf(i))}` : 'Sold'
-  const bought = i.got_as_gift && !i.price ? 'Gift' : i.price != null ? `Bought ${formatMoney(i.price, currencyOf(i))}` : null
-  const { end: n } = leftMoney(i, accessories, ctx)
+  const { end: n, withCosts, withAccessories } = leftMoney(i, accessories, ctx)
+  // What the end cost also counts, so Bought − Sold = end cost adds up on the card ("Bought 4 490 NOK + costs").
+  const plus = `${withCosts ? ' + costs' : ''}${withAccessories ? ' + accessories' : ''}`
+  const paid = i.got_as_gift && !i.price ? 'Gift' : i.price != null ? `Bought ${formatMoney(i.price, currencyOf(i))}` : null
+  const bought = paid && n != null ? `${paid}${plus}` : paid
   const end = n == null ? null
     : n < 0 ? { label: 'Made' as const, text: `+${num(-n)} NOK`, tone: 'success' as const, title: `Made ${num(-n)} NOK: sold for more than it cost` }
       : { label: 'End cost' as const, text: `${num(n)} NOK`, tone: 'neutral' as const, title: `End cost ${num(n)} NOK: what it cost minus what it sold for` }
