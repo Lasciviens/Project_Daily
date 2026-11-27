@@ -7,6 +7,8 @@ import { shiftDateStr } from '../../../shared/utils/dateUtils'
 import { useTodayStr } from '../../../shared/hooks/useToday'
 import { useTrainingBlocks, useScheduleBlocks, useTrainingDayTasks } from '../../daily/hooks/useSchedule'
 import { pickNextTrainingSession, type NextTrainingSession } from '../trainingPlanModel'
+import { useTrainingWeek } from './useTrainingWeek'
+import { planStartHHMM } from '../components/calendar/calendarSessions'
 import { fetchStravaStatus } from '../api/trainingApi'
 import { syncStravaActivities, disconnectStrava, exchangeStravaCode } from '../api/stravaApi'
 
@@ -64,9 +66,11 @@ export { useTodayStr }
 export const NEXT_SESSION_LOOKAHEAD_DAYS = 30
 
 /**
- * The next planned training session: one-off training blocks AND recurring
- * training templates (trainingPlanModel.pickNextTrainingSession). The ONE
- * "next session" for the Training banner and Home. A 'block' opens with
+ * The next planned training session: this week's first session still to do in
+ * the program's order (sessionState.planWeek — a missed one comes first, today's
+ * stays next all day; owner, 27.11.2026), else the soonest one-off training block
+ * or recurring training template (trainingPlanModel.pickNextTrainingSession). The
+ * ONE "next session" for the Training banner and Home. A 'block' opens with
  * `{ kind: 'time-block', id }`, a 'recurring' one with
  * `{ kind: 'schedule-block', id }`.
  */
@@ -77,7 +81,8 @@ export function useNextTrainingSession(): { data: NextTrainingSession | null; is
   const templatesQ = useScheduleBlocks()
   const dayTasksQ = useTrainingDayTasks(today, to)
   const nowHHMM = format(new Date(), 'HH:mm')
-  const data = useMemo(() => pickNextTrainingSession({
+  const { week, planOf, isLoading: weekLoading } = useTrainingWeek()
+  const soonest = useMemo(() => pickNextTrainingSession({
     blocks:        blocksQ.data ?? [],
     templates:     (templatesQ.data ?? []).filter(t => t.category === 'training'),
     dayTasks:      dayTasksQ.data ?? [],
@@ -85,5 +90,19 @@ export function useNextTrainingSession(): { data: NextTrainingSession | null; is
     nowHHMM,
     lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS,
   }), [blocksQ.data, templatesQ.data, dayTasksQ.data, today, nowHHMM])
-  return { data, isLoading: blocksQ.isLoading || templatesQ.isLoading || dayTasksQ.isLoading }
+  const data = useMemo<NextTrainingSession | null>(() => {
+    const next = week.next
+    const plan = next ? planOf.get(next.key) : undefined
+    if (!next || !plan) return soonest
+    const startTime = planStartHHMM(plan)
+    const doOn = next.doOn === next.date ? undefined : next.doOn
+    if (plan.kind === 'block' && plan.timeBlock) {
+      return { kind: 'block', id: plan.timeBlock.id, title: plan.title, date: next.date, startTime, taskId: plan.timeBlock.task_id ?? null, routineId: next.routineId, doOn }
+    }
+    if (plan.scheduleBlock) {
+      return { kind: 'recurring', id: plan.scheduleBlock.id, title: plan.title, date: next.date, startTime, taskId: plan.dayTask?.id ?? null, routineId: next.routineId, doOn }
+    }
+    return soonest
+  }, [week.next, planOf, soonest])
+  return { data, isLoading: blocksQ.isLoading || templatesQ.isLoading || dayTasksQ.isLoading || weekLoading }
 }

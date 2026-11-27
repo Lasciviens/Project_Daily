@@ -159,7 +159,7 @@ check('future → upcoming (a future "activity" never marks it done)', planStatu
   const withBlock = pickNextTrainingSession({ blocks: [{ id: 'B', title: 'Legs', date: '2026-09-27', start_time: '18:00:00', task_id: 't1' }], templates, today: '2026-09-27', nowHHMM: '12:00', lookaheadDays: 30 })
   check('an earlier one-off block wins', withBlock && withBlock.kind === 'block' && withBlock.id === 'B' && withBlock.taskId === 't1')
   const passed_ = pickNextTrainingSession({ blocks: [{ id: 'B', title: 'Legs', date: '2026-09-27', start_time: '09:00', task_id: null }], templates, today: '2026-09-27', nowHHMM: '12:00', lookaheadDays: 30 })
-  check('a block whose time has passed today is skipped', passed_ && passed_.kind === 'recurring')
+  check('today\'s session stays next all day, also once its time has passed (sessions proposal, 27.11.2026)', passed_ && passed_.kind === 'block' && passed_.id === 'B')
   const future = [{ ...templates[0], effective_from: '2026-10-05' }]
   const notYet = pickNextTrainingSession({ blocks: [], templates: future, today: '2026-09-27', nowHHMM: '12:00', lookaheadDays: 30 })
   check('never projected before effective_from', notYet && notYet.date === '2026-10-05', notYet && notYet.date)

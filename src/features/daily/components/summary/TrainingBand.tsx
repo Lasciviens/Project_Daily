@@ -28,6 +28,7 @@ import { mondayOf } from '../../../training/progressAggregate'
 import { useDayTargets } from '../../hooks/useDayTargets'
 import { useNutritionCoach } from '../../hooks/useNutritionCoach'
 import { trainingWeekGlance, type WeekDayMark } from '../../personalGlance'
+import { ThisWeekStrip } from '../../../training/components/week/ThisWeekStrip'
 
 // Personal's Training band (owner, 26.10.2026: "easily understandable results
 // and stats: averages, and how the plan is doing — cut / maintain / gain"):
@@ -196,6 +197,8 @@ export function TrainingBand({ date }: { date: string }) {
           </StatBox>
         </div>
       </div>
+      {/* The day's week, session by session (the strip Training's Next and Log show). */}
+      <ThisWeekStrip date={date} where="daily" className="mt-1" />
     </Cell>
   )
 }

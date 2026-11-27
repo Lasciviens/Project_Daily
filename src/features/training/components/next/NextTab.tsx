@@ -11,7 +11,7 @@ import { useRecoveryNotes } from './useRecoveryNotes'
 import type { RecoveryNote } from '../../plan/recovery'
 import { NextExerciseCard } from './NextExerciseCard'
 import { SourceNote } from '../program/SourceNote'
-import { MissedSessionsCard } from '../program/MissedSessions'
+import { ThisWeekStrip, TodaysCall } from '../week/ThisWeekStrip'
 import { TrainingPlanMenu } from '../session/TrainingPlanActions'
 import { sessionStatus } from '../../plan/sessionState'
 import type { TrainingPlanRef } from '../../api/trainingPlanApi'
@@ -46,17 +46,18 @@ function SessionHeader({ plan }: { plan: NextPlan }) {
         info: { title: session.title, date: session.date, startHHMM: session.startTime, minutes: null, routineId: routine?.id ?? null },
       }
     : null
-  // Next only ever holds a session still to come (pickNextTrainingSession).
-  const status = planned ? sessionStatus({ date: planned.info.date, startHHMM: planned.info.startHHMM, taskStatus: session?.taskId ? 'open' : null, today }) : null
+  // Next only ever holds a session still to do (useNextTrainingSession: this week's first, else the soonest).
+  const status = planned ? sessionStatus({ date: planned.info.date, startHHMM: planned.info.startHHMM, taskStatus: session?.taskId ? 'open' : null, taskRoutineId: routine?.id ?? null, today }) : null
   return (
     <Card className="flex flex-col gap-3">
+      <TodaysCall lastTrained={plan.lastTrained} />
       <div className="flex items-start gap-3">
         <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-control bg-accent-50 text-accent-600"><CalendarClock className="h-5 w-5" /></span>
         <div className="min-w-0 flex-1">
-          <p className="section-label">{pick?.source === 'planned' ? 'Next planned session' : 'Next in your rotation'}</p>
+          <p className="section-label">{pick?.source === 'planned' ? 'Next session' : 'Next in your rotation'}</p>
           <h2 className="text-title font-semibold text-fg">{title}</h2>
           <p className="text-meta text-fg-muted">
-            {pick?.source === 'planned' && session ? whenText(session.date, session.startTime, today) : 'Nothing planned — your current-program routine trained longest ago'}
+            {pick?.source === 'planned' && session ? whenText(session.doOn ?? session.date, session.startTime, today) : 'Nothing planned — your current-program routine trained longest ago'}
             {routine ? ` · ${lastDoneText(pick?.lastTrained ?? null, today)}` : ''}
           </p>
         </div>
@@ -161,7 +162,7 @@ function ExerciseGrid({ children }: { children: ReactNode }) {
 }
 
 /** The default Training tab: what to do next, set by set. The session and its exercises show once the plan is in;
- *  the lines above the exercises (missed sessions, recovery, the muscle watch) come in on their own reads, each
+ *  the lines above the exercises (this week, recovery, the muscle watch) come in on their own reads, each
  *  keeping its room until then (KeepRoom), so they never push the exercises down nor hold them back. */
 export function NextTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
   const plan = useNextPlan()
@@ -192,11 +193,11 @@ export function NextTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
   }
 
   // Placed by PageBoard (trainingBoards.ts → NEXT_BOARD): the session and its
-  // context (missed, recovery, heads-up) in a rail, the exercise cards beside it.
+  // context (this week, recovery, heads-up) in a rail, the exercise cards beside it.
   return (
     <PageBoard layout={NEXT_BOARD} stackGap="gap-3" sections={{
       session: <div className="max-w-2xl"><SessionHeader plan={plan} /></div>,
-      missed: <MissedSessionsCard />,
+      week: <ThisWeekStrip where="next" className="max-w-2xl" />,
       recovery: <RecoveryLine />,
       alerts: <><MuscleWatchLine /><Alerts plan={plan} /></>,
       exercises: plan.rows.length > 0 && (

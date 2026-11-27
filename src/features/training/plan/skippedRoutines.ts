@@ -161,10 +161,11 @@ function localDayOfIso(iso: string | null | undefined): string | null {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-/** readMissedSessions from the raw rows the app already reads — the Training
- *  tabs (useMissedSessions) and the AI coach context share this so they can't
- *  disagree. `blocks` are ONE-OFF training time_blocks only; a block planned
- *  from a routine carries its id as source_id (source_type training_session). */
+/** readMissedSessions from the raw rows the app already reads — for the AI
+ *  coach context's missed line only (the Training tabs read the plan's week
+ *  instead: sessionState.planWeek, the This week strip). `blocks` are ONE-OFF
+ *  training time_blocks only; a block planned from a routine carries its id as
+ *  source_id (source_type training_session). */
 export function missedSessionsFrom(input: {
   routines: readonly RoutineRef[]
   program: readonly { routine_id: string; created_at?: string | null }[]

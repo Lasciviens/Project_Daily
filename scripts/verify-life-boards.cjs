@@ -133,9 +133,9 @@ check('Health Activity: each tier-3 grid sits under an always-present card at 19
 }))
 check('Training Next: the session and its context lead in the rail, the exercise cards span the rest', [2, 3, 4].every(s => {
   const l = B.resolveBoardLayout(T.NEXT_BOARD, s)
-  return l.lead === 1 && eq(l.columns[0].stack, ['session', 'missed', 'recovery', 'alerts']) && l.columns[1].stack[0] === 'exercises' && l.columns[1].span === s - 1
+  return l.lead === 1 && eq(l.columns[0].stack, ['session', 'week', 'recovery', 'alerts']) && l.columns[1].stack[0] === 'exercises' && l.columns[1].span === s - 1
 }))
-check('Training Next: phone order unchanged', eq(T.NEXT_BOARD[1], ['session', 'missed', 'recovery', 'alerts', 'exercises', 'note']))
+check('Training Next: phone order unchanged', eq(T.NEXT_BOARD[1], ['session', 'week', 'recovery', 'alerts', 'exercises', 'note']))
 check('Training Program: routines stack in the main column, never a band under the tallest column', [2, 3, 4].every(s => {
   const l = B.resolveBoardLayout(T.PROGRAM_BOARD, s)
   return l.bottom.length === 0 && l.columns[0].stack.includes('routines') && l.columns[0].stack[0] === 'current'
