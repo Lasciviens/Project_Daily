@@ -84,8 +84,8 @@ console.log('the producers')
 check('Strava: only a 401 refresh answer is "sign in again" (a 400\'s body is not documented — docs/integrations/strava.md)',
   /if \(res\.status === 401\) await notifySignInFailed\(supabase, userId\)/.test(read('supabase/functions/strava-activities/index.ts')) && !/res\.status === 400/.test(read('supabase/functions/strava-activities/index.ts')), true)
 const psnApi = read('supabase/functions/psn-api/index.ts')
-check('PlayStation: a refresh answered without an access token is "sign in again" (psn-api 2.18.1 returns Sony\'s answer unchecked); nothing is written then',
-  /if \(typeof refreshed\.accessToken !== 'string' \|\| !refreshed\.accessToken\) \{\n\s+await notifySignInFailed\(supabase, userId\)\n\s+return json\(\{ error: 'reauth_required'/.test(psnApi)
+check('PlayStation: a refresh answered without an access token is "sign in again" (psn-api 2.18.1 returns Sony\'s answer unchecked); a failed notice never changes the answer; nothing is written then',
+  /if \(typeof refreshed\.accessToken !== 'string' \|\| !refreshed\.accessToken\) \{\n(\s+\/\/[^\n]*\n)*\s+try \{ await notifySignInFailed\(supabase, userId\) \} catch \{ console\.error\('psn-api: the sign-in notice was not written'\) \}\n\s+return json\(\{ error: 'reauth_required'/.test(psnApi)
     && psnApi.indexOf('await notifySignInFailed(supabase, userId)') < psnApi.indexOf("await supabase.from('psn_tokens').update({"), true)
 const producers = [['trakt-api', 'trakt'], ['strava-activities', 'strava'], ['google-tasks-sync', 'google'], ['calendar-token', 'google'], ['icloud-calendar', 'icloud'], ['psn-api', 'psn']]
 check('each sync function tells the database which service refused its sign-in (a code, never text)',

@@ -185,7 +185,7 @@ export function NeedsALookSheet({ open, onClose, looks, hidden, notices, loading
             {!count && <p className="pb-1 text-body text-fg-muted">{NOTHING}</p>}
             <LookList looks={urgent} hidden={[]} today={today} actions={actions} />
             {/* A notice opens its thing: the sheet closes first, as a row's own action does. */}
-            <div className="-mx-3"><NotificationList mode="shop" onDone={onClose} /></div>
+            <NotificationList mode="shop" onDone={onClose} />
             <LookList looks={rest} hidden={hidden} today={today} actions={actions} />
           </>}
     </ModalShell>

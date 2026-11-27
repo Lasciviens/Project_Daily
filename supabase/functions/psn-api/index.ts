@@ -263,9 +263,11 @@ Deno.serve(async (req: Request) => {
       // psn-api hands back Sony's token answer without checking it (2.18.1: `raw.access_token` of whatever came back),
       // so a refused refresh token arrives as an answer with no access token — the stored sign-in is gone and only a
       // fresh npsso brings it back. Nothing is written then (writing would move the expiry of a dead token and fire
-      // 214's settle). A network failure or a page that isn't JSON throws instead and is no sign-in failure.
+      // 214's settle). A network failure or a page that isn't JSON throws instead and is no sign-in failure. Any JSON
+      // answer without a token counts — a 429 or 5xx with a body too (docs/integrations/playstation.md → Traps).
       if (typeof refreshed.accessToken !== 'string' || !refreshed.accessToken) {
-        await notifySignInFailed(supabase, userId)
+        // The notice is best effort: its failure never turns the answer into a 500.
+        try { await notifySignInFailed(supabase, userId) } catch { console.error('psn-api: the sign-in notice was not written') }
         return json({ error: 'reauth_required', sonyMessage: 'PlayStation refused the stored sign-in' })
       }
       accessToken = refreshed.accessToken

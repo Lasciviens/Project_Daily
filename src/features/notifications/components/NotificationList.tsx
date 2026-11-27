@@ -15,7 +15,8 @@ import {
 // and Shop → Needs a look render this one component. `dropdown` shows the newest few with "See all"; `page` adds the
 // All | Unread switch, each row's Read / Unread button and Show more; `shop` (owner, 27.11.2026: "the same notices
 // list as the bell") is the unread ones of the Shop's kinds, compact — no header, each row's Read button, nothing when
-// there are none (Needs a look says that itself). A mode hides a part, never copies it.
+// there are none (Needs a look says that itself), and Needs a look's row geometry (its icon tile's size and place, its
+// title's weight), so the two kinds of rows line up in one sheet. A mode hides a part, never copies it.
 
 export type NotificationListMode = 'dropdown' | 'page' | 'shop'
 
@@ -86,7 +87,7 @@ export function NotificationList({ mode, onDone }: { mode: NotificationListMode;
           {filter === 'unread' ? 'Nothing unread.' : 'No notifications yet.'}
         </p>
       ) : (
-        <ul className={cx('flex flex-col', page ? 'gap-1' : 'gap-0.5')}>
+        <ul className={cx('flex flex-col', shop ? '-mx-2' : page ? 'gap-1' : 'gap-0.5')}>
           {rows.map(n => <NoticeRow key={n.id} n={n} today={today} mode={mode} onDone={onDone} />)}
         </ul>
       )}
@@ -109,6 +110,9 @@ function NoticeRow({ n, today, mode, onDone }: { n: Notice; today: string; mode:
   const unread = !n.read_at
   // The drop-down marks unread with a dot; the page and Shop give each row its Read / Unread button instead.
   const button = mode !== 'dropdown'
+  // Among Needs a look's rows (NeedsALookSheet's LookRow): its padding, a 28 px tile and its title weight — every row
+  // there is unread, so the weight would tell nothing.
+  const shop = mode === 'shop'
 
   // The way to the thing is fixed per kind (notificationKinds.ts): a Shop thing or a film opens its own popup, the
   // rest their page. Never a URL from the row.
@@ -123,14 +127,14 @@ function NoticeRow({ n, today, mode, onDone }: { n: Notice; today: string; mode:
 
   return (
     <li className="flex min-w-0 items-center gap-1">
-      <button type="button" onClick={open} className="row row-interactive min-w-0 flex-1 items-start gap-2.5 py-2 text-left">
+      <button type="button" onClick={open} className={cx('row row-interactive min-w-0 flex-1 items-start gap-2.5 py-2 text-left', shop && 'px-2')}>
         <span aria-hidden data-tone={SHOWS_PROBLEM.has(n.kind) ? 'danger' : undefined}
-          className={cx('mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-control bg-surface-2 [&_svg]:h-4 [&_svg]:w-4',
+          className={cx('mt-0.5 grid shrink-0 place-items-center rounded-control bg-surface-2 [&_svg]:h-4 [&_svg]:w-4', shop ? 'h-7 w-7' : 'h-8 w-8',
             SHOWS_PROBLEM.has(n.kind) ? 'tone-text' : 'text-fg-2')}>
           {KIND_ICON[n.kind]}
         </span>
         <span className="min-w-0 flex-1">
-          <Truncate className={cx('text-body', unread ? 'font-semibold text-fg' : 'font-medium text-fg-2')}>{noticeTitle(n, today)}</Truncate>
+          <Truncate className={cx('text-body', shop ? 'font-medium text-fg' : unread ? 'font-semibold text-fg' : 'font-medium text-fg-2')}>{noticeTitle(n, today)}</Truncate>
           {/* Two lines: the title, then the detail and when (the date stays whole, the detail is cut). */}
           <span className="flex min-w-0 items-baseline gap-1 text-meta text-fg-muted">
             <Truncate className="min-w-0">{noticeDetail(n)}</Truncate>

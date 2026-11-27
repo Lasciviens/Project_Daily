@@ -379,10 +379,21 @@ console.log('\n== the server\'s notices (211, the bell\'s list) ==')
   check('the badge counts the rows and the unread Shop notices; its tone is the urgent row\'s, else a notice\'s, else the first row\'s',
     JSON.stringify([S.lookCount([row('warn'), row('info')], 2), S.lookCount([row('success')], 1), S.lookCount([row('success')], 0), S.lookCount([], 1), S.lookCount([], 0)])
     === JSON.stringify([{ count: 4, tone: 'warn' }, { count: 2, tone: 'info' }, { count: 1, tone: 'success' }, { count: 1, tone: 'info' }, { count: 0, tone: null }]))
+  // The record's nudge keeps "Bought through a plan" (the bell's words), opening the Purchase; an urgent row still comes first.
+  const R = require('../src/features/shop/recordStory')
+  const kettle = { id: 'kettle', title: 'Kettle', list: 'wishlist', kind: 'item', status: 'bought', kept: true, bought_at: '2026-11-26T10:00:00Z' }
+  const notices = [{ id: 'n1', kind: 'shop_bought_draft', link_id: 'kettle' }, { id: 'n2', kind: 'shop_bought_draft', link_id: 'lamp' }]
+  const nudge = R.nudgeFor(kettle, [], '2026-11-27', notices)
+  check('a thing a plan bought: the record\'s nudge says the bell\'s words and opens the Purchase (reading its notice)',
+    nudge && nudge.kind === 'bought_notice' && nudge.action === 'purchase' && nudge.noticeId === 'n1'
+    && nudge.facts.join() === 'Bought through a plan: check the purchase', JSON.stringify(nudge))
+  const urgentRow = { itemId: 'kettle', key: 'return_closing:kettle', kind: 'return_closing', tone: 'danger', facts: ['Return by 28.11.2026'], where: null, action: 'open', claim: null }
+  check('an urgent row of the thing comes before the notice; another thing\'s notice is no nudge',
+    R.nudgeFor(kettle, [urgentRow], '2026-11-27', notices).kind === 'return_closing' && R.nudgeFor({ ...kettle, id: 'other' }, [], '2026-11-27', notices)?.kind !== 'bought_notice')
   check('urgent is danger or warn', [S.isUrgentLook(row('danger')), S.isUrgentLook(row('warn')), S.isUrgentLook(row('success')), S.isUrgentLook(row('info'))].join() === 'true,true,false,false')
   const sheet = src('src/features/shop/components/NeedsALookSheet.tsx')
   check('the sheet renders the bell\'s NotificationList (shop mode) between the urgent rows and the rest; Shop has no notice row of its own',
-    /<LookList looks=\{urgent\}[^\n]*\n[^\n]*\n\s+<div className="-mx-3"><NotificationList mode="shop" onDone=\{onClose\} \/><\/div>\n\s+<LookList looks=\{rest\}/.test(sheet)
+    /<LookList looks=\{urgent\}[^\n]*\n[^\n]*\n\s+<NotificationList mode="shop" onDone=\{onClose\} \/>\n\s+<LookList looks=\{rest\}/.test(sheet)
     && !('noticeLooks' in S) && !/bought_draft/.test(src('src/features/shop/shopSuggestions.ts')))
 }
 

@@ -6,6 +6,7 @@ import { useElementWidthRem } from '../../../../shared/hooks/useElementWidth'
 import { useEntityModal } from '../../../../shared/modals'
 import { formatDate } from '../../../../shared/utils/dateFormat'
 import { useNeedsALook } from '../../hooks/useNeedsALook'
+import { useActOnNotice, useShopNotices } from '../../../notifications/hooks/useNotifications'
 import { boughtOn, DISPOSAL_LABEL, disposalTone, durationLabel } from '../../ownModel'
 import { chainTitle } from '../../chainModel'
 import { nudgeFor, storyOf } from '../../recordStory'
@@ -216,10 +217,18 @@ function OpenLines({ r, sections }: { r: ShopRecordModel; sections: ReturnType<t
   const { item, state, today } = r
   const watch = r.watches.get(item.id) ?? null
   const { looks, loading } = useNeedsALook(r.items, false)
+  // The Shop's unread notices (the bell's list; Needs a look reads the same query): "Bought through a plan".
+  const notices = useShopNotices()
+  const act = useActOnNotice()
   // Only once its reads have answered: a nudge from part of the data would come and go as the rest lands.
-  const nudge = useMemo(() => (loading ? null : nudgeFor(item, looks, today)), [loading, item, looks, today])
+  const nudge = useMemo(() => (loading ? null : nudgeFor(item, looks, today, notices.data ?? [])), [loading, item, looks, today, notices.data])
   const onNudge = () => {
     if (nudge?.action === 'bought') r.buy()
+    // Acting on the notice, as opening it from the bell: read and acted on; the Purchase opens.
+    else if (nudge?.action === 'purchase') {
+      sections.show('purchase')
+      if (nudge.noticeId) act.mutate(nudge.noticeId)
+    }
     else if (nudge?.action === 'value' || nudge?.action === 'fix') {
       const fact = nudge.fact ?? 'value'
       sections.show(sectionOfFact(fact, state))

@@ -40,7 +40,11 @@ table itself is `211`'s. Migration `214` (27.11.2026) added PlayStation's refuse
   claim) and before the rest (owner, 27.11.2026); the button's count adds the unread Shop notices. One query
   (`useShopNotices`, `qk.notifications.feed('shop', true)`) feeds the list and the count; reading a notice in the bell
   reads it in the Shop. Its old notice row (`noticeLooks`, `noticesApi.ts`, Got it → "Put away") is gone; a notice whose
-  thing was later put back on the wishlist by hand now still shows (as in the bell) until it is read.
+  thing was later put back on the wishlist by hand now still shows (as in the bell) until it is read. In the sheet the
+  `shop` mode takes Needs a look's row geometry (padding, a 28 px icon tile, the title's weight), so the rows line up.
+- **The thing's record** keeps its nudge: an unread "Bought through a plan" notice of the thing shows as the record's
+  nudge line in the bell's words ("Bought through a plan: check the purchase", `recordStory.nudgeFor`, after an urgent
+  row of the thing); **Check** opens the Purchase section and reads the notice as acted on (as opening it from the bell).
 
 ## The kinds
 
@@ -106,11 +110,13 @@ block (`<notification-text>`: titles, second lines, routes, the push and the mor
 - **PlayStation (214, owner 27.11.2026: "should it also tell you when its sign-in fails?" — "yes"):** `psn-api` refreshes
   the access token (about an hour) from the stored refresh token. The community `psn-api` package (2.18.1) hands back
   Sony's token answer without checking it, so a refused refresh token comes back as an answer with **no access token**
-  (Sony documents nothing; the shape is the package's source). That is the refusal: `psn-api` calls
+  (Sony documents nothing; the shape is the package's source — `docs/integrations/playstation.md`). That is the refusal: `psn-api` calls
   `notify_service_problem(user, 'psn')`, answers `reauth_required` as before and **writes nothing** (before 214 it wrote
   the dead answer back, moving the token's expiry an hour on and firing nothing useful). A network failure or a page
   that is not JSON throws and is no sign-in failure. The function only runs when the app asks (Games), so the notice
-  comes the first time the app uses PlayStation after the sign-in died — not on a timer. The nightly 14/7/1-day
+  comes the first time the app uses PlayStation after the sign-in died — not on a timer. **False alarm:** any JSON answer
+  without an access token counts, a 429 or 5xx with a body too; it heals by itself at the next refresh that works (the
+  trigger reads the notice). The notice call is in try/catch: a failed notice never turns `reauth_required` into a 500. The nightly 14/7/1-day
   warnings (`sign_in_expiring`) still come before the npsso's own end day.
 
 ## Delivery (B3)
