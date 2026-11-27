@@ -5,7 +5,7 @@ import type { RecordFact } from '../../shopSuggestions'
 import { LookIcon } from '../lookIcon'
 import { wrapLong } from '../lookFacts'
 
-const ACTION: Record<NonNullable<Nudge['action']>, string> = { bought: 'Bought', value: 'Add', fix: 'Fix it', claim: 'Claim' }
+const ACTION: Record<NonNullable<Nudge['action']>, string> = { bought: 'Bought', value: 'Add', fix: 'Fix it', claim: 'Claim', purchase: 'Check' }
 
 const FIX: Record<RecordFact, string> = { value: 'Add', bought: 'Add the day', rate: 'Type the rate', saleRate: 'Type the rate', got: 'Type the amount' }
 

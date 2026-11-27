@@ -4,16 +4,16 @@ import type { BoardLayouts } from '../../shared/ui/pageBoardRules'
 
 // ── Next ────────────────────────────────────────────────────────────────────
 // What to do: a rail on the left reads the session — which one and when,
-// then its context (missed sessions, recovery, the engine's heads-up) — and
+// then its context (this week's sessions, recovery, the engine's heads-up) — and
 // the exercise cards take every other track, gaining columns as the page
 // widens. A short routine leaves its space at the far right, not between
 // the cards and the context.
-export const NEXT_SECTIONS = ['session', 'missed', 'recovery', 'alerts', 'exercises', 'note'] as const
+export const NEXT_SECTIONS = ['session', 'week', 'recovery', 'alerts', 'exercises', 'note'] as const
 export type NextSection = typeof NEXT_SECTIONS[number]
-const NEXT_RAIL = ['session', 'missed', 'recovery', 'alerts'] as const
+const NEXT_RAIL = ['session', 'week', 'recovery', 'alerts'] as const
 const NEXT_MAIN = ['exercises', 'note'] as const
 export const NEXT_BOARD: BoardLayouts<NextSection> = {
-  1: ['session', 'missed', 'recovery', 'alerts', 'exercises', 'note'],
+  1: ['session', 'week', 'recovery', 'alerts', 'exercises', 'note'],
   2: { lead: 1, columns: [NEXT_RAIL, NEXT_MAIN] },
   3: { lead: 1, columns: [NEXT_RAIL, { stack: NEXT_MAIN, span: 2 }] },
   4: { lead: 1, columns: [NEXT_RAIL, { stack: NEXT_MAIN, span: 3 }] },

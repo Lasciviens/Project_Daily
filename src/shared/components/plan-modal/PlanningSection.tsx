@@ -14,7 +14,7 @@ import { seasonWindows } from '../windowChips'
 import { FieldMark } from './FieldMark'
 import { Panel, Pill, Row, TapRow } from './ItemRows'
 import { LabelsRow } from './LabelsRow'
-import { ParentRow, WaitingRow } from './TaskRows'
+import { MoveToTodayRow, ParentRow, WaitingRow } from './TaskRows'
 import { TimeWheel } from './TimeWheel'
 import { chipClass, choiceClass } from './fieldStyles'
 import { displayDate, isTaskFieldHidden } from './planModal.config'
@@ -59,6 +59,7 @@ export function PlanningSection({ form, patch, open, toggle, config, today, show
       {!hide('dueDate') && <DeadlineRows form={form} patch={patch} open={open} toggle={toggle} config={config} today={today} goes={goes} />}
       {taskId && (
         <>
+          <MoveToTodayRow taskId={taskId} form={form} patch={patch} today={today} mark={<FieldMark goes={goes('time')} />} />
           <WaitingRow taskId={taskId} open={open} toggle={toggle} mark={own} />
           <ParentRow taskId={taskId} open={open} toggle={toggle} mark={<FieldMark goes={goes('list')} />} />
         </>

@@ -1,14 +1,15 @@
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
-import { AlignLeft, Ban, Check, Hourglass, MoreHorizontal, Pencil, RotateCcw, Trash2, Zap } from 'lucide-react'
+import { AlignLeft, Ban, CalendarArrowUp, Check, Hourglass, MoreHorizontal, Pencil, RotateCcw, Trash2, Zap } from 'lucide-react'
 import type { Task, TaskStatus } from '../../todo/types'
 import type { Tone } from '../../../shared/ui'
 import { Truncate, cx } from '../../../shared/ui'
 import { haptic } from '../../../shared/utils/haptics'
 import { DueChip, PriorityMark } from './WorkTaskBits'
 import { TaskLabelPills } from '../../todo/components/TaskLabelPills'
-import { isOpenTask } from '../../todo/taskRules'
+import { isOpenTask, movesToToday } from '../../todo/taskRules'
+import { todayStr } from '../../../shared/utils/dateUtils'
 
 interface Props {
   task: Task
@@ -18,6 +19,8 @@ interface Props {
   /** The item screen; `row` opens it at that row (the Waiting chip → Waiting for). */
   onEdit: (task: Task, row?: 'waiting') => void
   onFocus: (task: Task) => void
+  /** Move to today, offered on an overdue item (taskRules.movesToToday). */
+  onMoveToToday?: (task: Task) => void
   isFocused: boolean
   isDragging?: boolean
 }
@@ -26,7 +29,7 @@ interface Props {
 const ACTION = 'grid place-items-center rounded-control min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px] transition-colors [&_svg]:h-3.5 [&_svg]:w-3.5'
 
 export default function WorkTaskCard({
-  task, accentTone, onStatusChange, onDelete, onEdit, onFocus,
+  task, accentTone, onStatusChange, onDelete, onEdit, onFocus, onMoveToToday,
   isFocused, isDragging,
 }: Props) {
   const isDone = task.status === 'done'
@@ -134,6 +137,13 @@ export default function WorkTaskCard({
                 <Pencil aria-hidden className="h-4 w-4" /> Edit
               </button>
             </MenuItem>
+            {onMoveToToday && movesToToday(task, todayStr()) && (
+              <MenuItem>
+                <button type="button" onClick={() => onMoveToToday(task)} title="To today: moves its day and its slot" className="menu-item">
+                  <CalendarArrowUp aria-hidden className="h-4 w-4" /> To today
+                </button>
+              </MenuItem>
+            )}
             {task.status !== 'cancelled' && (
               <MenuItem>
                 <button

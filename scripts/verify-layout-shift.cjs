@@ -147,7 +147,7 @@ console.log('A failed read is never learned as "nothing there"')
     ['the brief\'s headline', 'src/features/home/components/DailyBrief.tsx', /ids="brief:headline" loading=\{headlineLoading\} remember=\{failed\.size === 0 && unsure\.size === 0\}/],
     ['Health\'s hero tiles', 'src/features/health/components/overview/HeroTile.tsx', /loading=\{!!isLoading\} remember=\{!failed\}/],
     ['Training\'s recovery line', 'src/features/training/components/next/NextTab.tsx', /ids="training:recovery" loading=\{isLoading\} remember=\{!isError\}/],
-    ['Training\'s missed sessions', 'src/features/training/components/program/MissedSessions.tsx', /ids="training:missed" loading=\{isLoading\} remember=\{!isError\}/],
+    ['Training\'s This week strip', 'src/features/training/components/week/ThisWeekStrip.tsx', /ids=\{`training:week:\$\{where\}`\} loading=\{isLoading\} remember=\{!isError\}/],
     ['the muscle-watch line', 'src/features/health/goal/MuscleWatchCard.tsx', /ids="muscleWatch:line" loading=\{isLoading\} remember=\{!isError\}/],
   ]
   for (const [name, file, re] of sites) check(`${name}: learned only from an answered read`, re.test(code(file)))
@@ -276,14 +276,14 @@ check('the brief: a failed read of the day\'s tasks or schedule is one line with
     && /Couldn\\'t load today\\'s schedule\./.test(briefHook) && /schedule: overview\.isLoading \|\| overview\.scheduleError \? null/.test(briefHook)
     && /<FailedLine failure=\{failure\} \/>/.test(brief))
 const next = code('src/features/training/components/next/NextTab.tsx')
-check('Training Next shows once the plan is in; missed, recovery and the muscle watch each keep their own room',
-  /if \(plan\.isLoading\) \{/.test(next) && !/missed\.isLoading|recovery\.isLoading|muscle\.isLoading/.test(next)
-    && /ids="training:recovery"/.test(next) && /ids="training:missed"/.test(code('src/features/training/components/program/MissedSessions.tsx'))
+check('Training Next shows once the plan is in; this week, recovery and the muscle watch each keep their own room',
+  /if \(plan\.isLoading\) \{/.test(next) && !/week\.isLoading|recovery\.isLoading|muscle\.isLoading/.test(next)
+    && /ids="training:recovery"/.test(next) && /<ThisWeekStrip where="next"/.test(next) && /ids=\{`training:week:\$\{where\}`\}/.test(code('src/features/training/components/week/ThisWeekStrip.tsx'))
     && /ids="muscleWatch:line"/.test(code('src/features/health/goal/MuscleWatchCard.tsx')))
 check('Training Next reads the muscle watch once (in MuscleWatchLine), never a second useMuscleWatch of its own', !/useMuscleWatch/.test(next))
 const ahead = code('src/features/training/components/next/NextReadsAhead.tsx')
 check('…its reads only start early (NextReadsAhead, while the plan loads): it draws nothing and hands nothing on, so no line waits for another\'s read',
-  /<NextReadsAhead \/>/.test(next) && /export function NextReadsAhead\(\) \{\s+useMissedSessions\(\)\s+useRecoveryNotes\(\)\s+useMuscleWatch\(\)\s+return null\s+\}/.test(ahead) && !/isLoading|const /.test(ahead))
+  /<NextReadsAhead \/>/.test(next) && /export function NextReadsAhead\(\) \{\s+useTrainingWeek\(\)\s+useRecoveryNotes\(\)\s+useMuscleWatch\(\)\s+return null\s+\}/.test(ahead) && !/isLoading|const /.test(ahead))
 check('Games waits for all three libraries on the first load (one order: Steam and PlayStation rows landed between the retro games)',
   /const firstLoad = retro\.isLoading \|\| steam\.isLoading \|\| psn\.isLoading \|\| !steamReady/.test(code('src/features/games/test-game/useTestGameLibrary.ts')))
 

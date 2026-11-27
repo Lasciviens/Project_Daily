@@ -1,4 +1,5 @@
--- Migration 212 (notifications, Phase 3 B1–B3) after it ran twice (scripts/verify-db-notifications.mjs), on 211's
+-- Migrations 212 (notifications, Phase 3 B1–B3) and 214 (PlayStation's refused sign-in, the feed's kinds) after each ran
+-- twice (scripts/verify-db-notifications.mjs), on 211's
 -- notifications section, psn_tokens (091/101), media follows (119) and the stand-ins of notifications/seed.sql. Setup and
 -- checks run as the superuser (the service role's stand-in: a writer without row security); app reads and writes run
 -- as `authenticated` (test.uid picks the caller: unset = the owner, user 2 = another allowed account, user 3 = an
@@ -43,8 +44,8 @@ select public.t_ok(public.notify('00000000-0000-0000-0000-000000000001', 'shop_b
 -- ── Each kind has one shape ──────────────────────────────────────────────────
 select public.t_ok(public.t_refused($q$select public.notify_row('00000000-0000-0000-0000-000000000001', 'sign_in_failed', null, null, null, null, 'sign_in_failed:x:2026-11-26')$q$) = '23514',
   'a sign-in notice without its service is refused');
-select public.t_ok(public.t_refused($q$select public.notify_row('00000000-0000-0000-0000-000000000001', 'sign_in_failed', null, null, 'psn', null, 'sign_in_failed:psn:2026-11-26')$q$) = '23514',
-  'a sign-in failure for a service with no sync (PlayStation warns by date) is refused');
+select public.t_ok(public.t_refused($q$select public.notify_row('00000000-0000-0000-0000-000000000001', 'sign_in_failed', null, null, 'anthropic', null, 'sign_in_failed:anthropic:2026-11-26')$q$) = '23514',
+  'a sign-in failure for the Claude key is refused (the key has its own kind)');
 select public.t_ok(public.t_refused($q$select public.notify_row('00000000-0000-0000-0000-000000000001', 'shop_bought_draft', null, null, null, null, 'shop_bought:a')$q$) = '23514',
   'a Shop notice without its thing is refused');
 select public.t_ok(public.t_refused($q$select public.notify_row('00000000-0000-0000-0000-000000000001', 'sign_in_failed', null, null, 'evil.example', null, 'sign_in_failed:x:1')$q$) = '23514',
@@ -277,6 +278,51 @@ select public.t_ok(public.notify_service_settle('00000000-0000-0000-0000-0000000
 set role authenticated;
 select public.t_ok(public.t_refused($q$select public.notify_service_settle(auth.uid(), 'anthropic')$q$) = '42501', 'the browser cannot call the settle');
 reset role;
+
+-- ── 214: PlayStation's refused sign-in ───────────────────────────────────────
+select public.t_ok(public.notify_service_problem('00000000-0000-0000-0000-000000000001', 'psn') is not null, 'PlayStation refused the sign-in: a notice');
+select public.t_ok((select kind || ':' || service || ':' || coalesce(due_on::text, '-') || ':' || coalesce(link_kind, '-')
+                      from public.notifications where kind = 'sign_in_failed' and service = 'psn') = 'sign_in_failed:psn:-:-',
+  'it is a "sign in again" notice about PlayStation, with no link and no end day');
+select public.t_ok(public.notify_service_problem('00000000-0000-0000-0000-000000000001', 'psn') is null, 'the next refused refresh the same day: none');
+select public.notify_service_problem('00000000-0000-0000-0000-000000000002', 'psn');
+update public.psn_tokens set npsso_expires_at = '2027-03-01 10:00+00' where user_id = '00000000-0000-0000-0000-000000000001';
+update public.psn_tokens set access_token = 'a' where user_id = '00000000-0000-0000-0000-000000000001';
+select public.t_ok((select read_at is null from public.notifications where user_id = '00000000-0000-0000-0000-000000000001' and kind = 'sign_in_failed' and service = 'psn'),
+  'a write that is no fresh sign-in (an end day, an access token alone) settles nothing');
+update public.psn_tokens set access_token = 'b', refresh_token = 'refreshed' where user_id = '00000000-0000-0000-0000-000000000001';
+select public.t_ok((select read_at is not null from public.notifications where user_id = '00000000-0000-0000-0000-000000000001' and kind = 'sign_in_failed' and service = 'psn'),
+  'a refresh that worked (a new refresh token) puts the PlayStation notice away');
+select public.t_ok((select read_at is null from public.notifications where user_id = '00000000-0000-0000-0000-000000000002' and kind = 'sign_in_failed' and service = 'psn'),
+  'another account''s PlayStation notice stays');
+select public.t_ok((select count(*) from public.notifications where user_id = '00000000-0000-0000-0000-000000000001' and kind = 'sign_in_failed' and service = 'strava' and read_at is null) = 1,
+  'and the owner''s other services'' notices stay');
+insert into public.psn_tokens (user_id, npsso, refresh_token) values ('00000000-0000-0000-0000-000000000002', 'pasted', 'fresh');
+select public.t_ok((select read_at is not null from public.notifications where user_id = '00000000-0000-0000-0000-000000000002' and kind = 'sign_in_failed' and service = 'psn'),
+  'a connect (a fresh npsso pasted) puts it away too');
+select public.t_ok(public.notify_service_settle('00000000-0000-0000-0000-000000000002', 'psn') = 0, 'notify_service_settle knows PlayStation (nothing left to settle)');
+revoke all on public.psn_tokens from anon, authenticated;  -- as 140 left it live
+set role authenticated;
+select public.t_ok(public.t_refused($q$update public.psn_tokens set refresh_token = 'forged'$q$) = '42501',
+  'the browser cannot write psn_tokens, so it cannot fire the settle (140''s revoke)');
+select public.t_ok(public.t_refused($q$select public.notify_service_problem(auth.uid(), 'psn')$q$) = '42501', 'the browser cannot make a PlayStation notice');
+reset role;
+
+-- ── 214: the feed reads chosen kinds ─────────────────────────────────────────
+set role authenticated;
+select public.t_ok((select count(*) from public.notification_feed(200, null, false, array['shop_bought_draft'])) > 0
+  and (select bool_and(kind = 'shop_bought_draft') from public.notification_feed(200, null, false, array['shop_bought_draft'])),
+  'the Shop''s read: only the Shop''s kinds');
+select public.t_ok((select count(*) from public.notification_feed(200, null, false, null)) = (select count(*) from public.notification_feed(200, null, false)),
+  'no kinds: every kind (the website before 214 sends none)');
+select public.t_ok((select count(*) from public.notification_feed(200, null, false, array['phishing'])) = 0, 'an unknown kind matches nothing');
+select public.t_ok((select count(*) from public.notification_feed(p_limit => 30, p_before => null, p_unread_only => true)) >= 0,
+  'the old named call (three arguments) still reaches the feed');
+reset role;
+select public.t_ok((select count(*) from pg_proc where proname = 'notification_feed' and pronamespace = 'public'::regnamespace) = 1,
+  'one feed function (two would make PostgREST''s call ambiguous)');
+select public.t_ok(not has_function_privilege('anon', 'public.notification_feed(integer, timestamptz, boolean, text[])', 'execute'),
+  'the feed is not anon''s');
 
 -- ── The owner lock ───────────────────────────────────────────────────────────
 select public.notify_service_problem('00000000-0000-0000-0000-000000000003', 'google');

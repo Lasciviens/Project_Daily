@@ -32,7 +32,7 @@
 // ONE game lazily when its detail modal opens rather than mapping a whole
 // library up front.
 
-import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0'
 import {
   exchangeNpssoForAccessCode,
   exchangeAccessCodeForAuthTokens,
@@ -140,6 +140,13 @@ function sonyError(v: unknown): { code?: number; message?: string } | null {
 const REAUTH_RE = /expired|invalid.*token|unauthor|not.*authenticated|access denied/i
 function isReauth(err: { code?: number; message?: string }): boolean {
   return REAUTH_RE.test(err.message ?? '') || err.code === 2241164
+}
+
+// A refused sign-in tells the owner through the bell (212/214): a service code only — the database builds the notice,
+// at most one a day, and a fresh sign-in written to psn_tokens settles it. Best effort: never changes the answer.
+async function notifySignInFailed(db: SupabaseClient, userId: string): Promise<void> {
+  const { error } = await db.rpc('notify_service_problem', { p_user: userId, p_service: 'psn' })
+  if (error) console.error(`psn-api: the sign-in notice was not written (${error.code ?? 'error'})`)
 }
 
 type Action =
@@ -253,6 +260,16 @@ Deno.serve(async (req: Request) => {
     const expiresAt = row.access_token_expires_at ? new Date(row.access_token_expires_at as string).getTime() : 0
     if (!accessToken || expiresAt - Date.now() < 5 * 60 * 1000) {
       const refreshed = await exchangeRefreshTokenForAuthTokens(row.refresh_token as string)
+      // psn-api hands back Sony's token answer without checking it (2.18.1: `raw.access_token` of whatever came back),
+      // so a refused refresh token arrives as an answer with no access token — the stored sign-in is gone and only a
+      // fresh npsso brings it back. Nothing is written then (writing would move the expiry of a dead token and fire
+      // 214's settle). A network failure or a page that isn't JSON throws instead and is no sign-in failure. Any JSON
+      // answer without a token counts — a 429 or 5xx with a body too (docs/integrations/playstation.md → Traps).
+      if (typeof refreshed.accessToken !== 'string' || !refreshed.accessToken) {
+        // The notice is best effort: its failure never turns the answer into a 500.
+        try { await notifySignInFailed(supabase, userId) } catch { console.error('psn-api: the sign-in notice was not written') }
+        return json({ error: 'reauth_required', sonyMessage: 'PlayStation refused the stored sign-in' })
+      }
       accessToken = refreshed.accessToken
       await supabase.from('psn_tokens').update({
         access_token: refreshed.accessToken,

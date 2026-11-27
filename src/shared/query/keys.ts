@@ -42,11 +42,9 @@ export const qk = {
   /** Server-written notices (211/212's notifications): the bell, the Notifications page, Shop's Needs a look. */
   notifications: {
     all: ['notifications'] as const,
-    /** The newest notices: the bell's few, or the page's list (all or unread only). */
-    feed: (mode: 'dropdown' | 'page', unreadOnly: boolean) => ['notifications', 'feed', mode, unreadOnly] as const,
+    /** The newest notices: the bell's few, the page's list (all or unread only), or Shop's (its kinds, unread). */
+    feed: (mode: 'dropdown' | 'page' | 'shop', unreadOnly: boolean) => ['notifications', 'feed', mode, unreadOnly] as const,
     unread: () => ['notifications', 'unread'] as const,
-    /** Shop's Needs a look: its own kind, unread. */
-    shop: () => ['notifications', 'shop'] as const,
     /** Where each kind goes (212's notification_prefs). */
     prefs: () => ['notifications', 'prefs'] as const,
     /** The Claude API key's dates (212's integration_expiry). */

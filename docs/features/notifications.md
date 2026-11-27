@@ -2,7 +2,7 @@
 
 The owner asked for one place where the app tells him what needs a look, and for the choice of how each kind reaches
 him ("Notifications B1–B3", one PR, 26.11.2026; the plan's owner decisions of 25.11.2026). Migration `212`; the
-table itself is `211`'s.
+table itself is `211`'s. Migration `214` (27.11.2026) added PlayStation's refused sign-in and the feed's kinds for Shop.
 
 ## What the owner sees
 
@@ -17,11 +17,14 @@ table itself is `211`'s.
   **All | Unread**, each row's **Read / Unread** button (with Undo; a filled dot while unread, an empty circle once read —
   the page has no separate dot), **More** for older ones (30 at a time), in a card.
   Both modes have **Read all** and a ⚙ link to Settings → Notifications.
-- The drop-down and the page are **one component**, `NotificationList`, with the modes `dropdown` and `page` (owner,
-  12.11.2026: "same job, one component"). A mode hides a part (the filter, the per-row button, More), never copies it.
+- The drop-down, the page and Shop's **Needs a look** are **one component**, `NotificationList`, with the modes
+  `dropdown`, `page` and `shop` (owner, 12.11.2026: "same job, one component"; 27.11.2026: Needs a look should "show the
+  same notices list as the bell, instead of its own" — "yes"). A mode hides a part (the header, the filter, the per-row
+  button, More), never copies it. `shop` is the unread notices of the Shop's kinds (`SHOP_NOTICE_KINDS`, today
+  `shop_bought_draft`), compact: no header, each row's **Read** button (with Undo), nothing at all when there are none.
 - **Opening a notice** marks it read and acted on, then opens the thing by the kind's fixed way: a Shop thing opens its
-  popup by id, a followed film its film popup by its TMDB id, everything else its page (`noticeRoute`). Nothing is
-  ever opened from an address stored in a row — there is none.
+  popup by id at its Purchase, a followed film its film popup by its TMDB id, everything else its page (`noticeRoute`).
+  Nothing is ever opened from an address stored in a row — there is none.
 - **Settings → Notifications** (`?tab=notifications`, `NotificationSettingsTab`): this device's push switch (moved
   here from Appearance; first on the phone) and **What the app tells you** — every kind with a picker: **In app** (only the bell),
   **Now** (a push within 15 minutes), **Morning** (one line in the morning push), **Weekly** (Monday's 08:00 digest).
@@ -33,14 +36,21 @@ table itself is `211`'s.
   days)"); **Save** keeps the dates, **Clear** asks and then says "Key dates cleared · Undo". The app never reads the
   key (owner decision 25.11.2026: an Admin API key that could read it can also create and delete keys — too much
   power for one date).
-- Shop's **Needs a look** keeps showing "Bought through a plan" as before (its own read, `qk.notifications.shop()`);
-  the same notice is in the bell, and reading it in one place reads it in the other.
+- Shop's **Needs a look** shows the bell's list in its `shop` mode, after the urgent rows (due today or soon, money to
+  claim) and before the rest (owner, 27.11.2026); the button's count adds the unread Shop notices. One query
+  (`useShopNotices`, `qk.notifications.feed('shop', true)`) feeds the list and the count; reading a notice in the bell
+  reads it in the Shop. Its old notice row (`noticeLooks`, `noticesApi.ts`, Got it → "Put away") is gone; a notice whose
+  thing was later put back on the wishlist by hand now still shows (as in the bell) until it is read. In the sheet the
+  `shop` mode takes Needs a look's row geometry (padding, a 28 px icon tile, the title's weight), so the rows line up.
+- **The thing's record** keeps its nudge: an unread "Bought through a plan" notice of the thing shows as the record's
+  nudge line in the bell's words ("Bought through a plan: check the purchase", `recordStory.nudgeFor`, after an urgent
+  row of the thing); **Check** opens the Purchase section and reads the notice as acted on (as opening it from the bell).
 
 ## The kinds
 
 | Kind | Made by | Default | Opens |
 |---|---|---|---|
-| `sign_in_failed` | Trakt (401 / `invalid_grant`), Strava (a 401 to the refresh — a 400's body is undocumented, `docs/integrations/strava.md`), Google (`google-tasks-sync`, `calendar-token`: `invalid_grant`), Apple Calendar (the iCloud timer: Apple refused the password) — through `notify_service_problem` | Now | Settings → Subscriptions |
+| `sign_in_failed` | Trakt (401 / `invalid_grant`), Strava (a 401 to the refresh — a 400's body is undocumented, `docs/integrations/strava.md`), Google (`google-tasks-sync`, `calendar-token`: `invalid_grant`), Apple Calendar (the iCloud timer: Apple refused the password), PlayStation (214: `psn-api`'s refresh answered without an access token) — through `notify_service_problem`. "PlayStation needs you to sign in again · Connect it again in Settings → Subscriptions" | Now | Settings → Subscriptions |
 | `sign_in_expiring` | The nightly job: PlayStation's `psn_tokens.npsso_expires_at`, 14, 7 and 1 days before | Morning | Settings → Subscriptions |
 | `claude_key_rejected` | `claude` when Anthropic rejects the key | Now | Settings → Subscriptions |
 | `claude_key_expiring` | The nightly job: the key's end day as typed, 14, 7 and 1 days before | Morning | Settings → Subscriptions |
@@ -63,9 +73,11 @@ block (`<notification-text>`: titles, second lines, routes, the push and the mor
 - Rows are written only by `notify_row()` (SECURITY DEFINER, service role only). 211's `notify()` keeps its arguments
   and goes through it. The browser reads its own rows and may set `read_at` and `acted_at` (a column grant), nothing
   else; it can't insert or delete.
-- `notification_feed(limit, before, unread_only)` (SECURITY INVOKER) is the screen's read: the caller's own rows, newest
-  first, at most 200, with the thing's name (`notification_subject`) and a film's TMDB id. Before 212 the app reads
-  211's columns without names; before 211 it shows none.
+- `notification_feed(limit, before, unread_only, kinds)` (SECURITY INVOKER) is the screen's read: the caller's own rows,
+  newest first, at most 200, with the thing's name (`notification_subject`) and a film's TMDB id; `kinds` (214, null =
+  all) narrows them for Shop. 214 dropped the three-argument function and made it again with the fourth argument (two
+  would make PostgREST's call ambiguous); a call without kinds is answered by its default. Before 212 (or, asked for
+  kinds, before 214) the app reads 211's columns without names; before 211 it shows none.
 - `notification_prefs` (account, kind → channel; audited, owner lock). `notification_channel(user, kind)` = the
   owner's choice, else the default.
 - `integration_expiry` (account, service `anthropic` → start day, duration, `ends_on`, optional `key_hint`; audited,
@@ -91,10 +103,21 @@ block (`<notification-text>`: titles, second lines, routes, the push and the mor
 - **A refused sign-in or key:** `notify_service_problem(user, service)` (service role only; the service is an
   allow-list) writes at most one per service and Oslo day, and none while an unread one about that service is there.
   The functions call it best effort: a failure there never changes their answer.
-- **Reconnecting settles it:** a fresh sign-in written to `trakt_tokens`, `strava_tokens`, `user_calendar_tokens` or
-  `icloud_credentials` (a connect, or a refresh that worked) reads that service's unread failure notice; `claude` calls
-  `notify_service_settle(user, 'anthropic')` after a call Anthropic answered, which reads "key rejected" (never a
-  trigger on the ledger, 194's rule).
+- **Reconnecting settles it:** a fresh sign-in written to `trakt_tokens`, `strava_tokens`, `user_calendar_tokens`,
+  `icloud_credentials` or `psn_tokens` (214; a connect, or a refresh that worked — each writes the refresh token or the
+  password) reads that service's unread failure notice; `claude` calls `notify_service_settle(user, 'anthropic')` after
+  a call Anthropic answered, which reads "key rejected" (never a trigger on the ledger, 194's rule).
+- **PlayStation (214, owner 27.11.2026: "should it also tell you when its sign-in fails?" — "yes"):** `psn-api` refreshes
+  the access token (about an hour) from the stored refresh token. The community `psn-api` package (2.18.1) hands back
+  Sony's token answer without checking it, so a refused refresh token comes back as an answer with **no access token**
+  (Sony documents nothing; the shape is the package's source — `docs/integrations/playstation.md`). That is the refusal: `psn-api` calls
+  `notify_service_problem(user, 'psn')`, answers `reauth_required` as before and **writes nothing** (before 214 it wrote
+  the dead answer back, moving the token's expiry an hour on and firing nothing useful). A network failure or a page
+  that is not JSON throws and is no sign-in failure. The function only runs when the app asks (Games), so the notice
+  comes the first time the app uses PlayStation after the sign-in died — not on a timer. **False alarm:** any JSON answer
+  without an access token counts, a 429 or 5xx with a body too; it heals by itself at the next refresh that works (the
+  trigger reads the notice). The notice call is in try/catch: a failed notice never turns `reauth_required` into a 500. The nightly 14/7/1-day
+  warnings (`sign_in_expiring`) still come before the npsso's own end day.
 
 ## Delivery (B3)
 
@@ -124,6 +147,12 @@ block (`<notification-text>`: titles, second lines, routes, the push and the mor
   the event's title only as text.
 - **A sync function** passes only a service code; the database refuses any other value and builds the dedupe key
   itself.
+- **`psn_tokens`' settle trigger (214):** the table is the service role's (140 revoked the browser), so only `psn-api`'s
+  own writes fire it; a forged write could at worst read the owner's own PlayStation failure notice early — never write,
+  re-point or delete a notice, and never another account's (scoped to the written row's `user_id`, SECURITY INVOKER,
+  `search_path ''`).
+- **The feed's kinds** only narrow the caller's own rows (SECURITY INVOKER, row level security); an unknown kind matches
+  nothing.
 - **The push** text and address come from the registry; the thing's name is cut to printable characters (no control,
   bidi or line-break characters) and 60 characters (`noticePushSubject`; the bell shows up to 300), and the address is
   a fixed hash route per kind, never data from a row.
@@ -132,7 +161,8 @@ block (`<notification-text>`: titles, second lines, routes, the push and the mor
 
 ## Checks
 
-`verify-notifications` (the registry's words and routes, the row check, the key's end day, the producers, push-send's
-path and the verbatim block, one list for both modes) and `verify-db-notifications` (212 twice, the shapes, the
-browser's rights, the follow trigger, the prefs, the key dates, the 14/7/1 warnings, the service problems, the claim and
-the timers; PR check with `DEPLOY_TEST_DB_URL`).
+`verify-notifications` (the registry's words and routes, the row check, the key's end day, the producers — PlayStation's
+refusal point too —, push-send's path and the verbatim block, one list for the bell, the page and Shop) and
+`verify-db-notifications` (212 and 214 twice each, the shapes, the browser's rights, the follow trigger, the prefs, the key
+dates, the 14/7/1 warnings, the service problems — PlayStation's and its settle —, the feed's kinds, the claim and the
+timers; PR check with `DEPLOY_TEST_DB_URL`). `verify-shop-suggestions` checks the sheet renders the bell's list.

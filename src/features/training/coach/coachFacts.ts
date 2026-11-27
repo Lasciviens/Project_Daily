@@ -3,6 +3,7 @@ import { labelForSlug } from '../muscleMap'
 import { leanLabel, PAIR_META, ratioText, type BalancePair } from '../plan/muscleBalance'
 import { nextTargetText, type CoachData } from './coachFormat'
 import { mondayOfStr, shiftDateStr } from '../../../shared/utils/dateUtils'
+import { formatDate } from '../../../shared/utils/dateFormat'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  The PT assessment's decisions, made by code (AI last, docs/features/ai.md).
@@ -172,7 +173,7 @@ export function ptVerdicts(d: CoachData, feeling: PtFeeling): PtVerdicts {
     recovery, workloadReview, regressionLifts, stalledLifts, weeksSinceEasy,
     deloadCue: deloadReasons.length > 0, deloadReasons,
     belowMinimum, priority, balanceFlags,
-    missed: (d.missedSessions ?? []).map(m => `${m.title} (due ${m.dueDate})`),
+    missed: (d.missedSessions ?? []).map(m => `${m.title} (planned ${formatDate(m.date)}, ${m.state === 'skipped' ? 'skipped' : 'still open'})`),
   }
 }
 

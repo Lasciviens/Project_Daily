@@ -23,6 +23,7 @@ interface BoardColumnProps {
   onDelete: (id: string) => void
   onEdit: (task: Task, row?: 'waiting') => void
   onFocus: (task: Task) => void
+  onMoveToToday: (task: Task) => void
   onAddTask: () => void
 }
 
@@ -30,7 +31,7 @@ interface BoardColumnProps {
 // callback in the parent — hooks can only run at a component's top level.
 function BoardColumn({
   col, colTasks, isDropTarget, collapsed, focusedTaskIds, draggingId,
-  onToggleCollapse, onStatusChange, onDelete, onEdit, onFocus, onAddTask,
+  onToggleCollapse, onStatusChange, onDelete, onEdit, onFocus, onMoveToToday, onAddTask,
 }: BoardColumnProps) {
   const isDoneCol = col.id === 'done'
   const { setNodeRef } = useDroppable({ id: col.id })
@@ -81,6 +82,7 @@ function BoardColumn({
             onDelete={onDelete}
             onEdit={onEdit}
             onFocus={onFocus}
+            onMoveToToday={onMoveToToday}
             isFocused={focusedTaskIds.includes(task.id)}
             isDragging={task.id === draggingId}
           />
@@ -106,6 +108,7 @@ interface Props {
   onDelete: (id: string) => void
   onEdit: (task: Task, row?: 'waiting') => void
   onFocus: (task: Task) => void
+  onMoveToToday: (task: Task) => void
   onAddTask: () => void
 }
 
@@ -113,7 +116,7 @@ interface Props {
 // stacked collapsible sections on mobile. Overdue is NOT a column — it's a
 // property, shown as the alert strip above the board (see WorkPage).
 export default function WorkBoard({
-  tasks, focusedTaskIds, onStatusChange, onDelete, onEdit, onFocus, onAddTask,
+  tasks, focusedTaskIds, onStatusChange, onDelete, onEdit, onFocus, onMoveToToday, onAddTask,
 }: Props) {
   const [draggingId,  setDraggingId]  = useState<string | null>(null)
   const [dragOverCol, setDragOverCol] = useState<BoardStatus | null>(null)
@@ -182,6 +185,7 @@ export default function WorkBoard({
             onDelete={onDelete}
             onEdit={onEdit}
             onFocus={onFocus}
+            onMoveToToday={onMoveToToday}
             onAddTask={onAddTask}
           />
         ))}

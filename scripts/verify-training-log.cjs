@@ -451,7 +451,7 @@ console.log('\n== A plan a late workout closed: "Done <day>" on its day, "Planne
   check('Tuesday: Upper A is the one session; Lower A stays its plan (not a second training)', tue.sessions.length === 1 && tue.sessions[0].workout.id === 'w-upper' && tue.openPlans.length === 1)
   const open = tue.openPlans[0]
   check('…the plan knows the workout that closed it and its day', open.doneByOther?.workoutId === 'w-lower' && open.doneByOther?.date === '2026-11-26', JSON.stringify(open.doneByOther))
-  check('…and reads "Done 26.11.2026", never a bare "Done"', sr.planStateWord(open.status, open.doneByOther) === 'Done 26.11.2026', sr.planStateWord(open.status, open.doneByOther))
+  check('…and reads "Done 26.11.2026 · 2 days late", never a bare "Done" (213: the shift too)', sr.planStateWord(open.status, open.doneByOther) === 'Done 26.11.2026 · 2 days late', sr.planStateWord(open.status, open.doneByOther))
   const thu = cm.dayDataFor('2026-11-26', new Date('2026-11-26T12:00:00'), [upper, lower], [], plansByDate, T)
   check('Thursday: the workout carries the plan it closed', thu.sessions[0]?.plannedElsewhere?.length === 1 && thu.sessions[0].plannedElsewhere[0].date === '2026-11-24')
   check('…and its note reads "Planned for 24.11.2026 16:45"', sr.coveredPlanNote(thu.sessions[0].plans, thu.sessions[0].workout, thu.sessions[0].plannedElsewhere) === 'Planned for 24.11.2026 16:45',

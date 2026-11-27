@@ -52,6 +52,12 @@ eq(R.isOverdueOn(task({ due_date: '2026-10-11', status: 'waiting' }), TODAY), tr
 eq(R.isOverdueOn(task({ due_date: '2026-10-11', status: 'done' }), TODAY), false, 'done is never overdue')
 eq(R.isOverdueOn(task({ due_date: TODAY }), TODAY), false, 'due today is not overdue')
 eq([task({ due_date: '2000-01-01' })].filter(R.isOverdue).length, 1, 'isOverdue is safe as a .filter callback (one argument)')
+// Move to today (owner, 27.11.2026: "if its moved it is moved!"): an overdue one-off item only.
+eq(R.movesToToday(task({ due_date: '2026-10-11' }), TODAY), true, 'Move to today: an overdue task')
+eq(R.movesToToday(task({ due_date: TODAY }), TODAY) || R.movesToToday(task({ due_date: '2026-10-11', status: 'done' }), TODAY), false,
+  '…never one due today or closed')
+eq(R.movesToToday(task({ due_date: '2026-10-11', source_type: 'training_session' }), TODAY), false, '…never a training session (its own Move…)')
+eq(R.movesToToday(task({ due_date: '2026-10-11', schedule_block_id: 'p', occurrence_date: '2026-10-11' }), TODAY), false, '…never a repeat\'s day (156)')
 
 // ── Which day a task belongs to ──
 const onToday = t => R.onDay(t, TODAY, TODAY)
@@ -147,6 +153,12 @@ eq(R.onDay(task({ status: 'done', due_date: TODAY, completed_at: at('2026-10-11'
 {
   const list = [task({ due_date: '2026-10-14' }), task({ due_date: '2026-10-14', status: 'done', completed_at: at(TODAY) }), task({ due_date: '2026-10-14', status: 'waiting' })]
   eq(R.openOnDay(list, '2026-10-14', TODAY), 2, 'open + waiting due that day')
+  // Owner, 27.11.2026: a past day's open tasks are carried to today (overdue) — they count there, not on their old day.
+  const past = list.map(t => ({ ...t, due_date: '2026-10-11' }))
+  eq(R.openOnDay(past, '2026-10-11', TODAY), 0, 'a past day: its open tasks count on today (carried), not here')
+  eq([R.carriedToToday(task({ due_date: '2026-10-11' }), '2026-10-11', TODAY), R.carriedToToday(task({ due_date: '2026-10-11', status: 'done' }), '2026-10-11', TODAY),
+    R.carriedToToday(task({ due_date: TODAY }), TODAY, TODAY), R.carriedToToday(task({ due_date: '2026-10-20' }), '2026-10-11', TODAY)], [true, false, false, false],
+    'carriedToToday: open and due before today, seen on a past day — never a closed one, never on today, never one due later')
 }
 
 // ── Daily's Tasks tab ──

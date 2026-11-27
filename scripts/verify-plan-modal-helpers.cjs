@@ -28,7 +28,7 @@ const {
   blockSourceTypeForTask, taskSourceTypeForBlock, shouldCreateLinkedTask,
   hasValidRecurrenceSelection, clampDurationMinutes,
 } = require('../src/shared/components/plan-modal/planModal.config')
-const { buildInitialForm: buildSheetForm } = require('../src/shared/components/plan-modal/planForm')
+const { buildInitialForm: buildSheetForm, movedFormToDay } = require('../src/shared/components/plan-modal/planForm')
 const { itemFromRows, effectiveGoogleTarget } = require('../src/features/items/sheetRules')
 // The Add sheet (one item, 155) seeds its form from the saved rows read as one item.
 const buildInitialForm = (defaults, task, timeBlock, scheduleBlock) => {
@@ -543,6 +543,16 @@ console.log('\n== 19. A task planned for a day never gets a retired section ==')
   check('tomorrow → Backlog (was the legacy Tomorrow)', C.sectionForDate(tomorrowStr()) === 'backlog')
   check('next week → Backlog (was the legacy This week)', C.sectionForDate('2099-01-01') === 'backlog')
   check('a past day → Backlog', C.sectionForDate('2020-01-01') === 'backlog')
+}
+
+{
+  // The item screen's Move to today (owner, 27.11.2026): the form's day becomes today, a past deadline goes.
+  const j = o => JSON.stringify(o)
+  check('Move to today on the screen: the old day → today (time and length untouched)', j(movedFormToDay({ date: '2026-11-25', deadlineDate: '' }, '2026-11-27')) === j({ date: '2026-11-27' }))
+  check('…a deadline before today is dropped, so the due follows the slot', j(movedFormToDay({ date: '2026-11-25', deadlineDate: '2026-11-25' }, '2026-11-27')) === j({ date: '2026-11-27', deadlineDate: '', deadlineTime: '' }))
+  check('…a deadline ahead stays; a day already today or later stays', j(movedFormToDay({ date: '2026-11-28', deadlineDate: '2026-11-30' }, '2026-11-27')) === j({}))
+  const rows = require('fs').readFileSync(require('path').join(__dirname, '../src/shared/components/plan-modal/TaskRows.tsx'), 'utf8')
+  check('…offered on an overdue one-off item only (taskRules.movesToToday), as a change of the form', /movesToToday\(task, today\)/.test(rows) && /onClick=\{\(\) => patch\(moved\)\}/.test(rows))
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

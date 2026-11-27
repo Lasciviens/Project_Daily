@@ -195,20 +195,27 @@ console.log('\n6 · RPE (Hevy) in both coaches — compact, context only')
   check('PT prompt documents the RPE suffix (snapshot contract)', PT_SYSTEM_PROMPT.includes('@ RPE 8/9/10') && /never changes a target/.test(PT_SYSTEM_PROMPT))
 }
 
-console.log('\n7 · Missed current-program sessions (plan/skippedRoutines.ts, migration 112)')
+console.log('\n7 · Missed: this week\'s sessions as the This week strip reads them (plan/weekInputs.weekMissed, 213)')
 {
   const { missedLine } = require('../src/features/training/coach/coachFormat')
+  const { weekMissed } = require('../src/features/training/plan/weekInputs')
+  const SS = require('../src/features/training/plan/sessionState')
   const progress = computeProgressModel({ ...base, currentProgram: [{ routine_id: 'r1' }] })
-  const missed = [
-    { kind: 'overdue', routineId: 'r1', title: 'Push Day', lastTrained: '2026-09-14', daysSince: 9, dueDate: '2026-09-21', weekStart: '2026-09-21' },
-    { kind: 'skipped', routineId: 'r2', title: 'Legs', lastTrained: '2026-09-10', daysSince: 13, dueDate: '2026-09-17', weekStart: '2026-09-14', skip: { id: 's', routine_id: 'r2', week_start: '2026-09-14', reason: 'Sick — flu' } },
-  ]
+  const at = (r, title, date, f = {}, extra = {}) => ({ key: `${r}@${date}`, title, routineId: r, date, taskId: `t-${r}`,
+    status: SS.sessionStatus({ date, today: '2026-09-23', taskStatus: 'open', taskRoutineId: r, firstDate: date, ...f }), ...extra })
+  const week = SS.planWeek({ order: ['r1', 'r2', 'r3'], today: '2026-09-23', monday: '2026-09-21', trainedToday: false, sessions: [
+    at('r1', 'Push Day', '2026-09-21'),
+    at('r2', 'Legs', '2026-09-22', { taskStatus: 'cancelled', skipReason: 'Sick — flu' }),
+    at('r3', 'Pull Day', '2026-09-25'),
+  ] })
+  const missed = weekMissed(week, '2026-09-23')
   const data = {
     today: '2026-09-23', profile: null, limitations: [], progress, routines: base.routines, sessions: sessionsFromHistory(history), sessionsThisWeek: 1,
     weeklyMuscleSets: [], sleep: [], steps: [], activeKcal: [], bodyweight: [], missedSessions: missed,
   }
-  check('overdue line', missedLine(missed[0]) === 'Missed: Push Day — not done in 9 days (due 2026-09-21)', missedLine(missed[0]))
-  check('skipped line carries the reason', missedLine(missed[1]).endsWith('· skipped: Sick — flu'), missedLine(missed[1]))
+  check('the week\'s missed: the open one whose day passed and the skipped one — never one still ahead', missed.length === 2 && missed.every(m => m.title !== 'Pull Day'), JSON.stringify(missed))
+  check('open line: planned day and until when, DD.MM.YYYY', missedLine(missed[0]) === 'Missed: Push Day — planned 21.09.2026, still open until 27.09.2026', missedLine(missed[0]))
+  check('skipped line carries the reason', missedLine(missed[1]) === 'Missed: Legs — planned 22.09.2026 · skipped: Sick — flu', missedLine(missed[1]))
   const text = formatPtSnapshot(data)
   check('snapshot lists them under PROGRAM', /PROGRAM: [^\n]*\n  Missed: Push Day/.test(text), text.split('\n').slice(0, 6).join(' | '))
   const json = buildCoachJson(data, 30)
@@ -216,6 +223,8 @@ console.log('\n7 · Missed current-program sessions (plan/skippedRoutines.ts, mi
   const none = buildCoachJson({ ...data, missedSessions: [] }, 30)
   check('nothing missed → no missed key, no Missed line', !('missed' in none.program) && !/Missed:/.test(formatPtSnapshot({ ...data, missedSessions: undefined })))
   check('PT prompt documents the Missed line (snapshot contract)', PT_SYSTEM_PROMPT.includes('- MISSED:') && PT_SYSTEM_PROMPT.includes('PROGRAM'))
+  const coachData = require('fs').readFileSync(require('path').join(__dirname, '../src/features/training/coach/coachData.ts'), 'utf8')
+  check('the coach reads the plan\'s week (buildTrainingWeek → weekMissed), never a rhythm of its own', /weekMissed\(buildTrainingWeek\(/.test(coachData) && !/missedSessionsFrom/.test(coachData))
 }
 
 console.log('\n8 · Push:pull balance — the same numbers the app shows (plan/muscleBalance.ts)')

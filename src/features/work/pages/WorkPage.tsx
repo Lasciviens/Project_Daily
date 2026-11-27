@@ -88,7 +88,9 @@ export function WorkPage() {
 
 
   const railOpen = rail === 'open'
-  const cardActions = { onStatusChange: handleStatusChange, onDelete: handleDelete, onEdit: openEdit, onFocus: toggleFocus }
+  // Move to today (taskRules.movesToToday: an overdue item) — the same action as Daily's and Home's rows.
+  const moveToToday = useCallback((task: Task) => { void act.moveToToday(task) }, [act])
+  const cardActions = { onStatusChange: handleStatusChange, onDelete: handleDelete, onEdit: openEdit, onFocus: toggleFocus, onMoveToToday: moveToToday }
   // The command bar spans the page's content width, so it measures the same
   // step as the board below it: the rail toggle only exists in Board view
   // where the rail sits beside the work. The header band is the page's width, like every page's.

@@ -7,6 +7,8 @@ import type { TaskCounts } from '../../todo/taskRules'
 import { mondayOfStr, shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import { useNow } from './useNow'
 import { pickNextTrainingSession, type NextTrainingSession } from '../../training/trainingPlanModel'
+import { useTrainingWeek } from '../../training/hooks/useTrainingWeek'
+import { weekNextSession } from '../../training/hooks/useNextTrainingSession'
 import { NEXT_SESSION_LOOKAHEAD_DAYS } from '../../training/hooks/useTrainingSessions'
 import type { ScheduleBlock } from '../../daily/types'
 
@@ -89,6 +91,7 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
   const templatesQ = useScheduleBlocks()
   const trainingQ = useTrainingBlocks(training.from, training.to)
   const trainingDaysQ = useTrainingDayTasks(training.from, training.to)
+  const week = useTrainingWeek()
   // The clock ticks on today, so "Now" / "Next up" move on without a refetch.
   const nowMs = useNow(date === todayStr(), 60_000)
   // A failed read with nothing cached: the schedule is unknown.
@@ -118,17 +121,17 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       category: i.block?.category ?? i.template?.category ?? null, planDate: i.planDate,
     }))
 
-    // Next training from the viewed day on: one-off training blocks plus
-    // recurring training templates — the same pure rule the Training banner
-    // uses (useNextTrainingSession). Only today filters out passed times.
+    // Next training: today, this week's first session still to do (useNextTrainingSession's rule:
+    // sessionState.planWeek); while the week loads, another day, or a week with none, one-off training blocks plus
+    // recurring training templates from the viewed day on — the same pure rule. The card never waits for the week.
     const trainingTemplates = templates.filter(t => t.category === 'training')
     const trainingDays = trainingDaysQ.data ?? []
-    const nextTraining = pickNextTrainingSession({
+    const fromWeek = isToday ? weekNextSession(week.week, week.planOf) : null
+    const nextTraining = fromWeek ?? pickNextTrainingSession({
       blocks:        trainingQ.data ?? [],
       templates:     trainingTemplates,
       dayTasks:      trainingDays,
       today:         date,
-      nowHHMM:       isToday ? hourLabel(nowHour) : '00:00',
       lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS,
     })
 
@@ -150,6 +153,6 @@ export function useTodayOverview(date: string = todayStr()): TodayOverview {
       },
       scheduleRetrying,
     }
-  }, [date, nowMs, dayTasks.repeatDays, dayTasks.open, dayTasks.done, dayTasks.cancelled, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, prevBlocksQ.isLoading, templatesQ.data, templatesQ.isLoading, trainingQ.data, trainingQ.isLoading, trainingDaysQ.data, trainingDaysQ.isLoading,
+  }, [date, nowMs, dayTasks.repeatDays, dayTasks.open, dayTasks.done, dayTasks.cancelled, dayTasks.counts, dayTasks.isLoading, blocksQ.data, blocksQ.isLoading, prevBlocksQ.data, prevBlocksQ.isLoading, templatesQ.data, templatesQ.isLoading, trainingQ.data, trainingQ.isLoading, trainingDaysQ.data, trainingDaysQ.isLoading, week.week, week.planOf,
     blocksFailed, prevFailed, templatesFailed, refetchBlocks, refetchPrev, refetchTemplates, scheduleRetrying])
 }

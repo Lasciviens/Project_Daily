@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CalendarClock, CalendarPlus, SkipForward } from 'lucide-react'
+import { CalendarClock, SkipForward } from 'lucide-react'
 import { ModalShell, entityModal } from '../../../shared/modals'
 import { findTwinOn } from '../api/trainingPlanApi'
 import { planTwinMessage } from '../plan/planTwins'
@@ -11,8 +11,6 @@ import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import { useTrainingPlanActions } from '../hooks/useTrainingPlanActions'
 import { useSessionFirstDay } from '../hooks/useTrainingPlans'
 import { movesPastWeek } from '../plan/sessionState'
-import { useSkipTrainingSession } from '../hooks/useTrainingSkips'
-import { usePlanThis } from '../../items/usePlanThis'
 import { SKIP_REASON_CHIPS, SKIP_REASON_MAX, composeSkipReason, isValidSkipReason } from '../plan/skippedRoutines'
 import type { TrainingPlanRef } from '../api/trainingPlanApi'
 
@@ -98,36 +96,29 @@ export function TrainingPlanMoveModal({ request, onClose }: EntityModalProps<'tr
 }
 
 /**
- * `training-plan-skip`: skip one planned session — or, from Training →
- * Missed sessions, a missed routine with no plan. A reason is always required
- * (the owner's rule). A planned session can be moved instead; a missed
- * routine can be planned instead.
+ * `training-plan-skip`: skip one planned session. A reason is always required
+ * (the owner's rule). It can be moved instead. (The routine skip with no plan
+ * went with the Missed sessions card, 213; an older one is still undone from
+ * its session's popup — sessionActions' undoSkip by its id.)
  */
 export function TrainingPlanSkipModal({ request, onClose }: EntityModalProps<'training-plan-skip'>) {
-  const { plan, missed } = request
-  const planThis = usePlanThis()
+  const { plan } = request
   const actions = useTrainingPlanActions()
-  const skipMissed = useSkipTrainingSession()
   const [chip, setChip] = useState<string | null>(null)
   const [details, setDetails] = useState('')
   const reason = composeSkipReason(chip, details)
   const valid = isValidSkipReason(reason)
-  const busy = actions.busy || skipMissed.isPending
+  const busy = actions.busy
 
   const submit = async () => {
     if (!valid) return
     try {
-      if (plan) await actions.skip(plan, reason)
-      else if (missed) await skipMissed.mutateAsync({ routine_id: missed.routineId, week_start: missed.weekStart, reason })
+      await actions.skip(plan, reason)
     } catch { return }
     onClose()
   }
 
-  const instead = plan
-    ? <Button block className="sm:w-auto" icon={<CalendarClock />} disabled={busy} onClick={() => { onClose(); actions.openMove(plan) }} tip="Move it instead">Move</Button>
-    : missed
-      ? <Button block className="sm:w-auto" icon={<CalendarPlus />} disabled={busy} onClick={() => { onClose(); void planThis({ kind: 'training', routine: { id: missed.routineId, title: missed.title }, date: todayStr() }) }} tip="Plan it instead">Plan</Button>
-      : null
+  const instead = <Button block className="sm:w-auto" icon={<CalendarClock />} disabled={busy} onClick={() => { onClose(); actions.openMove(plan) }} tip="Move it instead">Move</Button>
 
   return (
     <ModalShell
@@ -135,7 +126,7 @@ export function TrainingPlanSkipModal({ request, onClose }: EntityModalProps<'tr
       size="sm"
       dismissible={!busy}
       title="Skip session"
-      subtitle={plan ? `${plan.info.title} · ${whenOf(plan)}` : missed ? `${missed.title} · due ${formatWeekdayDate(missed.dueDate)}` : undefined}
+      subtitle={`${plan.info.title} · ${whenOf(plan)}`}
       footer={
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button block className="sm:w-auto" onClick={onClose} disabled={busy}>Cancel</Button>
@@ -169,9 +160,7 @@ export function TrainingPlanSkipModal({ request, onClose }: EntityModalProps<'tr
         <p className="text-meta text-fg-muted">
           {!valid
             ? 'A reason is required — pick one above or write at least 3 characters.'
-            : plan
-              ? 'The session shows as skipped, with your reason, and its task is cancelled. Undo brings it back.'
-              : 'Only this session stops being flagged. If the next one is missed too, you’ll be asked again.'}
+            : 'The session shows as skipped, with your reason, and its task is cancelled. Undo brings it back.'}
         </p>
       </form>
     </ModalShell>

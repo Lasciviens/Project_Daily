@@ -15,7 +15,7 @@ import { Button, KeepRoom, Skeleton, ToneDot, TonePill, Truncate, cx } from '../
 import { formatDurationMinutes } from '../../../shared/utils/formatDuration'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { aheadOnDay, buildDaySchedule, plannedMinutes } from '../daySchedule'
-import { buildDayRows, dayRowCounts, hourLabel, repeatDayKeys, repeatDayRequest, repeatsToDoOn, rowTimeZone, untilLabel, type DayRow } from '../dayItems'
+import { buildDayRows, carriedToToday, dayRowCounts, hourLabel, repeatDayKeys, repeatDayRequest, repeatsToDoOn, rowTimeZone, untilLabel, type DayRow } from '../dayItems'
 import { zoneTag } from '../../../shared/utils/timeZone'
 import {
   ContinuationRow, LinkedTaskRow, NowMarker, RepeatRow, SlotRow, TimeGutter, TrainingRow,
@@ -109,7 +109,9 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
   }
 
   // A repeat's day that is a task already counts with the tasks, never twice.
-  const counts = dayRowCounts(list.counts, repeatsToDoOn(templates, day, today, repeatDayKeys(withRepeatDays)))
+  // A past day's open tasks that today carries count on today, not here (their rows stay, "On today").
+  const counts = dayRowCounts(list.counts, repeatsToDoOn(templates, day, today, repeatDayKeys(withRepeatDays)),
+    list.open.filter(t => carriedToToday(t, day, today)).length)
   // Repeat days that passed with no tick: on their day, never carried over
   // (yesterday's tail past midnight is yesterday's day, not one of today's).
   const missed = [...rows.timed, ...rows.anytime].filter(r => r.kind === 'repeat' && r.state === 'missed' && !r.spillover).length
@@ -158,7 +160,8 @@ export function DayAgenda({ date, bare = false, addButton = true }: { date: Date
         if (!r.task) return <LinkedTaskRow row={r} />
         return (
           <div className={cx(r.state !== 'open' && 'opacity-60')}>
-            <ToDoItem task={r.task} isNew={fresh.has(r.task.id)} />
+            {/* A past day's row whose open task today's list carries (dayItems.carriedToToday): its old place. */}
+            <ToDoItem task={r.task} isNew={fresh.has(r.task.id)} carried={r.carried} />
           </div>
         )
     }
