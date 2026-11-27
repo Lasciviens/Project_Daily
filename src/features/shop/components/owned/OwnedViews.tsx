@@ -1,8 +1,8 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { CornerDownRight, ShieldCheck, Undo2 } from 'lucide-react'
 import { Skeleton, TonePill, Truncate, cx } from '../../../../shared/ui'
-import { DISPOSAL_LABEL } from '../../ownModel'
-import { cardTag, rowPrice, rowTag, type CardTag } from '../../ownedRow'
+import { DISPOSAL_LABEL, disposalTone } from '../../ownModel'
+import { cardTag, rowPrice, rowTag, soldCard, type CardTag } from '../../ownedRow'
 import { initialsOf, tintOf } from '../../wishTile'
 import { imageOf } from '../shopFormat'
 import { RowPicture } from '../tileKit'
@@ -11,7 +11,8 @@ import type { OwnedRowProps } from './OwnedRow'
 // Owned's other two ways to see the things (owner, 23.11.2026), beside the compact rows: "List" (one line each) and
 // "Big pictures" (a grid of cards). Every one opens the thing's record on a tap, shows its accessories, and says how
 // a thing left: the cards wear a banner with the word across the foot of the picture; a line's small picture wears an
-// icon badge in its corner (the word in its title and in the line's accessible name).
+// icon badge in its corner (the word in its title and in the line's accessible name). A sold card says what it sold for,
+// what was paid and the end cost (owner, 27.11.2026; `ownedRow.soldCard`).
 
 /** An accessory's line under its thing: one line, a tap opens it. */
 function AccessoryLines({ accessories, onOpen, together, inset }: {
@@ -66,24 +67,49 @@ export function OwnedLine({ item, accessories, watch, listing, today, topId, ico
  * tag (the tag cut, never wrapped; the line keeps its room without one). The accessories are a count on the picture's
  * corner that lists them, so a thing with three of them is no taller than one with none.
  */
-export function OwnedCard({ item, accessories, watch, listing, today, topId, icon, onOpen }: OwnedRowProps) {
+export function OwnedCard({ item, accessories, watch, listing, ctx, today, topId, icon, onOpen }: OwnedRowProps) {
   const tag = cardTag(item, watch, today, listing)
   const price = rowPrice(item)
   const together = item.sale_group ? accessories.filter(a => a.sale_group === item.sale_group) : []
+  // A sold thing (owner, 27.11.2026): the banner says what it sold for, the line what was paid (small) and, in the corner,
+  // the end cost (ownedRow.soldCard — the rows' rule).
+  const sold = soldCard(item, accessories, ctx)
   return (
     <div className="card relative flex min-w-0 flex-col overflow-hidden">
       <button type="button" onClick={() => onOpen(item.id)}
         className="flex min-w-0 flex-col gap-2 p-2 text-left transition-colors hover:bg-surface-hover">
         <RowPicture size="fill" src={imageOf(item, watch)} icon={icon} initials={initialsOf(item.title)} tint={tintOf(topId)}
-          ribbon={item.disposal ? DISPOSAL_LABEL[item.disposal] : null} />
-        <Truncate as="span" lines={2} className="h-10 text-body font-medium text-fg">{item.title}</Truncate>
-        <span className="flex h-5 min-w-0 items-center gap-2">
-          <span className={cx('shrink-0 whitespace-nowrap text-body tabular-nums', price.pending ? 'text-fg-muted' : 'font-semibold text-fg')}
-            title={price.pending ? 'Waiting for that day\'s exchange rate' : undefined}>
-            {price.text}
-          </span>
-          {tag && <CardTagPill tag={tag} />}
-        </span>
+          ribbon={sold ? sold.ribbon : item.disposal ? DISPOSAL_LABEL[item.disposal] : null} ribbonTone={disposalTone(item.disposal)} />
+        {sold && <span className="sr-only">{sold.ribbon}</span>}
+        {sold ? (
+          <>
+            {/* The name's two lines: the name (one line) and what was paid, small — the card keeps its one height. */}
+            <span className="flex h-10 min-w-0 flex-col">
+              <Truncate as="span" className="text-body font-medium text-fg">{item.title}</Truncate>
+              {sold.bought && <Truncate as="span" className="text-meta tabular-nums text-fg-muted">{sold.bought}</Truncate>}
+            </span>
+            <span className="flex h-5 min-w-0 items-center justify-between gap-2">
+              {sold.end && <>
+                <span aria-hidden className="whitespace-nowrap text-meta text-fg-muted">{sold.end.label}</span>
+                <span data-tone={sold.end.tone} title={sold.end.title}
+                  className={cx('shrink-0 whitespace-nowrap text-body font-semibold tabular-nums', sold.end.tone === 'success' ? 'tone-text' : 'text-fg')}>
+                  <span aria-hidden>{sold.end.text}</span><span className="sr-only">{sold.end.title}</span>
+                </span>
+              </>}
+            </span>
+          </>
+        ) : (
+          <>
+            <Truncate as="span" lines={2} className="h-10 text-body font-medium text-fg">{item.title}</Truncate>
+            <span className="flex h-5 min-w-0 items-center gap-2">
+              <span className={cx('shrink-0 whitespace-nowrap text-body tabular-nums', price.pending ? 'text-fg-muted' : 'font-semibold text-fg')}
+                title={price.pending ? 'Waiting for that day\'s exchange rate' : undefined}>
+                {price.text}
+              </span>
+              {tag && <CardTagPill tag={tag} />}
+            </span>
+          </>
+        )}
       </button>
       {accessories.length > 0 && <CardAccessories accessories={accessories} together={together} onOpen={onOpen} />}
     </div>

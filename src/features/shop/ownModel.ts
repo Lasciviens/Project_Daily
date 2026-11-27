@@ -29,6 +29,10 @@ export const isGone = (i: ShopItem): boolean => isPossession(i) && !!i.disposal 
 export const DISPOSAL_LABEL: Record<ShopDisposal, string> = {
   sold: 'Sold', traded_in: 'Traded in', returned: 'Returned', given: 'Given away', broken: 'Broke', lost: 'Lost', other: 'Gone',
 }
+/** A sold thing's mark is green, the success tone (owner, 27.11.2026: "Sold mark is gray and almost unvisible. Make it
+ *  green, shady green."); every other way of leaving stays neutral (`DisposalRibbon`, `DisposalBadge`). */
+export type DisposalTone = 'success' | 'neutral'
+export const disposalTone = (d: ShopDisposal | null | undefined): DisposalTone => (d === 'sold' ? 'success' : 'neutral')
 /** Ways of parting with a thing that bring money back (a missing amount is then unknown, not 0). */
 export const PAID_BACK: readonly ShopDisposal[] = ['sold', 'traded_in', 'returned']
 
