@@ -41,10 +41,10 @@ explicitly `product_rule`/`program_policy`, not scientific findings (see
   real information gap, not disqualifying.
 - Grgic, J. et al. (2022). *J Sport Health Sci* 11(2):202-211. Same topic,
   corroborating.
-- LeSuer, D.A. et al. (1997). *J Strength Cond Res* 11(4):211-213. Supports
-  the ≤12-rep e1RM eligibility ceiling (`EST_1RM_MAX_REPS`,
-  `progressAggregate.ts`) already established in this app's pre-existing
-  Personal Records feature and reused unchanged here.
+- LeSuer, D.A. et al. (1997). *J Strength Cond Res* 11(4):211-213. The
+  original reason for an e1RM rep ceiling (`EST_1RM_MAX_REPS`,
+  `progressAggregate.ts`); since 3.0.0 the ceiling is 10 reps, per Reynolds
+  2006 (`docs/training/science.md` §5, S15).
 - Damas, F. et al. (2016). *J Physiol* 594(18):5209-5222. Used only
   analogically — single-point signals misrepresent a training response
   over time — to support checking every prescribed set, not just the top

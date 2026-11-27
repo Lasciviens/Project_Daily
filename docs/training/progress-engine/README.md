@@ -16,10 +16,10 @@ src/features/training/progress-engine/
   events.ts          Achievement detection over every loaded session (the last 6
                       months) — never windowed to the trend window; kept off screen
                       (copy.ts visibleEvents)
-  targets.ts         Next Target generation with a per-set-position floor
+  targets.ts         Next Target generation: floor + stretch, % steps, Almost, Step back
   metricStrategy.ts  Per-metric dispatch: best set, eligible sets, comparable totals,
                       sessionBestE1rm — the one place direction (assisted = lower is better)
-                      and the est1RM 12-rep ceiling live
+                      and the est1RM 10-rep ceiling (S15) live
   policies.ts        DEFAULT_POLICY, target-resolution hierarchy (routineTargetFromSets),
                       the assisted-weight metric inversion
   program.ts         Program-level reads: progressVerdict, workload, current-program

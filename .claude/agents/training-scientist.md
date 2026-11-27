@@ -86,12 +86,8 @@ The library grows only through a reviewed PR, and you have no write tools. When 
 These were true when this agent was written (27.11.2026). Read the current code before you repeat any of them. Each is a **finding to report**, not a bug to fix: the owner decides, and the owner's words are the spec.
 
 - **RPE is never a gate** in the progress engine (`.claude/rules/training.md`, a house rule), while S2, S6, S7 and S10 use RPE as a safety check. Report the trade-off; never present the house rule as an error.
-- **One qualifying session** makes "ready to increase" (`requiredTopRangeConfirmations: 1`), while ACSM 2009's full text asks for two consecutive sessions (§1.1, S3). `ruleCatalog.ts` already says so to the user.
-- **Fixed kg increments** per equipment class (`loadIncrementKg`), while S4 and S5 size the step as a percentage of the load — matters most for light dumbbells and cable stacks.
-- **e1RM up to 12 reps** (`EST_1RM_MAX_REPS`), while Reynolds 2006 advises ≤ 10 reps for linear formulas (§5, S15).
-- **Plateau read in sessions** (`plateau.graceSessions`, `plateau.minSessions`), while S13 asks for ≥ 3 weeks **and** ≥ 4 sessions.
-- **Per-muscle landmarks** (MEV/MAV/MRV in `MUSCLE_LANDMARKS`) are expert practice; S18's bands come from meta-regression (preprint numbers) and never show high volume as an error. A muscle at its MRV is a deload cue in `coachFacts.ts`; S31 offers a deload on time or on stalled performance.
-- **Indirect-set weight:** the app gives secondary muscles 0.5 (S17) and tertiary ones 0.25 — the 0.25 has no source in the library.
+- **Settled by progression 3.0 (27.11.2026, `docs/features/training.md` → Progression rules):** 2 sessions in a row at the top before adding weight (S3), % steps and "Almost" above 10 % (S4/S5), floor + stretch targets (S12/S16), Step back after 2 sessions below the minimum (S6), e1RM from ≤ 10 reps (S15), a plateau needs ≥ 4 sessions and ≥ 21 days (S13), no MRV deload cue (S31), no 0.25 tertiary weight (S17). Its stated departures (always 2 sessions, no RPE gate, "2 stalled lifts" for S31(b)) are the owner's or app choices.
+- **Per-muscle landmarks** (MEV/MAV/MRV in `MUSCLE_LANDMARKS`) are expert practice; S18's bands come from meta-regression (preprint numbers) and never show high volume as an error.
 - **Late window:** a workout still completes its plan up to 6 days later inside the session's week (`LATE_WINDOW_DAYS`, migration 167), while S20 counts ±2 days as "moved". S20's window is an app choice with low confidence — the science does not say 6 days is wrong.
 
 ## House rules you follow

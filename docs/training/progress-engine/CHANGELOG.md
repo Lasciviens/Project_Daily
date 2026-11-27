@@ -1,5 +1,27 @@
 # Changelog
 
+## 3.0.0 — progression rules (27.11.2026)
+
+Owner, 27.11.2026: "this page forces me always to go up in weight asap... It does not feel
+right". Every rule cites `docs/training/science.md`; the full description is in
+`docs/features/training.md` → Progression rules.
+
+- `READY_TO_INCREASE` needs 2 sessions in a row at the top of the range at one load
+  (`requiredTopRangeConfirmations` 2, S3/S10); fewer is the new `REPEAT_AT_TOP`. A session worse
+  than the last at the same load never makes it (the second `readyEligible` check in
+  `comparability.ts` sat outside the forward-motion branch).
+- The step is a % of the load (S4), rounded to the equipment; a smallest step over 10 % is the new
+  `ALMOST_READY` (S5: reps first, top + 2 at most, or jump).
+- Floor + stretch targets (S12/S14/S16): the set targets are last time's sets; "+1 rep anywhere =
+  progress"; `minimumTotalReps` is last time's total (no forced +1). `StayPlan.position` and the
+  `ADD_ONE_STEP` code are gone (`MATCH_OR_PROGRESS`).
+- New `NEW_WEIGHT` (first session at a heavier load) and `STEP_BACK` (below the minimum twice after a
+  jump, S6, target at the previous load); `CONFIRM_BEFORE_INCREASING` is removed. A load decrease
+  right after a jump is a step back; `REVIEW_LOAD_REDUCTION` now carries a target.
+- e1RM numbers only from sets of ≤ 10 reps (S15); the est1rm metric still evaluates every set (a
+  13+-rep session used to be "not comparable"). A plateau needs ≥ 4 sessions and ≥ 21 days (S13).
+- `RULE_CATALOG` entries carry `sRules` and `confidence`; action titles are the short pills.
+
 ## Display-only changes after 2.1.0 (27.09.2026, no version bump)
 
 No decision, target or evidence level changed, so `ALGORITHM_VERSION` stayed 2.1.0:
