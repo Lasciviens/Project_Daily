@@ -10,6 +10,11 @@ import type { ConvertPreview, ConvertResult, ItemInput } from './itemTypes'
 export const ITEMS_NOT_MIGRATED = 'Saving items needs migration 155 — migration 155 not applied yet.'
 /** A save with a link (app_save_item's p_link) on a database without 210. Remove once 210 has been live a while. */
 export const TASK_LINKS_NOT_MIGRATED = 'Planning this needs migration 210 — migration 210 not applied yet.'
+/** A save with details (app_save_item's p_details) on a database without 215: nothing was written. Remove once 215 has
+ *  been live a while (with saveItem's retry). */
+export const ITEM_DETAILS_NOT_MIGRATED = 'Saving its details needs migration 215 — migration 215 not applied yet.'
+/** p_link's "take the movie, show or game off" (215). */
+export const LINK_NONE = { kind: 'none' } as const
 
 interface PgError { code?: string; message?: string; details?: string; hint?: string }
 
@@ -71,9 +76,10 @@ export interface SaveItemContext { section: string | null; today: string; google
 
 /** What app_save_item receives — also what a save that wraps it passes on (163's app_football_plan). */
 export function itemPayload(input: ItemInput, ctx: SaveItemContext): Record<string, unknown> {
-  // The link travels as its own argument (p_link), never inside the item.
+  // The link and the details travel as their own arguments (p_link, p_details), never inside the item.
   const item: Record<string, unknown> = { ...input }
   delete item.link
+  delete item.details
   return { ...item, section: ctx.section, today: ctx.today, googleConnected: ctx.googleConnected }
 }
 
@@ -81,9 +87,38 @@ export function itemPayload(input: ItemInput, ctx: SaveItemContext): Record<stri
  *  it as p_link (210): the task and its link in one transaction, the thing checked as the caller's own. */
 export async function saveItem(input: ItemInput, ctx: SaveItemContext): Promise<SaveItemAnswer> {
   const p_item = itemPayload(input, ctx)
+  // A link taken off (215) goes only with the details, through the save that knows "none".
+  if (input.link === null && input.details === undefined) throw new Error('A link is taken off together with the details')
+  // The details (215) go with the item and its link: app_save_item(p_item, p_link, p_details), one transaction.
+  if (input.details !== undefined) {
+    const p_link = input.link === null ? LINK_NONE : input.link ?? null
+    const { data, error } = await supabase.rpc('app_save_item', { p_item, p_link, p_details: input.details })
+    if (!error) return saveAnswerOf(data)
+    if (!isMissingRpc(error)) throw rpcError(error)
+    // A database without 215 refused before writing anything. Details that are only the category (stored on the slot
+    // as before) are saved without them; real add-on fields are said, never dropped without a word.
+    if (input.link === null || (input.details && Object.keys(input.details).some(k => k !== 'category'))) throw new Error(ITEM_DETAILS_NOT_MIGRATED)
+    return saveItem({ ...input, details: undefined }, ctx)
+  }
   const { data, error } = await supabase.rpc('app_save_item', input.link ? { p_item, p_link: input.link } : { p_item })
   if (error) throw input.link && isMissingRpc(error) ? new Error(TASK_LINKS_NOT_MIGRATED) : rpcError(error)
   return saveAnswerOf(data)
+}
+
+/** What the owner wrote in earlier items' details (215) with each one's place: Games' On, the names, the cinemas
+ *  (suggestions — never a seeded list). Newest first, at most 200; values are input — categoryDetails cleans them again.
+ *  A database without 215 has none. */
+export async function fetchEarlierDetails(): Promise<{ details: unknown; place: unknown }[]> {
+  const { data, error } = await supabase.from('tasks').select('details, updated_at, time_blocks(place)')
+    .not('details', 'is', null).order('updated_at', { ascending: false }).limit(200)
+  if (error) {
+    if (isMissingColumn(error) || error.code === 'PGRST200') return []
+    throw rpcError(error)
+  }
+  return (data ?? []).map(r => {
+    const row = r as { details?: unknown; time_blocks?: { place?: unknown }[] | null }
+    return { details: row.details ?? null, place: (row.time_blocks ?? []).map(b => b.place).find(p => p) ?? null }
+  })
 }
 
 /** The presence slot an item no longer needs, once its event is gone (true = it went). */

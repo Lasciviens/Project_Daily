@@ -43,6 +43,9 @@ function checkClaudeConfirm() {
   const taskLinks = [...fs.readFileSync(`${migDir}/210_task_links.sql`, 'utf8').matchAll(/add column if not exists ([a-z_]+)/g)].map(m => m[1]).concat('hevy_routine_id')
   const linkHits = [...written, ...patched, ...taskPatch].filter(c => taskLinks.includes(c))
   check(`the columns a confirmed proposal writes include none of a task's links to the thing it plans (${taskLinks.length}, 210)`, taskLinks.length === 10 && !linkHits.length, linkHits.join(', '))
+  // 215: an item's category add-on fields (tasks.details) are the item screen's alone for now — never a confirmed write.
+  check('the columns a confirmed proposal writes never include a task\'s details (215: the item screen\'s one save only)',
+    written.length >= 15 && ![...written, ...patched, ...taskPatch].includes('details') && !/\bp_details\b/.test(tools))
   // 211: a done plan's effects (the ledger), the server's notices and an Apple workout's Hevy link are written only by the
   // database — never by a confirmed proposal, and the assistant's code names none of them (a tick would fire an effect:
   // a confirmed change never writes a task's status, below).

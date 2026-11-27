@@ -75,6 +75,9 @@ export interface Task {
   football_plan_id?:        string | null
   game_id?:                 string | null
   book_id?:                 string | null
+  /** The item's category and its add-on fields (215; read only through items/categoryDetails.cleanDetails — input).
+   *  Undefined before 215 runs. */
+  details?:                 unknown
 
   // ── One item (migration 155) — undefined before it runs ───────────────────
   /** Where the item lives on Google; null = saved before 155 (its presence is google_sync_enabled + its slot's event).

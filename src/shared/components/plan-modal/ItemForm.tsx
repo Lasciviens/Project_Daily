@@ -5,13 +5,18 @@
 //  UnifiedPlanModal. Grouped rows under Apple's headers:
 //
 //    [Title                                    ]         (quick add: Read as …)
-//    LOCATION   ⌖ Location · Travel Time                 (a slot: a time, a repeat or all day)
+//               Category                                 (every item; owner, 27.11.2026: "bring category to top")
+//               Type · Movie / Show · Cinema · With · Cost · Seats · Booking   (Media's add-on fields, 215 — no
+//               Game · On · With                          heading: the Category row is right above; DetailsSection.tsx;
+//                                                         not a repeat's rule)
+//    LOCATION   ⌖ Location · Travel Time                 (a slot: a time, a repeat or all day; a cinema trip's place
+//                                                         is its Cinema row above — Location keeps Travel Time)
 //    TIME       Date · All-day · Starts [Tue 10.11.2026] [17:30]
 //               Ends [Tue 10.11.2026] [18:30] · the day's timeline · Time Zone · Repeat · End Repeat
 //    OPTIONS    Calendar  Apple Calendar · busy  ·  List (a Google Task's)
 //               Alert · Second Alert · Show As           (a slot)
 //    DETAILS    URL (a slot) · Notes
-//    PLANNING   Priority · Area · Category · Labels · Deadline · Deadline time · Do it between
+//    PLANNING   Priority · Area · Labels · Deadline · Deadline time · Do it between
 //               Delete Item                              (an edit)
 //
 //  Step 2's rows (Travel Time, the alerts, Show As, URL, End Repeat — 193) are
@@ -34,6 +39,8 @@ import { FilledMark, FilledRows } from './FillMark'
 import { cx } from '../../ui'
 import { LINE, Section } from './ItemRows'
 import { CalendarRow, GoogleListRow } from './OptionsSection'
+import { CategoryRow, DetailsSection } from './DetailsSection'
+import { detailsOf } from '../../../features/items/categoryDetails'
 import { useCardMarks } from './cardMarks'
 import { PlaceRow } from './PlaceRow'
 import { PlanningSection } from './PlanningSection'
@@ -122,8 +129,12 @@ export function ItemForm({
   // Labels are a task's (180): a repeat's rule has none — its days are tasks the database makes — and a repeat's
   // day opened here ("This day") isn't loaded with its task's labels, so it doesn't show them.
   const showLabels = !repeating && !day && !hideTask('labels')
-  // A category belongs to a slot or a repeat: only an item with a time or a repeat has one.
-  const showCategory = !!form.time || repeating
+  // Every item has a category (a slot's or a repeat's; an item with no slot keeps it in its details, 215). Its add-on
+  // fields belong to a task: a repeat's rule has none (its days are tasks the database makes).
+  const showCategory = !isScheduleFieldHidden('category', config)
+  const details = showCategory && !(repeating && !day) ? detailsOf(form.category) : null
+  // A cinema trip's place is its Cinema row in the category's fields: Location then keeps only Travel Time.
+  const cinema = !!details && form.category === 'media' && form.details.type === 'cinema'
   // A repeat's days go to the default list (156 stores no list per repeat).
   const showList = showGoogle && hasGoogleTasks(target) && !repeating && !hideTask('googleList')
   const marksTarget = showGoogle ? target : (keptTarget ?? 'none')
@@ -146,12 +157,21 @@ export function ItemForm({
           </div>
           {fill?.panel}
           {parse && <div className="px-3.5 pb-2"><ReadAsLine parse={parse} start={form.date ?? today} onKeepText={onKeepText} /></div>}
+          {showCategory && <CategoryRow form={form} patch={patch} open={open} toggle={toggle} mark={<FieldMark goes={goes('own')} />} />}
         </Section>
+
+        {details && (
+          // No heading of its own: the Category row right above names it. Its marks join the title card's.
+          <Section marksTo={titleMarks.register}>
+            <DetailsSection form={form} patch={patch} mark={<FieldMark goes={goes('own')} />}
+              placeMark={<FieldMark goes={goes(slotFields ? 'place' : 'own')} row="Cinema" />} />
+          </Section>
+        )}
 
         {slotFields && (
           <Section title="Location" carried={titleMarks.marks}>
-            <PlaceRow value={form.place} onChange={place => patch({ place, placeTouched: true })}
-              mark={<><FilledMark row="Location" /><FieldMark goes={goes('place')} row="Location" /></>} />
+            {!cinema && <PlaceRow value={form.place} onChange={place => patch({ place, placeTouched: true })}
+              mark={<><FilledMark row="Location" /><FieldMark goes={goes('place')} row="Location" /></>} />}
             <TravelRow minutes={form.travelMinutes} hasPin={hasPin} open={open} toggle={toggle} mark={<FieldMark goes={goes('travel')} />}
               onChange={travelMinutes => patch(withCalendarField(form, 'travelMinutes', travelMinutes))} />
           </Section>
@@ -206,7 +226,7 @@ export function ItemForm({
 
         <Section title="Planning">
           <PlanningSection form={form} patch={patch} open={open} toggle={toggle} config={config} today={today}
-            showCategory={showCategory} showLabels={showLabels} goes={goes} taskId={repeating || day ? null : taskId} />
+            showLabels={showLabels} goes={goes} taskId={repeating || day ? null : taskId} />
         </Section>
 
         {onDelete && (

@@ -7,6 +7,7 @@
 import type { TimeBlock, ScheduleBlock, TimeBlockCategory } from '../../../features/daily/types'
 import type { Task, LiveTaskSection, TaskPriority, TaskDomain, TaskSourceType } from '../../../features/todo/types'
 import type { ItemLink } from '../../../features/items/itemTypes'
+import type { MediaType } from '../../../features/items/categoryDetails'
 
 // ── Mode — which alias opened a NEW item ──────────────────────────────────────
 // One item since migration 155: a task, its slot and its repeat are parts of
@@ -63,6 +64,8 @@ export interface PlanDefaults {
   /** The zone that day and time are on (183) — a match's kick-off is Oslo's clock; left out = the phone's. */
   timeZone?: string
   category?: TimeBlockCategory
+  /** Media's type for a new item (215's details): a cinema trip's Plan says Cinema. */
+  mediaType?: MediaType
   color?: string
   recurrence?: RecurrenceMode
   daysOfWeek?: number[]     // 0=Sun … 6=Sat (only used when recurrence='weekly')

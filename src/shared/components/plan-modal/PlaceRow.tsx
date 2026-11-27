@@ -6,14 +6,15 @@
 //  and "Use … as typed" (a name, no map pin). A picked place reads
 //  "Jernbanetorget, Oslo" with a pin (a crossed-out pin: no map pin); × takes
 //  it off, a tap searches again. Apple Calendar gets the name and the pin; the
-//  pin is what lets the iPhone's Time to Leave work.
+//  pin is what lets the iPhone's Time to Leave work. A cinema trip's row reads
+//  "Cinema" and offers the places of earlier cinema trips first (215).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { Combobox, ComboboxInput, ComboboxOption, ComboboxOptions } from '@headlessui/react'
-import { Briefcase, Home, MapPin, MapPinOff, Pencil, X } from 'lucide-react'
+import { Briefcase, Clapperboard, Home, MapPin, MapPinOff, Pencil, X } from 'lucide-react'
 import { Truncate } from '../../ui'
-import { placeFromGeo, placeFromSaved, placeFromText, placeLabel, type ItemPlace } from '../../../features/items/itemPlace'
+import { placeFromGeo, placeFromSaved, placeFromText, placeLabel, placeOfRow, type ItemPlace } from '../../../features/items/itemPlace'
 import { useStopSearch } from '../../../features/home/hooks/useTransitQueries'
 import { placeLine } from '../../../features/home/api/enturGeocoder'
 import { useTransitStops } from '../../../features/home/hooks/useTransitStops'
@@ -21,7 +22,15 @@ import { findPlace, PLACE_LABEL, type PlaceKind } from '../../../features/home/t
 
 const ROW = 'flex min-h-11 w-full items-center gap-2.5 px-3.5 text-lead'
 
-export function PlaceRow({ value, onChange, mark }: { value: ItemPlace | null; onChange: (place: ItemPlace | null) => void; mark?: ReactNode }) {
+export function PlaceRow({ value, onChange, mark, label = 'Location', earlier }: {
+  value: ItemPlace | null
+  onChange: (place: ItemPlace | null) => void
+  mark?: ReactNode
+  /** The row's name: "Cinema" for a cinema trip. */
+  label?: string
+  /** Earlier places of this kind, offered first (rows read back: each cleaned through placeOfRow). */
+  earlier?: readonly unknown[]
+}) {
   const [editing, setEditing] = useState(false)
   // A saved stop just picked has no pin of its own: look it up once (never for a place the screen opened with).
   const [pinFor, setPinFor] = useState<string | null>(null)
@@ -34,7 +43,7 @@ export function PlaceRow({ value, onChange, mark }: { value: ItemPlace | null; o
     return (
       <div className={ROW}>
         <MapPin aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" />
-        <PlaceSearch autoFocus={editing} onPick={pick} onClose={() => setEditing(false)} />
+        <PlaceSearch autoFocus={editing} onPick={pick} onClose={() => setEditing(false)} label={label} earlier={earlier} />
         {mark}
       </div>
     )
@@ -45,11 +54,11 @@ export function PlaceRow({ value, onChange, mark }: { value: ItemPlace | null; o
     <div className={ROW}>
       {pinned || looking ? <MapPin aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" /> : <MapPinOff aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" />}
       <button type="button" onClick={() => setEditing(true)} className="min-w-0 flex-1 py-2 text-left text-fg"
-        aria-label={`Location: ${placeLabel(value)}${pinned ? '' : ', no map pin'} — change it`}
+        aria-label={`${label}: ${placeLabel(value)}${pinned ? '' : ', no map pin'} — change it`}
         title={pinned ? 'Apple Calendar gets its map pin (Time to Leave)' : looking ? 'Finding its map pin…' : 'No map pin'}>
         <bdi className="block min-w-0"><Truncate>{placeLabel(value)}</Truncate></bdi>
       </button>
-      <button type="button" onClick={() => onChange(null)} aria-label="Remove the location"
+      <button type="button" onClick={() => onChange(null)} aria-label={`Remove the ${label.toLowerCase()}`}
         className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-fg-faint hover:bg-surface-hover hover:text-fg">
         <X aria-hidden className="h-4 w-4" />
       </button>
@@ -59,10 +68,16 @@ export function PlaceRow({ value, onChange, mark }: { value: ItemPlace | null; o
   )
 }
 
-type Choice = { key: string; place: ItemPlace; label: string; sub?: string; kind: 'saved-home' | 'saved-work' | 'found' | 'typed' }
+type Choice = { key: string; place: ItemPlace; label: string; sub?: string; kind: 'saved-home' | 'saved-work' | 'earlier' | 'found' | 'typed' }
 
 /** The search, in the row; its queries run only once something is typed (the saved places are read with the page). */
-function PlaceSearch({ onPick, onClose, autoFocus }: { onPick: (p: ItemPlace) => void; onClose: () => void; autoFocus: boolean }) {
+function PlaceSearch({ onPick, onClose, autoFocus, label, earlier }: {
+  onPick: (p: ItemPlace) => void
+  onClose: () => void
+  autoFocus: boolean
+  label: string
+  earlier?: readonly unknown[]
+}) {
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   // 300 ms: a search per pause in typing, not per key (as the transit card's).
@@ -71,6 +86,16 @@ function PlaceSearch({ onPick, onClose, autoFocus }: { onPick: (p: ItemPlace) =>
   const { stops } = useTransitStops()
 
   const choices: Choice[] = []
+  // Earlier places of this kind first (a cinema trip's cinemas), once each, those that match what is typed.
+  const seenEarlier = new Set<string>()
+  for (const raw of earlier ?? []) {
+    const place = placeOfRow(raw)
+    const name = place ? placeLabel(place) : ''
+    if (!place || seenEarlier.has(name.toLowerCase()) || (query.trim() && !name.toLowerCase().includes(query.trim().toLowerCase()))) continue
+    seenEarlier.add(name.toLowerCase())
+    if (seenEarlier.size > 5) break
+    choices.push({ key: `earlier-${choices.length}`, place, label: place.name, sub: place.locality ?? `an earlier ${label.toLowerCase()}`, kind: 'earlier' })
+  }
   if (debounced.length < 2) {
     for (const kind of ['home', 'work'] as PlaceKind[]) {
       const s = findPlace(stops, kind)
@@ -98,8 +123,8 @@ function PlaceSearch({ onPick, onClose, autoFocus }: { onPick: (p: ItemPlace) =>
       <div className="relative min-w-0 flex-1">
         <ComboboxInput
           autoFocus={autoFocus}
-          aria-label="Location: search a place"
-          placeholder="Location"
+          aria-label={`${label}: search a place`}
+          placeholder={label}
           maxLength={120}
           value={query}
           onChange={e => setQuery(e.target.value)}
@@ -117,7 +142,8 @@ function PlaceSearch({ onPick, onClose, autoFocus }: { onPick: (p: ItemPlace) =>
             {note && <p className="px-3 py-2 text-meta text-fg-muted">{note}</p>}
             {choices.map(c => (
               <ComboboxOption key={c.key} value={c} className="menu-item cursor-pointer data-[focus]:bg-surface-hover">
-                {c.kind === 'saved-home' ? <Home aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" />
+                {c.kind === 'earlier' ? <Clapperboard aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" />
+                  : c.kind === 'saved-home' ? <Home aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" />
                   : c.kind === 'saved-work' ? <Briefcase aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" />
                   : c.kind === 'typed' ? <Pencil aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" />
                   : <MapPin aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" />}

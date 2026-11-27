@@ -5,8 +5,8 @@ import { qk, STALE } from '../../../shared/query'
 import { fetchCinemaVisits, saveCinemaVisit, type CinemaVisit, type CinemaVisitInput } from '../api/cinemaApi'
 
 /** Every cinema visit (one small list) — the library marks posters from it. */
-export function useCinemaVisits() {
-  return useQuery({ queryKey: qk.media.cinemaVisits(), queryFn: fetchCinemaVisits, staleTime: STALE.default })
+export function useCinemaVisits(enabled = true) {
+  return useQuery({ queryKey: qk.media.cinemaVisits(), queryFn: fetchCinemaVisits, staleTime: STALE.default, enabled })
 }
 
 /** One movie's visits, newest first (a projection of the same list). */

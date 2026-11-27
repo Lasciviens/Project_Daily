@@ -12,6 +12,8 @@ export const qk = {
   items: {
     all: ['items'] as const,
     convertPreview: () => ['items', 'convert-preview'] as const,
+    /** What earlier items' details hold (215): the item screen's suggestions — under items, so every save refreshes it. */
+    earlierDetails: () => ['items', 'earlier-details'] as const,
   },
   tasks: {
     all: ['tasks'] as const,
