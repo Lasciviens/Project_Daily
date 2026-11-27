@@ -220,7 +220,6 @@ const tick = () => new Promise(r => setTimeout(r, 0))
     'src/shared/utils/deletedRows.ts': [1, 'the shared delete itself (fallback before migration 144)'],
     'src/shared/hooks/usePushNotifications.ts': [1, 'turning notifications off on this device'],
     'src/security/accountState.ts': [1, 'sign-out clears this device'],
-    'src/features/training/api/trainingSkipsApi.ts': [1, 'Undo skip (the undo itself)'],
     'src/features/training/api/trainingPlanApi.ts': [2, 'Undo skip (the undo itself)'],
     'src/features/training/api/athleteProfileApi.ts': [1, 'saving the current program replaces its rows'],
     'src/features/todo/api/googleTasksOutbox.ts': [1, 'a delivered outbox row'],

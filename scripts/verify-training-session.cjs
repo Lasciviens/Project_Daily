@@ -22,8 +22,10 @@ const R = { taskRoutineId: 'r-lower-b' }
   const s = st({ date: '2026-10-11', startHHMM: '14:30', minutes: 60, taskStatus: 'open', ...R })
   eq(s.state, 'pending', 'an open plan from yesterday is not "Missed": a workout still completes it')
   eq(s.countsUntil, '2026-10-17', '141 window: six days after the planned day')
-  eq(S.sessionNote(s, 'Lower B'), 'A Lower B workout until Sat 17.10.2026 still counts.', 'the note says until when, DD.MM.YYYY')
-  eq(S.SESSION_LABEL[s.state], 'Not logged yet', 'label')
+  eq(S.sessionNote(s, 'Lower B'), 'Counts until 17.10.2026 — a Lower B workout closes it.', 'the note says until when, DD.MM.YYYY')
+  eq(S.SESSION_LABEL[s.state], 'Still open', 'label (owner\'s sessions proposal, 27.11.2026)')
+  eq(S.sessionNote(s, 'Upper B'), 'Counts until 17.10.2026 — an Upper B workout closes it.', '…"an" before a vowel')
+  eq(S.SESSION_TONE[s.state], 'neutral', 'still open is never a warning')
   eq(S.sessionActions(s, { hasTask: true, weekly: false }), ['done', 'move', 'skip', 'edit', 'delete'], 'every task action while it is open')
 }
 
@@ -230,8 +232,6 @@ eq(S.weekStartOf('2026-03-29'), '2026-03-23', 'across the DST change')
 
   const fs = require('fs'), path = require('path')
   const src = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
-  eq(/undoable && \(/.test(src('src/features/training/components/program/MissedSessions.tsx')) && /weekIsOver\(firstDay \?\? item\.skip\.plan_date, today\)/.test(src('src/features/training/components/program/MissedSessions.tsx')), true,
-    'Missed sessions: no Undo for a session\'s skip after its week')
   eq(/onUndoSkip: weekIsOver\(task\.first_plan_date \?\? task\.due_date/.test(src('src/features/todo/components/ToDoItem.tsx')), true,
     'the task row: no Undo skip after its week (Move instead)')
 
@@ -244,6 +244,145 @@ eq(S.weekStartOf('2026-03-29'), '2026-03-23', 'across the DST change')
   // "Plan it" for a picked day: Move of the open past plan starts on that day.
   eq(/toDate: opts\.date/.test(src('src/features/training/planTraining.ts')) && /useState\(toDate \?\? /.test(src('src/features/training/modals/TrainingPlanSheets.tsx')), true,
     '"Plan it" for a day moves the open session to that day, not today')
+}
+
+// ── This week (213 + the sessions proposal; owner, 27.11.2026: "Missed sessions, sessions I did but in different
+//    days.. What I actually should do"; "One truth! … It has to stick to the real data!"; "It should be an option not
+//    must"). Week Mon 23.11.2026 – Sun 29.11.2026; program order Upper A, Lower A, Upper B, Lower B (science.md S20–S29). ──
+{
+  const ORDER = ['ua', 'la', 'ub', 'lb']
+  const TITLE = { ua: 'Upper A', la: 'Lower A', ub: 'Upper B', lb: 'Lower B' }
+  const at = (today) => (r, date, f = {}, extra = {}) => ({
+    key: `${r}@${date}`, title: TITLE[r], routineId: r, date, taskId: `t-${r}-${date}`,
+    status: S.sessionStatus({ date, today, taskStatus: 'open', taskRoutineId: r, firstDate: date, ...f }), ...extra,
+  })
+  const week = (today, sessions, trainedToday = false) => S.planWeek({ sessions, order: ORDER, program: ORDER, today, monday: '2026-11-23', trainedToday })
+  const marks = w => Object.fromEntries(w.sessions.map(x => [x.routineId, x.mark]))
+  const byR = (w, r) => w.sessions.find(x => x.routineId === r)
+
+  // The owner's case: Upper A done on another day (Wednesday, 2 days late), Lower A done 1 day late.
+  {
+    const s = at('2026-11-27')
+    const w = week('2026-11-27', [
+      s('ua', '2026-11-23', { taskStatus: 'done', taskWorkoutId: 'w1' }, { workoutDate: '2026-11-25' }),
+      s('la', '2026-11-24', { taskStatus: 'done', taskWorkoutId: 'w2' }, { workoutDate: '2026-11-25' }),
+      s('ub', '2026-11-26'), s('lb', '2026-11-28', {}, { taskId: null }),
+    ])
+    eq([byR(w, 'ua').mark, byR(w, 'ua').shift, S.weekSessionWord(byR(w, 'ua')), S.weekChipWord(byR(w, 'ua'))], ['done', 2, 'Done 25.11.2026 · 2 days late', '2d late'],
+      "the owner's case: Upper A done on another day reads done, 2 days late — never missed")
+    eq([byR(w, 'la').mark, S.weekChipWord(byR(w, 'la')), S.weekSessionWord(byR(w, 'la'))], ['done', '1d late', 'Done 25.11.2026 · 1 day late'],
+      "the owner's case: Lower A done 1 day late reads done · 1d late")
+    eq([w.next.routineId, w.next.date, byR(w, 'lb').mark, byR(w, 'lb').date], ['ub', '2026-11-26', 'open', '2026-11-28'],
+      'Upper B (missed Thursday, still open) is next; every session keeps its stored day — nothing moves on screen')
+    eq(S.todaysCall(w, '2026-11-27'), "Do Upper B next — it's still open until 02.12.2026.", "Today's call starts with a verb and reads the stored days")
+    eq([w.offer.days, w.offer.anchor.routineId, w.offer.moving.map(m => m.routineId)], [1, 'ub', ['ub', 'lb']],
+      'the move is offered, not made: Upper B and the rest one day later (lands today) — a weekly plan\'s day with no task yet too (the database splits it)')
+    eq(S.shiftOfferWords(w.offer), { question: "Upper B wasn't done on Thu 26.11.2026 — move it and the rest one day later?", button: 'Move', tip: 'Move Upper B, Lower B one day later' },
+      'the offer: a question and a 1-word button, the full words in its tooltip')
+  }
+  // A missed Lower A and today's Upper B: the missed one is next (S23), today's keeps its day.
+  {
+    const s = at('2026-11-26')
+    const w = week('2026-11-26', [
+      s('ua', '2026-11-23', { taskStatus: 'done', taskWorkoutId: 'w1' }, { workoutDate: '2026-11-23' }),
+      s('la', '2026-11-24'), s('ub', '2026-11-26'), s('lb', '2026-11-28'),
+    ])
+    eq(marks(w), { ua: 'done', la: 'next', ub: 'open', lb: 'open' }, 'a missed Lower A is next before today\'s Upper B')
+    eq(byR(w, 'ua').shift, 0, 'done on its day: no shift')
+    eq([w.offer.days, w.offer.moving.map(m => m.routineId)], [2, ['la', 'ub', 'lb']], 'Move: Lower A lands today, the rest two days later, the gaps kept')
+  }
+  // Today's session stays next all day, also after its time.
+  {
+    const s = at('2026-11-26')
+    const w = week('2026-11-26', [s('ua', '2026-11-23', { taskStatus: 'done', taskWorkoutId: 'w1' }, { workoutDate: '2026-11-23' }),
+      s('la', '2026-11-24', { taskStatus: 'done', taskWorkoutId: 'w2' }, { workoutDate: '2026-11-24' }), s('ub', '2026-11-26', { startHHMM: '07:00', nowHHMM: '22:00' })])
+    eq([w.next.routineId, w.offer], ['ub', null], "today's session stays next all day; nothing to offer")
+    eq(S.todaysCall(w, '2026-11-26'), 'Do Upper B today.', '…and the call says so (its time is in the header under it)')
+  }
+  // Already trained today: a missed one is offered for tomorrow, never two on one day.
+  {
+    const s = at('2026-11-26')
+    const w = week('2026-11-26', [s('la', '2026-11-24'), s('lb', '2026-11-28')], true)
+    eq([w.offer.days, w.offer.moving.map(m => m.routineId)], [3, ['la', 'lb']], 'trained today: the missed Lower A is offered for tomorrow')
+  }
+  // A done session on the day one would land: no offer.
+  {
+    const s = at('2026-11-26')
+    const w = week('2026-11-26', [s('la', '2026-11-25'), s('ub', '2026-11-26', { taskStatus: 'done', taskWorkoutId: 'w' }, { workoutDate: '2026-11-26' })])
+    eq(w.offer, null, 'never two sessions on one day: no Move onto a day already done')
+  }
+  // A swap: Lower A done on Upper A's Monday (it completed Thursday's Lower A, 213); Upper A stays to do and is next.
+  {
+    const s = at('2026-11-24')
+    const w = week('2026-11-24', [
+      s('ua', '2026-11-23', {}, { insteadTitle: 'Lower A' }),
+      s('la', '2026-11-26', { taskStatus: 'done', taskWorkoutId: 'w1' }, { workoutDate: '2026-11-23' }),
+      s('ub', '2026-11-27'), s('lb', '2026-11-29'),
+    ])
+    eq([byR(w, 'la').mark, S.weekChipWord(byR(w, 'la')), S.weekSessionWord(byR(w, 'la'))], ['done', '3d early', 'Done 23.11.2026 · 3 days early'],
+      'the swapped-in Lower A reads done, 3 days early')
+    eq([S.weekChipWord(byR(w, 'ua')), w.next.routineId], ['swapped', 'ua'], 'Upper A: "swapped", and next')
+    eq(S.weekSessionWord(byR(w, 'ua')).includes('Did Lower A instead'), true, '…its words: "Did Lower A instead"')
+  }
+  // Done early today: Pull is offered.
+  {
+    const s = at('2026-11-23')
+    const w = week('2026-11-23', [s('ua', '2026-11-24', { taskStatus: 'done', taskWorkoutId: 'w1' }, { workoutDate: '2026-11-23' }), s('la', '2026-11-25'), s('ub', '2026-11-27')])
+    eq([w.offer.days, w.offer.moving.map(m => m.routineId), S.shiftOfferWords(w.offer).button], [-1, ['la', 'ub'], 'Pull'],
+      'done a day early: the rest are offered one day earlier ("Pull")')
+    eq(S.shiftOfferWords(w.offer).question, 'Upper A done a day early — pull the rest one day earlier?', 'the Pull question')
+    eq(S.shiftResultLine(['Lower A', 'Upper B'], -1), 'Moved Lower A, Upper B one day earlier', 'the result line, from what the database answered')
+  }
+  // Pull is offered while every session still lands today or later — also the day after the early workout.
+  {
+    const s = at('2026-11-24')
+    const w = week('2026-11-24', [s('ua', '2026-11-25', { taskStatus: 'done', taskWorkoutId: 'w1' }, { workoutDate: '2026-11-23' }), s('la', '2026-11-26'), s('ub', '2026-11-28')])
+    eq([w.offer?.days, w.offer?.moving.map(m => m.routineId)], [-2, ['la', 'ub']], 'done 2 days early yesterday: Pull still offered (Lower A lands today)')
+    const late = week('2026-11-25', [at('2026-11-25')('ua', '2026-11-25', { taskStatus: 'done', taskWorkoutId: 'w1' }, { workoutDate: '2026-11-23' }), at('2026-11-25')('la', '2026-11-26')])
+    eq(late.offer, null, 'no Pull once a session would land on a day already past')
+  }
+  // Pull counts the anchor: it goes to its workout's day — a session that isn't moving there means no offer.
+  {
+    const s = at('2026-11-23')
+    const w = week('2026-11-23', [s('ua', '2026-11-24', { taskStatus: 'done', taskWorkoutId: 'w1' }, { workoutDate: '2026-11-23' }),
+      s('lb', '2026-11-23', {}, { taskId: null, routineId: 'lb' }), s('la', '2026-11-26')])
+    eq(w.offer?.days ?? null, null, 'Pull would put Upper A on a day Lower B still holds: no offer (never two on one day)')
+  }
+  // Never 7 or more days from a session's first day (167 would skip it there): no Move then.
+  {
+    const s = at('2026-11-27')
+    const w = week('2026-11-27', [s('la', '2026-11-21', {}, {}), s('ub', '2026-11-23', { firstDate: '2026-11-22' }, { firstDate: '2026-11-22' })])
+    eq(w.offer, null, 'a Move that would take Upper B 7 days from its first day is not offered')
+  }
+  // Skipped over: a later session of the week was done first — no Move then.
+  {
+    const s = at('2026-11-25')
+    const w = week('2026-11-25', [s('ua', '2026-11-23'), s('la', '2026-11-24', { taskStatus: 'done', taskWorkoutId: 'w1' }, { workoutDate: '2026-11-24' }), s('ub', '2026-11-26')])
+    eq([byR(w, 'ua').skippedOver, w.next.routineId, w.offer], [true, 'ua', null], 'a session passed over by a later one is "Skipped over" and next; no move offered (S21–S23)')
+    eq(S.SESSION_TONE[byR(w, 'ua').status.state], 'neutral', 'never a warn or danger tone')
+  }
+  // Last week's sessions still in their week come along; a week that is over has no next.
+  {
+    const s = at('2026-11-24')
+    const w = week('2026-11-24', [s('ub', '2026-11-19'), s('lb', '2026-11-21'), s('ua', '2026-11-23'), s('la', '2026-11-24')])
+    eq(w.sessions.map(x => x.routineId), ['ub', 'lb', 'ua', 'la'], 'last week\'s sessions still in their week come first, as stored')
+    const over = S.planWeek({ sessions: [at('2026-12-02')('ua', '2026-11-23')], order: ORDER, today: '2026-12-02', monday: '2026-11-23', trainedToday: false })
+    eq([over.next, over.sessions[0].mark], [null, 'open'], 'a week that is over has no next')
+    eq(S.todaysCall(S.planWeek({ sessions: [], order: ORDER, today: '2026-11-24', monday: '2026-11-23', trainedToday: false }), '2026-11-24'), null, 'no sessions, no call')
+  }
+  // Words and the break note.
+  eq([S.doneWord(0), S.doneWord(1), S.doneWord(-2), S.doneWord(3, '2026-11-26')],
+    ['Done', 'Done · 1 day late', 'Done · 2 days early', 'Done 26.11.2026 · 3 days late'], 'done words: late, early, with the day')
+  eq(S.stillOpenLine('2026-12-03'), 'Still open — counts until 03.12.2026', 'still open says until when, DD.MM.YYYY')
+  eq([S.gapNote(null), S.gapNote(14), S.gapNote(15), S.gapNote(28), S.gapNote(29)],
+    [null, null, 'First 1–2 sessions: same weights, stop 2 reps earlier', 'First 1–2 sessions: same weights, stop 2 reps earlier', 'Comeback week: half the sets, a little lighter — losses come back within a few weeks'],
+    'a break: none up to 14 days (S27), lighter for 15–28 (S28), a comeback week after 28 (S29)')
+  eq([S.SESSION_TONE.missed, S.SESSION_TONE.pending], ['neutral', 'neutral'], 'missed or still open is never a warning')
+  eq(S.EARLY_WINDOW_DAYS, 2, 'the early window is 213\'s (training_plan_candidates: p_day + 2)')
+  const mig = require('fs').readFileSync(require('path').join(__dirname, '../supabase/migrations/213_training_sessions.sql'), 'utf8')
+  eq(/c\.plan_day between p_day - 6 and p_day \+ 2/.test(mig) && /p_day <= coalesce\(c\.first_plan_date, c\.plan_day\) \+ 6/.test(mig), true,
+    'the app\'s windows are the database\'s: 2 days early, 6 late, never past the session\'s week (213)')
+  eq(/p_days < -6 or p_days > 14/.test(mig) && /v_end := d0 \+ 6/.test(mig), true, 'the offer\'s bounds are the move\'s (1–14 later, 1–6 earlier, the anchor\'s day and six after)')
 }
 
 // ── Guard: one status, one writer (owner, 12.10.2026: "shared components and

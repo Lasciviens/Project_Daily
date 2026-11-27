@@ -20,12 +20,18 @@
 import type { TaskStatus } from '../../todo/types'
 import { OPEN_STATUSES } from '../../todo/taskRules'
 import type { Tone } from '../../../shared/ui/Tone'
-import { formatWeekdayDate } from '../../../shared/utils/dateFormat'
+import { formatDate, formatWeekdayDate } from '../../../shared/utils/dateFormat'
+import { pickNextCandidate } from './nextRule'
 
 /** How many days after its planned day a workout still completes an open
  *  plan — migration 141's training_plan_candidates (p_day - 6) — and never
- *  past its week: its first day and the next six (167). */
+ *  past its week: its first day and the next six (167, the owner's rule: the
+ *  outer limit). */
 export const LATE_WINDOW_DAYS = 6
+/** How many days before its planned day a workout of its routine completes it
+ *  (213, science.md S20: ±2 days counts as that session, "moved"). A swap —
+ *  done on a day another program routine was planned — reaches 3–6 days. */
+export const EARLY_WINDOW_DAYS = 2
 
 export type SessionState =
   | 'upcoming'   // planned for a later day
@@ -152,20 +158,22 @@ export const SESSION_LABEL: Record<SessionState, string> = {
   upcoming: 'Upcoming',
   today:    'Today',
   now:      'Now',
-  pending:  'Not logged yet',
+  pending:  'Still open',
   done:     'Done',
   skipped:  'Skipped',
   missed:   'Missed',
 }
 
+// Missed or still open is never a warning (owner, 27.11.2026, the sessions
+// proposal; science.md S21/S27: a missed session costs nothing measurable).
 export const SESSION_TONE: Record<SessionState, Tone> = {
   upcoming: 'info',
   today:    'warn',
   now:      'accent',
-  pending:  'warn',
+  pending:  'neutral',
   done:     'success',
   skipped:  'neutral',
-  missed:   'danger',
+  missed:   'neutral',
 }
 
 /** The one sentence beside the status pill, or null. `routineTitle` names
@@ -173,7 +181,8 @@ export const SESSION_TONE: Record<SessionState, Tone> = {
 export function sessionNote(s: SessionStatus, routineTitle?: string | null): string | null {
   switch (s.state) {
     case 'pending':
-      return `${routineTitle ? `A ${routineTitle} workout` : 'A workout'} until ${formatWeekdayDate(s.countsUntil)} still counts.`
+      // Beside its "Still open" pill: until when, and what closes it.
+      return `Counts until ${formatDate(s.countsUntil)} — ${routineTitle ? `${/^[aeiou]/i.test(routineTitle) ? 'an' : 'a'} ${routineTitle} workout` : 'a workout'} closes it.`
     case 'done':
       return s.doneBy === 'hand' ? 'Marked done by hand.' : s.doneBy === 'activity' ? 'A Strava activity covered that day.' : null
     case 'skipped':
@@ -243,4 +252,258 @@ export function pastWeekMoveLine(title: string, to: string, outcome: PastWeekOut
 export function weekStartOf(date: string): string {
   const back = (new Date(`${date}T12:00:00`).getDay() + 6) % 7
   return shiftDay(date, -back)
+}
+
+// ── Done on another day, still open ─────────────────────────────────────────
+// A workout completes its session from 2 days before its day to the end of its
+// week (213; S20 for the early side, 167's week for the late side).
+
+const dayDiff = (from: string, to: string): number =>
+  Math.round((new Date(`${to}T12:00:00`).getTime() - new Date(`${from}T12:00:00`).getTime()) / 86_400_000)
+
+/** Days between a session's planned day and the day its workout was done:
+ *  positive = late, negative = early, 0 = on its day; null when unknown. */
+export function doneShift(planDate: string, workoutDate: string | null | undefined): number | null {
+  return workoutDate ? dayDiff(planDate, workoutDate) : null
+}
+
+/** "Done", "Done · 1 day late", "Done · 2 days early" — with the workout's
+ *  day when given: "Done 26.11.2026 · 2 days late" (owner, 27.11.2026: "this
+ *  was done on 26.11"). */
+export function doneWord(shift: number | null, workoutDate?: string | null): string {
+  const done = workoutDate && shift ? `${SESSION_LABEL.done} ${formatDate(workoutDate)}` : SESSION_LABEL.done
+  if (!shift) return done
+  const n = Math.abs(shift)
+  return `${done} · ${n} ${n === 1 ? 'day' : 'days'} ${shift > 0 ? 'late' : 'early'}`
+}
+
+/** "+1d" / "−2d" — the shift on a This week chip; '' on its day. */
+export function shiftShort(shift: number | null): string {
+  return shift ? `${shift > 0 ? '+' : '−'}${Math.abs(shift)}d` : ''
+}
+
+/** "Still open — counts until 03.12.2026". */
+export function stillOpenLine(countsUntil: string | null): string {
+  return countsUntil ? `Still open — counts until ${formatDate(countsUntil)}` : 'Still open'
+}
+
+// ── Coming back after a break (science.md S27–S29) ─────────────────────────
+
+/** The note for the next session after `days` without training: none up to 14
+ *  days (S27), lighter first sessions for 15–28 (S28), a comeback week after
+ *  28 (S29). null when there is nothing to say (or no training at all yet). */
+export function gapNote(days: number | null): string | null {
+  if (days == null || days <= 14) return null
+  if (days <= 28) return 'First 1–2 sessions: same weights, stop 2 reps earlier'
+  return 'Comeback week: half the sets, a little lighter — losses come back within a few weeks'
+}
+
+// ── This week (owner, 27.11.2026: "Missed sessions, sessions I did but in
+//    different days.. What I actually should do") ─────────────────────────────
+// One model for the This week strip (Next, Log, Daily's Training card) and
+// "Today's call". It reads the sessions as they are stored — owner: "One
+// truth! Thats the rule. So if its moved it is moved! It has to stick to the
+// real data!" — never a day of its own. Next is the first session still to do:
+// one whose day has come first, in the program's order (the weekly schedule's
+// day order, S22 — a missed one before today's, S23; today's stays next all
+// day), then the later ones by day. Moving the rest of the cycle is the owner's
+// choice (owner: "It should be an option not must"): `shiftOffer` says when to
+// offer it — a session's day passed undone, or one done early — and the owner's
+// tap moves the sessions in the data (213's training_shift_sessions).
+
+export type WeekMark = 'done' | 'next' | 'open' | 'skipped'
+
+export interface WeekSessionInput {
+  /** Unique per session (its plan id and day). */
+  key: string
+  /** Its routine's title, else the plan's. */
+  title: string
+  /** The routine it trains, when known — its place in the program's order. */
+  routineId: string | null
+  /** The day it is planned for (yyyy-MM-dd). */
+  date: string
+  status: SessionStatus
+  /** The local day of the workout that completed it, when read. */
+  workoutDate?: string | null
+  /** Another routine's workout done on its day while it stayed to do — a swap
+   *  (213: that workout completed its own session); its title. */
+  insteadTitle?: string | null
+  /** Its task (the database's id) — what a move names. */
+  taskId?: string | null
+  /** Its task's first day (167); a move never takes it 7 or more days from it. */
+  firstDate?: string | null
+}
+
+export interface WeekSession extends WeekSessionInput {
+  mark: WeekMark
+  /** Done: its workout's day minus its planned day. */
+  shift: number | null
+  /** Still to do, its day passed, and a later session of the week already done (S21). */
+  skippedOver: boolean
+}
+
+/** Moving the rest of the cycle, offered — never done by itself. `days` > 0:
+ *  later (a session's day passed undone); < 0: earlier (one done early). */
+export interface ShiftOffer {
+  days: number
+  /** The session the move starts from (its task is what the database is given). */
+  anchor: WeekSession
+  /** The sessions still to do that would move, in day order (a Pull also takes the anchor to the day it was done). */
+  moving: WeekSession[]
+}
+
+export interface TrainingWeek {
+  monday: string
+  sunday: string
+  /** In the program's order (last week's still open first). */
+  sessions: WeekSession[]
+  next: WeekSession | null
+  offer: ShiftOffer | null
+}
+
+const STILL_TO_DO: ReadonlySet<SessionState> = new Set(['upcoming', 'today', 'now', 'pending', 'missed'])
+/** A move takes the anchor's day and the six after it (213's cycle). */
+const CYCLE_DAYS = 6
+
+/** The week of `today`'s sessions. `sessions`: the plans of the week (Monday
+ *  to Sunday) and any still open from last week; `order`: routine ids in the
+ *  weekly schedule's day order; `program`: the current program's routines (only
+ *  their sessions move); `trainedToday`: a workout is already logged today. */
+export function planWeek(input: {
+  sessions: readonly WeekSessionInput[]
+  order: readonly string[]
+  program?: readonly string[]
+  today: string
+  monday: string
+  trainedToday: boolean
+}): TrainingWeek {
+  const { order, today, monday, trainedToday } = input
+  const sunday = shiftDay(monday, 6)
+  const seq = (s: WeekSessionInput) => { const i = s.routineId ? order.indexOf(s.routineId) : -1; return i < 0 ? order.length : i }
+  const byOrder = (a: WeekSessionInput, b: WeekSessionInput) => seq(a) - seq(b) || a.date.localeCompare(b.date) || a.key.localeCompare(b.key)
+
+  // Last week's sessions still open in their week (167) come along.
+  const carriedIn = input.sessions.filter(s => s.date < monday && s.status.state === 'pending').sort(byOrder)
+  const own = input.sessions.filter(s => s.date >= monday && s.date <= sunday).sort(byOrder)
+  const all = [...carriedIn, ...own]
+  const toDo = (s: WeekSessionInput) => STILL_TO_DO.has(s.status.state)
+  // The one "next" rule (plan/nextRule.ts, mirrored into phone-gateway and push-send).
+  const nextIn = today > sunday ? null
+    : pickNextCandidate(all.map(s => ({ s, title: s.title, routineId: s.routineId, date: s.date, toDo: toDo(s), countsUntil: s.status.countsUntil ?? (s.date >= today ? s.date : null) })), order, today)?.s ?? null
+
+  const doneSeqAfter = (s: WeekSessionInput) => all.some(o => o !== s && o.status.state === 'done' && seq(o) > seq(s) && o.date >= monday)
+  const sessions: WeekSession[] = all.map(s => ({
+    ...s,
+    mark: s === nextIn ? 'next' : toDo(s) ? 'open' : s.status.state === 'done' ? 'done' : 'skipped',
+    shift: s.status.state === 'done' && s.status.doneBy === 'workout' ? doneShift(s.date, s.workoutDate) : null,
+    skippedOver: toDo(s) && s.date < today && doneSeqAfter(s),
+  }))
+  const next = sessions.find(s => s.mark === 'next') ?? null
+  return { monday, sunday, sessions, next, offer: shiftOfferOf(sessions, { today, trainedToday, program: input.program }) }
+}
+
+/** When to offer moving the rest of the cycle (the database checks the same: training_shift_sessions).
+ *  Later: the first program session still to do whose day has passed — not one a later session already passed
+ *  over — lands today (tomorrow when today is trained); earlier: a session done today by a workout, days early, with
+ *  sessions still to do after it that land today or later. A day a session would land on that holds a done one, or
+ *  one that isn't moving, means no offer (never two in one day). */
+function shiftOfferOf(sessions: readonly WeekSession[], ctx: { today: string; trainedToday: boolean; program?: readonly string[] }): ShiftOffer | null {
+  // A weekly plan's day with no task yet moves too (the database splits it first); the anchor needs its task.
+  const inProgram = (s: WeekSession) => !!s.routineId && (!ctx.program || ctx.program.includes(s.routineId))
+  const toDo = (s: WeekSession) => STILL_TO_DO.has(s.status.state)
+  // Each session that moves, with the day it lands on. Never two on one day (a session there that isn't moving and
+  // isn't skipped), never 7 or more days from its first day (167 would skip it there — the database refuses too).
+  const fits = (moves: readonly { s: WeekSession; to: string }[]) => moves.every(({ s, to }) =>
+    to < shiftDay(s.firstDate ?? s.date, 7)
+    && !sessions.some(o => !moves.some(m => m.s === o) && o.date === to && o.status.state !== 'skipped'))
+  const missed = sessions.filter(s => inProgram(s) && !!s.taskId && toDo(s) && s.date < ctx.today && !s.skippedOver)
+    .sort((a, b) => a.date.localeCompare(b.date))[0]
+  if (missed) {
+    const days = dayDiff(missed.date, ctx.trainedToday ? shiftDay(ctx.today, 1) : ctx.today)
+    const end = shiftDay(missed.date, CYCLE_DAYS)
+    const moving = sessions.filter(s => inProgram(s) && toDo(s) && s.date >= missed.date && s.date <= end)
+      .sort((a, b) => a.date.localeCompare(b.date))
+    if (days >= 1 && days <= 14 && fits(moving.map(m => ({ s: m, to: shiftDay(m.date, days) })))) return { days, anchor: missed, moving }
+  }
+  // Pull: the latest session done early by its workout; it goes to the day it was done, the rest as many days earlier
+  // — offered while every one of them still lands today or later.
+  const early = sessions
+    .filter(s => inProgram(s) && !!s.taskId && s.status.state === 'done' && !!s.workoutDate && (s.shift ?? 0) < 0 && (s.shift ?? 0) >= -6)
+    .sort((a, b) => (b.workoutDate ?? '').localeCompare(a.workoutDate ?? ''))[0]
+  if (early && early.shift != null && early.workoutDate) {
+    const days = early.shift
+    const end = shiftDay(early.date, CYCLE_DAYS)
+    const moving = sessions.filter(s => inProgram(s) && toDo(s) && s.date > early.date && s.date <= end)
+      .sort((a, b) => a.date.localeCompare(b.date))
+    const moves = [{ s: early, to: early.workoutDate }, ...moving.map(m => ({ s: m, to: shiftDay(m.date, days) }))]
+    if (moving.length > 0 && moving.every(m => shiftDay(m.date, days) >= ctx.today) && fits(moves)) {
+      return { days, anchor: early, moving }
+    }
+  }
+  return null
+}
+
+const dayWord = (n: number) => (Math.abs(n) === 1 ? 'one day' : `${Math.abs(n)} days`)
+
+/** The offer's question and its button's word and description (a short button, THEME: 1–2 words, the full text
+ *  in its tooltip and accessible name). */
+export function shiftOfferWords(o: ShiftOffer): { question: string; button: string; tip: string } {
+  if (o.days > 0) {
+    const rest = o.moving.length > 1 ? ' and the rest' : ''
+    return {
+      question: `${o.anchor.title} wasn't done on ${formatWeekdayDate(o.anchor.date)} — move it${rest} ${dayWord(o.days)} later?`,
+      button: 'Move',
+      tip: `Move ${o.moving.map(m => m.title).join(', ')} ${dayWord(o.days)} later`,
+    }
+  }
+  return {
+    question: `${o.anchor.title} done ${dayWord(o.days).replace('one day', 'a day')} early — pull the rest ${dayWord(o.days)} earlier?`,
+    button: 'Pull',
+    tip: `Pull ${o.anchor.title} to ${formatWeekdayDate(o.anchor.workoutDate ?? o.anchor.date)} and ${o.moving.map(m => m.title).join(', ')} ${dayWord(o.days)} earlier`,
+  }
+}
+
+/** The result line of a move, from what the database answered: "Moved Lower A, Upper B, Lower B one day later". */
+export function shiftResultLine(titles: readonly string[], days: number): string {
+  if (titles.length === 0) return 'Nothing moved'
+  return `Moved ${titles.join(', ')} ${dayWord(days)} ${days > 0 ? 'later' : 'earlier'}`
+}
+
+/** A This week chip's short word (after its title): "2d late", "1d early", "next", "swapped", "skipped". */
+export function weekChipWord(s: WeekSession): string {
+  if (s.mark === 'done') return s.shift ? `${Math.abs(s.shift)}d ${s.shift > 0 ? 'late' : 'early'}` : ''
+  if (s.mark === 'skipped') return 'skipped'
+  if (s.insteadTitle) return 'swapped'
+  return s.mark === 'next' ? 'next' : ''
+}
+
+/** A This week chip's words: its status in a few words (the chip's tooltip and accessible name). */
+export function weekSessionWord(s: WeekSession): string {
+  if (s.mark === 'done') return doneWord(s.shift, s.workoutDate)
+  if (s.mark === 'skipped') return s.status.skipReason ? `Skipped: ${s.status.skipReason.trim()}` : SESSION_LABEL.skipped
+  const parts = [
+    s.mark === 'next' ? 'Next' : null,
+    s.insteadTitle ? `Did ${s.insteadTitle} instead` : null,
+    s.skippedOver ? 'Skipped over — do it next, don\'t double up' : null,
+    s.status.state === 'pending' ? stillOpenLine(s.status.countsUntil) : s.mark === 'next' ? null : SESSION_LABEL[s.status.state],
+  ].filter(Boolean)
+  return parts.join(' · ')
+}
+
+/** Today's call — one plain line at the top of Next, starting with a verb. It
+ *  reads the stored days and leaves the day and time to the session's header
+ *  under it: "Do Upper B today.", "Do Lower A next — it's still open until
+ *  30.11.2026.", "Rest today — Upper B is next.". null when the week has no
+ *  sessions. */
+export function todaysCall(week: TrainingWeek, today: string): string | null {
+  if (week.sessions.length === 0) return null
+  const next = week.next
+  if (!next) return 'Rest — this week\'s sessions are done.'
+  if (next.date < today) {
+    return next.status.countsUntil
+      ? `Do ${next.title} next — it's still open until ${formatDate(next.status.countsUntil)}.`
+      : `Do ${next.title} next.`
+  }
+  if (next.date === today) return `Do ${next.title} today.`
+  return `Rest today — ${next.title} is next.`
 }

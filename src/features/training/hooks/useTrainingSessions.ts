@@ -1,12 +1,7 @@
-import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { format } from 'date-fns'
 import { useMutationWithFeedback } from '../../../shared/hooks/useMutationWithFeedback'
 import { qk, STALE } from '../../../shared/query'
-import { shiftDateStr } from '../../../shared/utils/dateUtils'
 import { useTodayStr } from '../../../shared/hooks/useToday'
-import { useTrainingBlocks, useScheduleBlocks, useTrainingDayTasks } from '../../daily/hooks/useSchedule'
-import { pickNextTrainingSession, type NextTrainingSession } from '../trainingPlanModel'
 import { fetchStravaStatus } from '../api/trainingApi'
 import { syncStravaActivities, disconnectStrava, exchangeStravaCode } from '../api/stravaApi'
 
@@ -62,28 +57,3 @@ export function useConnectStrava() {
 export { useTodayStr }
 
 export const NEXT_SESSION_LOOKAHEAD_DAYS = 30
-
-/**
- * The next planned training session: one-off training blocks AND recurring
- * training templates (trainingPlanModel.pickNextTrainingSession). The ONE
- * "next session" for the Training banner and Home. A 'block' opens with
- * `{ kind: 'time-block', id }`, a 'recurring' one with
- * `{ kind: 'schedule-block', id }`.
- */
-export function useNextTrainingSession(): { data: NextTrainingSession | null; isLoading: boolean } {
-  const today = useTodayStr()
-  const to = shiftDateStr(today, NEXT_SESSION_LOOKAHEAD_DAYS)
-  const blocksQ = useTrainingBlocks(today, to)
-  const templatesQ = useScheduleBlocks()
-  const dayTasksQ = useTrainingDayTasks(today, to)
-  const nowHHMM = format(new Date(), 'HH:mm')
-  const data = useMemo(() => pickNextTrainingSession({
-    blocks:        blocksQ.data ?? [],
-    templates:     (templatesQ.data ?? []).filter(t => t.category === 'training'),
-    dayTasks:      dayTasksQ.data ?? [],
-    today,
-    nowHHMM,
-    lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS,
-  }), [blocksQ.data, templatesQ.data, dayTasksQ.data, today, nowHHMM])
-  return { data, isLoading: blocksQ.isLoading || templatesQ.isLoading || dayTasksQ.isLoading }
-}

@@ -509,6 +509,7 @@ These rules are what the science supports, plus marked app choices. Where the ap
 ### Schedule: moved and missed sessions
 
 - **S20. Moved, not missed:** a planned session done within ±2 calendar days of its planned date, and before the next session in the sequence, counts as that session and is labelled "moved". *(±2 days: app choice)* (§7.1, §8.1; moderate in direction, low for the window)
+  *App note (213, 27.11.2026):* the app takes the early side (2 days) from S20 and keeps the owner's own-week rule (6 days late, inside the session's week) as the outer limit; a swap (done on another program routine's day) counts up to 6 days early, and none of it checks the sequence — a decision in `docs/decisions.md` (a workout represents itself; a passed-over session shows "Skipped over").
 - **S21. Missed:** a planned session not done within its ±2-day window, or skipped over (a later session in the sequence was done first), is "missed". A missed session never reduces any progress or strength figure. (§8.2, §9)
 - **S22. What to do next** = the earliest undone session in the plan's sequence, not the session tied to today's weekday. (§8.1 — moderate)
 - **S23. After a missed session, the default is shift:** the missed session becomes next and the rest move back. (§8.2 — low)

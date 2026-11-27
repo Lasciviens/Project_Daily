@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { shiftDateStr } from '../../../../shared/utils/dateUtils'
 import { useTrainingBlocks } from '../../../daily/hooks/useSchedule'
-import { useNextTrainingSession, useTodayStr, NEXT_SESSION_LOOKAHEAD_DAYS } from '../../hooks/useTrainingSessions'
+import { useTodayStr, NEXT_SESSION_LOOKAHEAD_DAYS } from '../../hooks/useTrainingSessions'
+import { useNextTrainingSession } from '../../hooks/useNextTrainingSession'
 import { useHevyRoutines } from '../../hooks/useHevyRoutines'
 import { useCurrentProgramRoutines } from '../../hooks/useAthleteProfile'
 import { useTrainingHistory } from '../../hooks/useTrainingProgress'
@@ -22,6 +23,8 @@ export interface NextPlan {
   rows: PlanRow[]
   alerts: TrainingAlert[]
   today: string
+  /** The last day any routine was trained (6 months of history), for the break note (S27–S29). */
+  lastTrained: string | null
 }
 
 /** Everything the Next tab renders: which routine is next (the planned
@@ -42,16 +45,19 @@ export function useNextPlan(): NextPlan {
   const isLoading = progress.isLoading || loadingSession || loadingRoutines || loadingProgram || loadingHistory
 
   return useMemo<NextPlan>(() => {
-    const empty: NextPlan = { isLoading, needsCurrentProgram: progress.needsCurrentProgram, pick: null, routine: null, session: session ?? null, rows: [], alerts: [], today }
+    const empty: NextPlan = { isLoading, needsCurrentProgram: progress.needsCurrentProgram, pick: null, routine: null, session: session ?? null, rows: [], alerts: [], today, lastTrained: null }
     if (isLoading || !routines || !history) return empty
 
     const block = session?.kind === 'block' ? blocks?.find(b => b.id === session.id) : undefined
     const planned: PlannedRef | null = session
-      ? { title: session.title, date: session.date, startTime: session.startTime, sourceId: block?.source_type === 'training_session' ? block.source_id ?? null : null }
+      ? { title: session.title, date: session.date, startTime: session.startTime,
+          sourceId: session.routineId ?? (block?.source_type === 'training_session' ? block.source_id ?? null : null) }
       : null
+    const lastTrained = lastTrainedByRoutine(history.sets)
     const pick = resolveNextRoutine({
-      planned, routines, programRoutineIds: (program ?? []).map(p => p.routine_id), lastTrained: lastTrainedByRoutine(history.sets),
+      planned, routines, programRoutineIds: (program ?? []).map(p => p.routine_id), lastTrained,
     })
+    const lastAny = [...lastTrained.values()].filter(d => d <= today).sort().pop() ?? null
     const routine = pick?.routineId ? routines.find(r => r.id === pick.routineId) ?? null : null
 
     const rows = routine ? routinePlanRows(routine, progress, history) : []
@@ -60,6 +66,6 @@ export function useNextPlan(): NextPlan {
       id => progress.titleById.get(id) ?? 'Exercise',
       progress.program ? { workload: progress.program.workload, corroboratingSignal: progress.program.corroboratingSignal, affectedCount: progress.program.affectedExerciseIds.length } : null,
     )
-    return { ...empty, pick, routine, rows, alerts }
+    return { ...empty, pick, routine, rows, alerts, lastTrained: lastAny }
   }, [isLoading, progress, session, blocks, routines, program, history, today])
 }

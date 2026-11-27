@@ -4,6 +4,7 @@ A merge deploys migrations (above 140), every edge function and the website by i
 
 | Status | Step | Needed for |
 |---|---|---|
+| ? | **After the merge of the training sessions PR (migration 213) — workouts from before it, a test in production (owner, 27.11.2026: "write me a sql so we can do it in a more secure way. We can bring data first, see the data and then update"):** in the Supabase SQL editor run **(a)** below (read only) and read each row: the workout, its day and routine, and the session 213's rules would complete with it (on its day, late, early or a swap — "nothing" leaves it). If the list looks right, run **(b)**: the same workouts, oldest first, each through `training_workout_relink`; it shows the linked count before and after and then each link. (a) judges each workout on its own, so two rows may name one session — (b) goes in order, and the second then finds another or none; (b)'s notice (the count) may not show in the editor — compare the two counts. Then open Training → Log: the sessions read "Done · 1 day early" and the like. | Migration 213 matches only new or changed workouts: an early or swapped workout synced before it stays unlinked until this runs. |
 | ? | **After the merge — Google Calendar is gone (owner, 25.11.2026):** items that were on Google Calendar in an area not on Apple are now **Only in this app** (Both → Google Tasks). To see which (read only, Supabase SQL editor, within 30 days — the Activity log keeps 30): `select case a.table_name when 'tasks' then 'item' else 'repeat' end as kind, coalesce(t.title, sb.title) as title, t.due_date as day from public.audit_logs a left join public.tasks t on a.table_name = 'tasks' and t.id::text = a.row_id left join public.schedule_blocks sb on a.table_name = 'schedule_blocks' and sb.id::text = a.row_id where a.table_name in ('tasks', 'schedule_blocks') and a.operation = 'UPDATE' and a.new_data ->> 'google_target' = 'none' and a.created_at = (select applied_at from deploy.applied_migrations where file = '208_google_calendar_off.sql') order by kind, title;` To move one: open it → **Calendar** → **Apple Calendar**. Its old copy stays in Google Calendar — delete it there; a weekly repeat keeps repeating in Google until you delete it there. | Google Calendar removal (migration 208; `docs/features/planning-calendar.md` → Google Calendar went). |
 | ? | **REQUIRED — after the merge:** Settings → Subscriptions → Google → **Disconnect**, then **Connect Google** (Tasks only). | The old sign-in still lets the app write to Google Calendar. Disconnect now revokes it at Google; the new consent asks for Google Tasks only. |
 | ? | **Apple Calendar: the invite test** (a one-off live test before invitations are built; migration 209), after the merge, with two addresses of your own that are NOT your Apple ID (another mail account works; never someone who hasn't agreed): Settings → Subscriptions → **Invite test** (under Apple Calendar, shown while iCloud is connected; the Personal calendar must be made — Settings → Calendar → Create in Apple Calendar). **Sign out and in again first**: Send, Rewrite and Remove guest need a sign-in in the last 10 minutes (the card says "Sign in again first" otherwise); sign in again whenever it says so during the test. Type both addresses → **Send** → confirm. Then check, writing down what you see for each: **(1)** both inboxes get an invitation **from Apple, in your name** ("Invite test", tomorrow 12:00–12:30). **(2)** On your iPhone, Calendar → the event: **you** are the organizer and it lists **Invitees** (the two addresses). **(3)** Answer **Maybe** from one inbox and **Yes** from the other, wait a minute, tap **Check**: the card shows *Maybe* and *Yes* (and each delivery code). **(4)** Tap **Rewrite** → confirm, wait a few minutes: **no second invitation** arrives in either inbox (if one does, write down which). **(5)** Tap the remove icon beside one guest → confirm: that inbox gets a **cancellation**, the other nothing. **(6)** Tap **Delete** → confirm: the event goes from the iPhone, and the remaining guest gets a cancellation. At most 5 Send / Rewrite / Remove a day; Rewrite and Remove guest need a Check first (they go only over the version the card shows). The test works until **31.12.2026**; after that only Delete. Send the results (and the Sequence, ETag and Schedule-Tag lines after each Check) to Claude — a PR that removes the test follows once they're in. | Deciding how invitations are built (whether a rewrite re-sends, whether answers can be read back). Nothing of it is used by items. `docs/integrations/icloud-caldav.md` → The invite test. |
@@ -43,6 +44,71 @@ A merge deploys migrations (above 140), every edge function and the website by i
 | ? | After the merge of the Shop's Stores PR (migration 191) — **"Look on FINN" and "Look on Tise", once each:** Shop → a wish still to buy (e.g. "Sony WH-1000XM5") → open it → **Used market** → **Look on FINN** → read the address it shows → **Open**: FINN's own search opens with the wish's name in its search box and lists results. Then the same with **Look on Tise**. If either opens a wrong or empty page, tell Claude what the address bar shows — the fix is the store's search link (Shop → ⋯ → **Stores and rules** → the store → Edit; the database checks it is https on the store's own address, with `{q}` where the words go) | Migration 191 seeds FINN's and Tise's standard search addresses (`https://www.finn.no/recommerce/forsale/search?q={q}`, `https://tise.com/search?q={q}`). The app never reads FINN or Tise (their terms forbid apps), so only a person can check the links open correctly (owner, 11.11.2026) |
 | ? | **Before you merge the AI foundation PR (the `claude` function, migration 194) — the Anthropic key, in four steps:** (1) Create an account at console.anthropic.com and, under **Billing**, set a **monthly spend limit** (start with $5: it is the outer wall; the app's own budget stops earlier). (2) **API keys** → create a key for this app. (3) Supabase → Project Settings → **Edge Functions** → **Secrets** → add a new secret named exactly `ANTHROPIC_API_KEY` with that key. Never paste the key in a chat, a file or a GitHub secret. (4) After the merge and its deploy: open the item screen for a new item and tap ✨, type *Dentist on Tuesday at 14:00 for an hour*, and check the form fills in; then Developer → **AI** → **Calls**: the call is there with its tokens and cost (a fraction of a cent). If ✨ says "AI is not set up yet", the secret is missing or misspelt. | The ✨ on the item screen, and every later AI feature. |
 | ? | **Before you merge the Trakt matching PR (migration 200) — the TMDB read token, in four steps:** (1) themoviedb.org → your profile → Settings → **API** → copy the **API Read Access Token** — the long text starting `eyJ`, not the 32-character "API Key". (2) GitHub → this repo → Settings → Secrets and variables → Actions → **New repository secret**: name `VITE_TMDB_READ_TOKEN`, value the token. (3) Supabase → Edge Functions → **Secrets**: add `TMDB_READ_TOKEN` with the same token. (4) Merge. Until both are set, the website's TMDB search and the Trakt sync's TMDB lookups stop with a plain message that names the missing secret (the Trakt card shows a warning line too, and the website build is refused while `VITE_TMDB_READ_TOKEN` is empty, so the live site stays as it is) — there is no fallback to the old key in a URL (security before features). When it works, delete the old secrets `VITE_TMDB_API_KEY` and `TMDB_API_KEY`. Do not make a new v3 API key: TMDB's read token is tied to the v3 key, so a new key would cancel the token you just set. (Never paste a token into a chat.) | `AGENTS.md` → Security: a key never travels in a URL when the API takes a header (TMDB takes this token as `Authorization: Bearer`); the PR also adds the picker for Trakt titles with no TMDB id. |
+
+### SQL for the training sessions row (migration 213)
+
+(a) Preview — read only:
+
+```sql
+-- 1. Preview (read-only): each Hevy workout of the last 14 days that no session holds, and the session 213's rules
+--    would close with it (on its day, late, early or a swap). Changes nothing.
+with w as (
+  select w.id, w.user_id, w.routine_id, w.start_time, (w.start_time at time zone 'Europe/Oslo')::date as day
+    from public.hevy_workouts w
+   where w.routine_id is not null and w.start_time >= now() - interval '14 days'
+     and not exists (select 1 from public.tasks t where t.hevy_workout_id = w.id and t.user_id = w.user_id)
+)
+select w.id as workout_id, to_char(w.day, 'DD.MM.YYYY') as workout_day, r.title as routine,
+       coalesce(s1.id, s3.id, s4.id) as session_task_id,
+       coalesce(s1.title, s3.title, s4.title) as session,
+       to_char(coalesce(s1.plan_day, s3.plan_day, s4.plan_day), 'DD.MM.YYYY') as session_day,
+       case when s1.id is not null then 'on its day'
+            when s3.id is not null then case when s3.plan_day < w.day then 'late' else 'early' end
+            when s4.id is not null then 'swap' else 'nothing' end as rule
+  from w
+  left join public.hevy_routines r on r.id = w.routine_id and r.user_id = w.user_id
+  left join lateral (
+    select c.id, c.plan_day, t.title from public.training_plan_candidates(w.user_id, w.day) c join public.tasks t on t.id = c.id
+     where c.routine = w.routine_id and c.plan_day = w.day
+     order by case c.status when 'done' then 3 when 'skipped' then 2 when 'missed' then 1 else 0 end, c.created_at limit 1) s1 on true
+  left join lateral (
+    select c.id, c.plan_day, t.title from public.training_plan_candidates(w.user_id, w.day) c join public.tasks t on t.id = c.id
+     where c.routine = w.routine_id and c.plan_day <> w.day
+     order by (c.status = 'done'), (c.status = 'skipped'), (c.plan_day > w.day), abs(c.plan_day - w.day), c.plan_day, c.created_at limit 1) s3 on true
+  left join lateral (
+    select t.id, t.title, coalesce((select min(b.date) from public.time_blocks b where b.task_id = t.id and b.user_id = t.user_id), t.due_date) as plan_day
+      from public.tasks t where t.id = public.training_swap_plan(w.user_id, w.routine_id, w.day) and t.user_id = w.user_id) s4 on true
+ order by w.start_time;
+```
+
+(b) Apply — through 213's own look-again, oldest first, with the count before and after:
+
+```sql
+-- 2. Apply: the same workouts, oldest first, each through 213's own look-again (training_workout_relink), then what
+--    each is linked to now and the count.
+select count(*) as sessions_linked_before from public.tasks where hevy_workout_id is not null;
+do $$
+declare r record; n int := 0;
+begin
+  for r in
+    select w.id from public.hevy_workouts w
+     where w.routine_id is not null and w.start_time >= now() - interval '14 days'
+       and not exists (select 1 from public.tasks t where t.hevy_workout_id = w.id and t.user_id = w.user_id)
+     order by w.start_time, w.id
+  loop
+    perform public.training_workout_relink(r.id);
+    if exists (select 1 from public.tasks t where t.hevy_workout_id = r.id) then n := n + 1; end if;
+  end loop;
+  raise notice 'Workouts that completed a session now: %', n;
+end $$;
+select w.id as workout_id, to_char((w.start_time at time zone 'Europe/Oslo')::date, 'DD.MM.YYYY') as workout_day, t.title as session,
+       to_char(coalesce((select min(b.date) from public.time_blocks b where b.task_id = t.id and b.user_id = t.user_id), t.due_date), 'DD.MM.YYYY') as session_day,
+       count(*) over () as sessions_linked_in_14_days
+  from public.hevy_workouts w join public.tasks t on t.hevy_workout_id = w.id and t.user_id = w.user_id
+ where w.start_time >= now() - interval '14 days'
+ order by w.start_time;
+select count(*) as sessions_linked_after from public.tasks where hevy_workout_id is not null;
+```
 
 Every earlier step was confirmed done on 13.10.2026, and a check showed migrations 100–138 all ran.
 

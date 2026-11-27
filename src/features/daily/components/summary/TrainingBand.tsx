@@ -2,7 +2,6 @@ import { useMemo } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import { CalendarDays, Dumbbell, Flame, Plus, Target, TrendingUp, Trophy } from 'lucide-react'
 import { Cell, CellHeader, CellLink, StatBox, StatEmpty, StatNote, StatValue } from './cellKit'
-import { cx } from '../../../../shared/ui'
 import { useEntityModal } from '../../../../shared/modals'
 import { formatDate, formatWeekdayDate } from '../../../../shared/utils/dateFormat'
 import { localDayOf, shiftDateStr, todayStr } from '../../../../shared/utils/dateUtils'
@@ -27,7 +26,9 @@ import { localDayBoundsIso, workoutLocalDay } from '../../../training/workoutDat
 import { mondayOf } from '../../../training/progressAggregate'
 import { useDayTargets } from '../../hooks/useDayTargets'
 import { useNutritionCoach } from '../../hooks/useNutritionCoach'
-import { trainingWeekGlance, type WeekDayMark } from '../../personalGlance'
+import { trainingWeekGlance } from '../../personalGlance'
+import { ThisWeekStrip } from '../../../training/components/week/ThisWeekStrip'
+import { useTrainingWeek } from '../../../training/hooks/useTrainingWeek'
 
 // Personal's Training band (owner, 26.10.2026: "easily understandable results
 // and stats: averages, and how the plan is doing — cut / maintain / gain"):
@@ -40,14 +41,6 @@ import { trainingWeekGlance, type WeekDayMark } from '../../personalGlance'
 const PHASE: Record<string, string> = { cut: 'Cut', maintain: 'Maintain', gain: 'Gain' }
 const STREAK_WEEKS = 26
 const LIFT_WEEKS = 4
-
-const MARK_CLASS: Record<WeekDayMark, string> = {
-  trained: 'bg-success border-success',
-  planned: 'border-accent-500 bg-transparent',
-  missed:  'border-line-strong bg-transparent',
-  none:    'border-transparent bg-line',
-}
-const MARK_WORD: Record<WeekDayMark, string> = { trained: 'trained', planned: 'planned', missed: 'planned, not done', none: 'nothing planned' }
 
 export function TrainingBand({ date }: { date: string }) {
   const today = todayStr()
@@ -86,6 +79,12 @@ export function TrainingBand({ date }: { date: string }) {
     return { today: byDay(date), planned }
   }, [plans.data, workouts.data, planCtx, date, today, monday])
 
+  // The week as the strip reads it (sessionState.planWeek): the box counts the same chips.
+  const weekView = useTrainingWeek(date)
+  const ownChips = weekView.week.sessions.filter(x => x.date >= monday && x.mark !== 'skipped')
+  const planned = ownChips.length
+  const doneCount = ownChips.filter(x => x.mark === 'done').length
+  const stravaCount = sessions.filter(x => x.id.startsWith('s:') && x.date >= monday && x.date <= sunday && x.date <= date).length
   const week = useMemo(() => trainingWeekGlance({
     day: date, today, sessions, plannedDays: dayView.planned, target: profile?.training_days_per_week ?? null,
   }), [date, today, sessions, dayView.planned, profile?.training_days_per_week])
@@ -144,12 +143,13 @@ export function TrainingBand({ date }: { date: string }) {
             <RestDayBox date={date} label={date === today ? 'Today' : formatWeekdayDate(date)} loading={loading || plans.isLoading} />
           )}
 
-          {/* 2. Its week, Monday to Sunday. */}
+          {/* 2. Its week: the strip's own count (done of planned, the chips below) — one week view (owner-critic,
+              27.11.2026); Strava activities are a note of their own. */}
           <StatBox icon={<CalendarDays aria-hidden />} label={weekLabel}>
-            {loading ? <StatEmpty loading /> : (
+            {loading || weekView.isLoading ? <StatEmpty loading /> : (
               <>
-                <StatValue>{week.target ? `${week.sessions} of ${week.target}` : week.sessions}</StatValue>
-                <WeekDots week={week.week} label={weekLabel} />
+                <StatValue>{planned > 0 ? `${doneCount} of ${planned}` : week.sessions}</StatValue>
+                <StatNote>{planned > 0 ? 'planned sessions done' : 'sessions · nothing planned'}{stravaCount > 0 ? ` · +${stravaCount} Strava` : ''}</StatNote>
               </>
             )}
           </StatBox>
@@ -196,21 +196,9 @@ export function TrainingBand({ date }: { date: string }) {
           </StatBox>
         </div>
       </div>
+      {/* The day's week, session by session (the strip Training's Next and Log show) — under the box that names the week. */}
+      <ThisWeekStrip date={date} where="daily" heading={false} className="mt-1" />
     </Cell>
-  )
-}
-
-/** Seven small marks, Monday to Sunday: filled = trained, ring = planned. */
-function WeekDots({ week, label }: { week: { date: string; letter: string; mark: WeekDayMark; shown: boolean }[]; label: string }) {
-  return (
-    <ol className="mt-0.5 grid grid-cols-7 gap-0.5" aria-label={`${label}, Monday to Sunday`}>
-      {week.map(d => (
-        <li key={d.date} className="flex flex-col items-center gap-0.5" aria-label={`${formatWeekdayDate(d.date)}: ${MARK_WORD[d.mark]}`}>
-          <span aria-hidden className={cx('text-micro leading-none', d.shown ? 'font-bold text-fg' : 'text-fg-faint')}>{d.letter}</span>
-          <span aria-hidden className={cx('h-2.5 w-2.5 rounded-full border-2', MARK_CLASS[d.mark])} />
-        </li>
-      ))}
-    </ol>
   )
 }
 
@@ -222,8 +210,13 @@ function RestDayBox({ date, label, loading }: { date: string; label: string; loa
   const { data: templates = [] } = useScheduleBlocks()
   const { data: dayTasks = [] } = useTrainingDayTasks(date, lookaheadTo)
   const { data: routines = [] } = useHevyRoutines()
+  // The week's next session (a missed one first, sessionState.planWeek) — the strip's and Training's Next; another
+  // week's day, or a week with nothing left, reads the soonest plan after the day.
+  const { week } = useTrainingWeek(date)
+  // Today: the week's next as it is (a missed one still open first); another day: the next one after it.
+  const weekNext = date === todayStr() ? week.next : week.next && week.next.date > date ? week.next : null
   const next = useMemo(() => pickNextTrainingSession({
-    blocks, templates: templates.filter(t => t.category === 'training'), dayTasks, today: shiftDateStr(date, 1), nowHHMM: '00:00',
+    blocks, templates: templates.filter(t => t.category === 'training'), dayTasks, today: shiftDateStr(date, 1),
     lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS - 1,
   }), [blocks, templates, dayTasks, date])
   if (loading) return <StatBox icon={<Dumbbell aria-hidden />} label={label}><StatEmpty loading /></StatBox>
@@ -249,7 +242,8 @@ function RestDayBox({ date, label, loading }: { date: string; label: string; loa
           </Menu>
         )}
       </div>
-      <StatNote>{next ? `Next: ${next.title} · ${formatWeekdayDate(next.date)}` : 'Nothing planned ahead'}</StatNote>
+      <StatNote>{weekNext ? `Next: ${weekNext.title} · ${weekNext.date > date ? formatWeekdayDate(weekNext.date) : `open since ${formatWeekdayDate(weekNext.date)}`}`
+        : next ? `Next: ${next.title} · ${formatWeekdayDate(next.date)}` : 'Nothing planned ahead'}</StatNote>
     </StatBox>
   )
 }

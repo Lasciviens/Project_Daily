@@ -62,11 +62,9 @@ const buttons = {
   'src/features/football/hooks/useFootball.ts': 'a match\'s Plan it',
   'src/features/training/components/RoutinesTab.tsx': 'a routine',
   'src/features/training/components/next/NextTab.tsx': 'Training → Next',
-  'src/features/training/components/program/MissedSessions.tsx': 'a missed session',
   'src/features/training/components/program/RoutineProgramCard.tsx': 'the program card',
   'src/features/training/components/session/TrainingSessionView.tsx': 'Plan this routine again',
   'src/features/training/components/calendar/DayDetailPanel.tsx': 'a training day',
-  'src/features/training/modals/TrainingPlanSheets.tsx': 'Skip → Plan',
   'src/features/daily/components/summary/TrainingBand.tsx': 'Daily\'s training band',
 }
 const without = Object.entries(buttons).filter(([f]) => !/\busePlanThis\b|\bPlanThingButton\b/.test(read(f))).map(([f, w]) => `${w} (${f})`)

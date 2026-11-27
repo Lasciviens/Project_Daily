@@ -30,6 +30,8 @@ export interface NextTrainingSession {
   date:      string
   startTime: string | null   // HH:MM
   taskId:    string | null
+  /** The routine it trains, when known (the week model's next, useNextTrainingSession). */
+  routineId?: string | null
 }
 
 function shiftDay(dateStr: string, delta: number): string {
@@ -52,9 +54,10 @@ export interface TrainingDayTaskLike {
   closed_reason?:    string | null
 }
 
-/** `templates` must already be the training ones. A block without a start
- *  time on today counts as still ahead (it has no time to have passed); a
- *  block whose task is done (trained — migration 141) or cancelled is not.
+/** `templates` must already be the training ones. Today's session stays next
+ *  all day (owner's sessions proposal, 27.11.2026: it used to drop once its
+ *  start time passed); a block whose task is done (trained — migration 141) or
+ *  cancelled is not.
  *  `dayTasks`: a weekly day closed as its task (a Hevy workout or a Google
  *  Tasks tick, no split) is not one to come either — sessionState decides
  *  (a day closed as missed is still to do there). */
@@ -63,23 +66,22 @@ export function pickNextTrainingSession(input: {
   templates:     readonly RecurringBlockLike[]
   dayTasks?:     readonly TrainingDayTaskLike[]
   today:         string
-  nowHHMM:       string
   lookaheadDays: number
 }): NextTrainingSession | null {
-  const { blocks, templates, today, nowHHMM, lookaheadDays } = input
+  const { blocks, templates, today, lookaheadDays } = input
   const closedDays = new Set((input.dayTasks ?? [])
     .filter(t => !sessionStatus({ date: t.occurrence_date, taskStatus: t.status, taskMissed: t.closed_reason === 'missed', today }).open)
     .map(t => `${t.schedule_block_id}:${t.occurrence_date}`))
   const candidates: NextTrainingSession[] = blocks
     .filter(b => b.task_status !== 'done' && b.task_status !== 'cancelled')
-    .filter(b => b.date > today || (b.date === today && (b.start_time ?? '99:99').slice(0, 5) >= nowHHMM))
+    .filter(b => b.date >= today)
     .map(b => ({ kind: 'block' as const, id: b.id, title: b.title, date: b.date, startTime: b.start_time?.slice(0, 5) ?? null, taskId: b.task_id ?? null }))
 
   if (templates.length > 0) {
     for (let i = 0; i <= lookaheadDays; i++) {
       const day = shiftDay(today, i)
       const hit = projectRecurringBlocksForDay(day, templates)
-        .filter(p => !p.spillover && !closedDays.has(`${p.canonicalId}:${day}`) && (day !== today || hhmm(p.startHour) >= nowHHMM))
+        .filter(p => !p.spillover && !closedDays.has(`${p.canonicalId}:${day}`))
         .sort((a, b) => a.startHour - b.startHour)[0]
       if (hit) {
         candidates.push({ kind: 'recurring', id: hit.canonicalId, title: hit.title, date: day, startTime: hhmm(hit.startHour), taskId: null })

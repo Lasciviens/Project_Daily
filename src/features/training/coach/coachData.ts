@@ -1,21 +1,22 @@
-import { fetchTrainingHistory, fetchHevyRoutines, fetchHevyExerciseTemplates } from '../api/hevyApi'
+import { fetchTrainingHistory, fetchHevyRoutines, fetchHevyExerciseTemplates, fetchHevyWorkoutsInRange } from '../api/hevyApi'
 import {
   fetchAthleteProfile, fetchAthleteLimitations, fetchCurrentProgramRoutines, fetchExerciseTargetOverrides,
 } from '../api/athleteProfileApi'
 import { fetchHealthMetricSeries, type HealthMetric } from '../../health/api/healthApi'
 import { fetchBodyweightSeries } from '../../health/api/bodyweightApi'
-import { fetchScheduleBlocks, fetchTrainingBlocksRange } from '../../daily/api/scheduleApi'
+import { fetchScheduleBlocks, fetchTrainingBlocksRange, fetchTrainingDayTasks } from '../../daily/api/scheduleApi'
 import { weeklyDaysPerWeek } from '../../daily/recurrence'
 import { fetchTrainingSkips } from '../api/trainingSkipsApi'
 import { fetchDayTargets, type NutritionGoal } from '../../daily/api/dayTargetsApi'
-import { lastTrainedByRoutine } from '../progress-engine'
-import { missedSessionsFrom, skipsFromWeek } from '../plan/skippedRoutines'
+import { skipsFromWeek } from '../plan/skippedRoutines'
+import { buildTrainingWeek, mondayOfDay, weekMissed } from '../plan/weekInputs'
+import { matchRoutineToPlan } from '../plan/nextSession'
+import { buildPlansByDate } from '../components/calendar/calendarPlans'
 import { computeDailySeries, computeSleepSummary } from '../../health/healthAggregate'
 import { computeProgressModel } from '../progressModel'
 import { sessionsFromSets, sessionsThisWeek } from '../progressAggregate'
 import { coachBalance, sessionsFromHistory, weeklyMuscleDose } from './coachModel'
 import { TRAINING_HISTORY_DAYS } from '../hooks/useTrainingProgress'
-import { NEXT_SESSION_LOOKAHEAD_DAYS } from '../hooks/useTrainingSessions'
 import { shiftDateStr, todayStr } from '../../../shared/utils/dateUtils'
 import type { AthleteLimitation, AthleteProfile, CurrentProgramRoutine, ExerciseTargetOverride } from '../types.athlete'
 import type { CoachData } from './coachFormat'
@@ -46,7 +47,10 @@ export async function gatherCoachData(): Promise<CoachData> {
   // says "fat loss", so the coach reads the phase itself.
   const goalState = soft<NutritionGoal | null>(fetchDayTargets().then(s => s.targets.goal), null)
 
-  const [history, routines, profile, limitations, currentProgram, overrides, sleepPts, stepPts, energyPts, bodyweight, blocks, skips] = await Promise.all([
+  // The plan's week (Monday − 7 to Sunday): the This week strip's own reading, for the MISSED line.
+  const weekFrom = shiftDateStr(mondayOfDay(today), -7)
+  const weekTo = shiftDateStr(mondayOfDay(today), 6)
+  const [history, routines, profile, limitations, currentProgram, overrides, sleepPts, stepPts, energyPts, bodyweight, blocks, skips, dayTasks, weekWorkouts] = await Promise.all([
     fetchTrainingHistory(historyFrom, new Date().toISOString()),
     soft(fetchHevyRoutines(), []),
     soft<AthleteProfile | null>(fetchAthleteProfile(), null),
@@ -57,9 +61,11 @@ export async function gatherCoachData(): Promise<CoachData> {
     soft<HealthMetric[]>(fetchHealthMetricSeries('step_count', healthFrom, today), []),
     soft<HealthMetric[]>(fetchHealthMetricSeries('active_energy', healthFrom, today), []),
     soft(fetchBodyweightSeries(shiftDateStr(today, -30), today), []),
-    // Missed sessions: one-off training blocks from today on, and skips (migration 112).
-    soft(fetchTrainingBlocksRange(today, shiftDateStr(today, NEXT_SESSION_LOOKAHEAD_DAYS)), []),
+    // Missed sessions: the plan's week as the strip reads it (213) — its plans, skips and workouts.
+    soft(fetchTrainingBlocksRange(weekFrom, weekTo), []),
     soft(fetchTrainingSkips(skipsFromWeek(today)), []),
+    soft(fetchTrainingDayTasks(weekFrom, weekTo), []),
+    soft(fetchHevyWorkoutsInRange(weekFrom, weekTo), []),
   ])
 
   const progress = computeProgressModel({
@@ -68,6 +74,7 @@ export async function gatherCoachData(): Promise<CoachData> {
     targetDays: profile?.training_days_per_week ?? null, today,
   })
   const [templates, scheduleBlocks] = await balanceInputs
+  const programIds = new Set(currentProgram.map(p => p.routine_id))
   const phase = await goalState
   const balance = coachBalance({
     history, templates, routines, programRoutineIds: currentProgram.map(p => p.routine_id),
@@ -88,8 +95,12 @@ export async function gatherCoachData(): Promise<CoachData> {
     bodyweight: bodyweight.map(p => ({ date: p.date, kg: p.kg, fatPct: p.fatPct })),
     balance,
     phase,
-    missedSessions: progress.needsCurrentProgram ? [] : missedSessionsFrom({
-      routines, program: currentProgram, lastTrained: lastTrainedByRoutine(history.sets), blocks, skips, today,
-    }),
+    missedSessions: progress.needsCurrentProgram ? [] : weekMissed(buildTrainingWeek({
+      date: today, today, workouts: weekWorkouts, skips,
+      plansByDate: buildPlansByDate(weekFrom, weekTo, blocks, scheduleBlocks, dayTasks, today),
+      routineOf: plan => matchRoutineToPlan({ title: plan.title, date: plan.date, startTime: plan.startHHMM ?? null, sourceId: null }, routines, programIds)?.id ?? null,
+      titleOf: new Map(routines.map(r => [r.id, r.title])), templates: scheduleBlocks,
+      program: currentProgram.map(p => p.routine_id),
+    }).week, today),
   }
 }

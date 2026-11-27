@@ -4,16 +4,17 @@ import type { DayMark } from './monthGridModel'
 
 // One mark per calendar day, told apart by SHAPE as well as colour (a solid
 // bar, a ring, an outline): done = solid success bar · a plan still open
-// today = warn ring · upcoming = info ring · missed = danger outline ·
-// not logged yet (a late workout still counts) = dashed warn outline ·
+// today = warn ring · upcoming = info ring · missed = a dotted grey outline ·
+// still open (a late workout still counts) = a dashed grey outline — missed
+// or open is never a warning (owner, 27.11.2026, the sessions proposal) ·
 // done another day (a workout on another day closed the plan) = a grey
 // outline · skipped = a grey bar.
 const MARK: Record<DayMark, string> = {
   done:     'h-1.5 w-4 rounded-full bg-success',
   today:    'h-2 w-2 rounded-full border-2 border-warn',
-  pending:  'h-1.5 w-4 rounded-full border-[1.5px] border-dashed border-warn',
+  pending:  'h-1.5 w-4 rounded-full border-[1.5px] border-dashed border-fg-muted',
   upcoming: 'h-2 w-2 rounded-full border-2 border-info',
-  missed:   'h-1.5 w-4 rounded-full border-[1.5px] border-danger',
+  missed:   'h-1.5 w-4 rounded-full border-[1.5px] border-dotted border-fg-muted',
   elsewhere: 'h-1.5 w-4 rounded-full border-[1.5px] border-line-strong',
   skipped:  'h-1.5 w-4 rounded-full bg-line-strong',
 }
