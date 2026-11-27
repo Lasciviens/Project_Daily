@@ -23,6 +23,7 @@ import {
 import { ChoiceRow, LINE, NoteRow, Panel, Row, TapRow } from './ItemRows'
 import { hostOf, openableUrl } from './itemScreenRules'
 import type { PanelKey } from './TimeSection'
+import { typingHints } from './fieldStyles'
 
 interface Opened {
   open: PanelKey | null
@@ -155,7 +156,7 @@ export function UrlRow({ url, problem, onChange, mark, open, toggle }: Opened & 
         <input value={url} onChange={e => onChange(e.target.value)} placeholder="URL" aria-label="URL"
           onFocus={() => setTyping(true)} onBlur={() => setTyping(false)}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }}
-          type="text" inputMode="url" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint="done"
+          {...typingHints('url', 'none')} type="text" inputMode="url"
           aria-invalid={!!problem || undefined}
           className="input-bare min-w-0 flex-1 pb-0 text-lead" />
         {href && (

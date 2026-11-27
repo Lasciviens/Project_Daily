@@ -7,17 +7,20 @@
 //  trimmed, at most 30 characters, each once, at most 10.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, type ReactNode } from 'react'
-import { Combobox, ComboboxInput, ComboboxOption, ComboboxOptions } from '@headlessui/react'
+import { useRef, useState, type ReactNode } from 'react'
+import { Combobox, ComboboxInput, ComboboxOption } from '@headlessui/react'
 import { Hash, Plus, X } from 'lucide-react'
 import { Truncate } from '../../ui'
 import { Row } from './ItemRows'
+import { FieldOptions } from '../FieldOptions'
+import { typingHints } from './fieldStyles'
 import { cleanLabel, cleanLabels, labelSuggestions, LABEL_MAX, LABELS_PER_TASK } from '../../../features/todo/taskLabels'
 import { useTaskLabels } from '../../../features/todo/hooks/useTaskLabels'
 
 export function LabelsRow({ value, onChange, mark }: { value: string[]; onChange: (labels: string[]) => void; mark?: ReactNode }) {
   const [focused, setFocused] = useState(false)
   const [query, setQuery] = useState('')
+  const field = useRef<HTMLInputElement>(null)
   const { data: known = [] } = useTaskLabels(focused)
   const typed = cleanLabel(query)
   const has = (list: readonly string[], l: string) => list.some(x => x.toLowerCase() === l.toLowerCase())
@@ -47,6 +50,7 @@ export function LabelsRow({ value, onChange, mark }: { value: string[]; onChange
           <Combobox<string | null> value={null} onChange={l => { if (l) add(l) }} onClose={() => { if (!query) setFocused(false) }} immediate>
             <div className="relative min-w-0">
               <ComboboxInput
+                ref={field}
                 aria-label="Add a label"
                 placeholder={value.length ? 'Add' : 'Add label'}
                 maxLength={LABEL_MAX + 10}
@@ -62,13 +66,13 @@ export function LabelsRow({ value, onChange, mark }: { value: string[]; onChange
                 // Leaving the field (another row, closing the screen) keeps what was typed: a label typed and never
                 // Entered is added, never dropped without a word. Picking an option keeps the focus here, so it never adds twice.
                 onBlur={() => { if (typed && !has(value, typed)) onChange(cleanLabels([...value, typed])); close() }}
-                autoComplete="off"
-                enterKeyHint="done"
-                className="input-bare w-24 pb-0 text-right text-lead"
+                {...typingHints('labels', 'none')}
+                // In em: "Add label" whole at any text size (16px on touch).
+                className="input-bare w-[5.5em] pb-0 text-right text-lead"
               />
               {(isNew || offered.length > 0) && (
                 // Not modal (as the screen's other pickers): the rest of the screen stays one tap away while the list is open.
-                <ComboboxOptions modal={false} anchor={{ to: 'bottom end', gap: 6, padding: 12 }} className="menu z-toast min-w-[12rem]">
+                <FieldOptions field={field} className="min-w-[12rem]">
                   {isNew && (
                     <ComboboxOption value={typed} className="menu-item cursor-pointer data-[focus]:bg-surface-hover">
                       <Plus aria-hidden className="h-4 w-4 shrink-0" /><Truncate className="min-w-0 flex-1" fullText={`Add “${typed}”`}>Add “<bdi>{typed}</bdi>”</Truncate>
@@ -79,7 +83,7 @@ export function LabelsRow({ value, onChange, mark }: { value: string[]; onChange
                       <Hash aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" /><bdi className="min-w-0 flex-1"><Truncate>{l}</Truncate></bdi>
                     </ComboboxOption>
                   ))}
-                </ComboboxOptions>
+                </FieldOptions>
               )}
             </div>
           </Combobox>

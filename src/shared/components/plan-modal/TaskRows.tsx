@@ -17,7 +17,7 @@ import { ParentPicker } from '../../../features/todo/components/ParentPicker'
 import { isOpenTask, isTrainingTask, movesToToday } from '../../../features/todo/taskRules'
 import { movedFormToDay, type PlanForm } from './planForm'
 import { Panel, Row, TapRow } from './ItemRows'
-import { chipClass } from './fieldStyles'
+import { chipClass, typingHints } from './fieldStyles'
 import type { PanelKey } from './TimeSection'
 
 interface Opened {
@@ -46,7 +46,7 @@ export function WaitingRow({ taskId, open, toggle, mark }: Opened & { taskId: st
         <Panel label="Waiting for">
           <div className="flex flex-col gap-2">
             <input
-              autoFocus value={shown} onChange={e => setText(e.target.value)} placeholder="Who or what? (optional)" aria-label="Waiting for"
+              autoFocus value={shown} onChange={e => setText(e.target.value)} placeholder="Who or what? (optional)" aria-label="Waiting for" {...typingHints('waiting')}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(true) } }} maxLength={200}
               className="input-bare w-full border-b border-line py-1.5 text-lead"
             />

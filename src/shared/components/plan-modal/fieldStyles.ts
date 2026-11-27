@@ -53,3 +53,22 @@ export function chipClass(kind: 'set' | 'add' | 'value' | 'quiet' | 'remove', ex
  *  sideways that is less than a month, so it scrolls. */
 export const CHIP_PANEL_CLASS =
   'z-toast overflow-y-auto overscroll-contain rounded-menu border border-line-strong bg-surface p-2 shadow-menu [--anchor-gap:6px] [--anchor-padding:8px]'
+
+/**
+ * A typed field's hints to the phone (owner, 27.11.2026: the iPhone put "AutoFill Contact" over the keyboard on With and
+ * the Movie search — it took them for a person's name). Every one: no AutoFill (`autocomplete="off"`), a `name` that
+ * reads as nothing of a contact's, no autocorrect or spell check on short values; a search is `type="search"` (AutoFill
+ * leaves search fields alone), and each says what its Return key does. `kind`: how the keyboard capitalises — a name
+ * ("words"), a code ("characters": a booking, a seat), a search or an address (none), else a sentence.
+ */
+export function typingHints(name: string, kind: 'search' | 'words' | 'code' | 'none' | 'sentence' = 'sentence') {
+  return {
+    name: `item-${name}`,
+    ...(kind === 'search' ? { type: 'search' as const } : {}),
+    autoComplete: 'off',
+    autoCorrect: 'off',
+    spellCheck: false,
+    autoCapitalize: kind === 'words' ? 'words' : kind === 'code' ? 'characters' : kind === 'sentence' ? 'sentences' : 'none',
+    enterKeyHint: kind === 'search' ? 'search' as const : 'done' as const,
+  }
+}
