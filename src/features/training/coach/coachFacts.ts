@@ -2,6 +2,7 @@ import { actionLabel, workloadLabel } from '../progress-engine'
 import { labelForSlug } from '../muscleMap'
 import { leanLabel, PAIR_META, ratioText, type BalancePair } from '../plan/muscleBalance'
 import { nextTargetText, type CoachData } from './coachFormat'
+import { mondayOfStr, shiftDateStr } from '../../../shared/utils/dateUtils'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  The PT assessment's decisions, made by code (AI last, docs/features/ai.md).
@@ -12,8 +13,9 @@ import { nextTargetText, type CoachData } from './coachFormat'
 //  came from. The model's part is what code cannot do: read the owner's own words (pain, motivation), pick what to
 //  say first, and write a few calm sentences that follow the verdicts (never against them).
 //
-//  The thresholds are the PT rules' own (sleep under 6 h trims a session, under 5 h twice running is a rest day, a
-//  muscle at its recoverable ceiling is a deload cue); each is one constant below. Pure: no React, no I/O
+//  The thresholds are the PT rules' own (sleep under 6 h trims a session, under 5 h twice running is a rest day); the
+//  deload cue follows S31 in docs/training/science.md — offered, never forced — and high weekly volume alone is never
+//  one (S18: high volume is not an error). Each threshold is one constant below. Pure: no React, no I/O
 //  (scripts/verify-coach-context.cjs).
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -37,9 +39,40 @@ export function feelingOf(stored: unknown): PtFeeling | null {
 
 export const SHORT_NIGHT_HOURS = 6
 export const VERY_SHORT_NIGHT_HOURS = 5
-/** Decisions that mean a lift went backwards (or its load was cut): two of them with a very tired owner is a deload cue. */
+/** Decisions that mean a lift went backwards (or its load was cut) — listed as "down". */
 const REGRESSION_ACTIONS: readonly string[] = ['WATCH_FOR_REGRESSION', 'REVIEW_LOAD_REDUCTION']
-const WATCH_ACTIONS: readonly string[] = ['WATCH_FOR_PLATEAU', 'WATCH_FOR_REGRESSION', 'REVIEW_LOAD_REDUCTION']
+/** S31(b): a lift whose numbers have not risen at its load (a plateau, or falling reps). */
+const STALLED_ACTIONS: readonly string[] = ['WATCH_FOR_PLATEAU', 'WATCH_FOR_REGRESSION']
+/** The one lift to name when nothing is ready: a step back first, then a watch flag. */
+const WATCH_ACTIONS: readonly string[] = ['STEP_BACK', 'WATCH_FOR_PLATEAU', 'WATCH_FOR_REGRESSION', 'REVIEW_LOAD_REDUCTION']
+/** The lifts to push: two sessions at the top of the range (Add weight), or Almost (reps first, or jump). */
+const READY_ACTIONS: readonly string[] = ['READY_TO_INCREASE', 'ALMOST_READY']
+
+/** S31(a): offer a deload after this many weeks without an easy week (S31 says 4–8; the middle is an app choice). */
+export const DELOAD_AFTER_WEEKS = 6
+/** S31(b): this many stalled lifts at once (the app doesn't know which lifts are "main", so one is not enough). */
+export const DELOAD_STALLED_LIFTS = 2
+/** How far back the easy-week count looks (the coach's training history is 6 months). */
+const EASY_WEEK_LOOKBACK = 26
+
+/**
+ * S31(a) + S32: complete Monday–Sunday weeks in a row, newest first, each with more than half of the planned sessions.
+ * A week with half or fewer counts as easy (S32) and ends the run. Null without a weekly target (nothing to compare).
+ */
+export function weeksSinceEasyWeek(sessionDates: readonly string[], today: string, targetPerWeek: number | null | undefined): number | null {
+  if (!targetPerWeek || targetPerWeek <= 0) return null
+  const perWeek = new Map<string, number>()
+  for (const date of sessionDates) {
+    const week = mondayOfStr(date)
+    perWeek.set(week, (perWeek.get(week) ?? 0) + 1)
+  }
+  let weeks = 0
+  for (let start = shiftDateStr(mondayOfStr(today), -7); weeks < EASY_WEEK_LOOKBACK; start = shiftDateStr(start, -7)) {
+    if ((perWeek.get(start) ?? 0) * 2 <= targetPerWeek) break
+    weeks++
+  }
+  return weeks
+}
 
 export type RecoveryGate = 'rest_day' | 'technique_day' | 'normal' | 'no_sleep_data'
 
@@ -53,15 +86,19 @@ export interface PtVerdicts {
     /** Why the gate is not "normal", in a clause. */
     reason: string
   }
-  /** Muscles at or over the recoverable ceiling (MRV), by name and with their sets. */
-  overreach: { muscle: string; sets: number; mrv: number }[]
   workloadReview: boolean
   regressionLifts: string[]
-  /** True when the overreach rule says to halve the sets: a muscle at its ceiling, a workload review, or two lifts down with a very tired owner. */
+  /** S31(b): lifts not rising at their load (plateau or falling reps). */
+  stalledLifts: string[]
+  /** S31(a): complete weeks in a row without an easy week, or null without a weekly target. */
+  weeksSinceEasy: number | null
+  /** S31: offer an easy week (about half the sets, same sessions) — never forced. */
   deloadCue: boolean
+  /** Why the cue is on, in short clauses; empty when it is off. */
+  deloadReasons: string[]
   /** Muscles under their minimum effective volume that no limitation restricts, worst first. */
   belowMinimum: { muscle: string; sets: number; mev: number }[]
-  /** The one lift for the next session: the first ready to increase, else the first with a watch flag. */
+  /** The one lift for the next session: the first to add weight (or Almost), else a step back, else a watch flag. */
   priority: { exercise: string; action: string; actionTitle: string; next: string | null } | null
   /** Push:pull and quad:hamstring ratios where a side is heavy. */
   balanceFlags: string[]
@@ -92,19 +129,26 @@ function recoveryOf(d: CoachData, feeling: PtFeeling): PtVerdicts['recovery'] {
 /** Every verdict the assessment rules decide from the numbers. */
 export function ptVerdicts(d: CoachData, feeling: PtFeeling): PtVerdicts {
   const recovery = recoveryOf(d, feeling)
-  const overreach = d.weeklyMuscleSets
-    .filter(m => m.landmarks && m.sets >= m.landmarks.mrv)
-    .map(m => ({ muscle: labelForSlug(m.slug), sets: round1(m.sets), mrv: m.landmarks!.mrv }))
   const workloadReview = d.progress.program?.workload === 'review_workload'
-  const regressionLifts = d.progress.decisions
-    .filter(r => REGRESSION_ACTIONS.includes(r.currentAction))
-    .map(r => d.progress.titleById.get(r.exerciseTemplateId) ?? r.exerciseTemplateId)
+  const titleOf = (id: string) => d.progress.titleById.get(id) ?? id
+  const regressionLifts = d.progress.decisions.filter(r => REGRESSION_ACTIONS.includes(r.currentAction)).map(r => titleOf(r.exerciseTemplateId))
+  const stalledLifts = d.progress.decisions.filter(r => STALLED_ACTIONS.includes(r.currentAction)).map(r => titleOf(r.exerciseTemplateId))
+  const weeksSinceEasy = weeksSinceEasyWeek(d.sessions.map(s => s.date), d.today, d.profile?.training_days_per_week)
+
+  // S31 — any one of: a long run without an easy week, lifts stalled at their load, or the owner very tired while a
+  // lift is stalled or down; plus the program-level workload review (several lifts declining). High volume alone is
+  // never a cue (S18).
+  const deloadReasons: string[] = []
+  if (weeksSinceEasy != null && weeksSinceEasy >= DELOAD_AFTER_WEEKS) deloadReasons.push(`${weeksSinceEasy} weeks without an easy week`)
+  if (stalledLifts.length >= DELOAD_STALLED_LIFTS) deloadReasons.push(`${stalledLifts.length} lifts not rising at their load`)
+  if (feeling === 'very tired' && (stalledLifts.length > 0 || regressionLifts.length > 0)) deloadReasons.push('very tired, with a lift stalled or down')
+  if (workloadReview) deloadReasons.push(`program workload: ${workloadLabel('review_workload')}`)
   const belowMinimum = d.weeklyMuscleSets
     .filter(m => m.landmarks && !m.restriction && m.sets < m.landmarks.mev)
     .map(m => ({ muscle: labelForSlug(m.slug), sets: round1(m.sets), mev: m.landmarks!.mev }))
     .sort((a, b) => (b.mev - b.sets) - (a.mev - a.sets))
 
-  const pick = d.progress.decisions.find(r => r.currentAction === 'READY_TO_INCREASE') ?? d.progress.decisions.find(r => WATCH_ACTIONS.includes(r.currentAction))
+  const pick = d.progress.decisions.find(r => READY_ACTIONS.includes(r.currentAction)) ?? d.progress.decisions.find(r => WATCH_ACTIONS.includes(r.currentAction))
   const priority = pick
     ? {
         exercise: d.progress.titleById.get(pick.exerciseTemplateId) ?? pick.exerciseTemplateId,
@@ -125,8 +169,8 @@ export function ptVerdicts(d: CoachData, feeling: PtFeeling): PtVerdicts {
     }
   }
   return {
-    recovery, overreach, workloadReview, regressionLifts,
-    deloadCue: overreach.length > 0 || workloadReview || (regressionLifts.length >= 2 && feeling === 'very tired'),
+    recovery, workloadReview, regressionLifts, stalledLifts, weeksSinceEasy,
+    deloadCue: deloadReasons.length > 0, deloadReasons,
     belowMinimum, priority, balanceFlags,
     missed: (d.missedSessions ?? []).map(m => `${m.title} (due ${m.dueDate})`),
   }
@@ -138,7 +182,7 @@ export function formatPtVerdicts(v: PtVerdicts): string {
   const r = v.recovery
   const night = r.lastNightHours === null ? '' : ` · last night ${r.lastNightHours} h${r.lastNightDate ? ` (${r.lastNightDate})` : ''}, seven-night average ${r.sevenNightAverage} h`
   lines.push(`RECOVERY: ${r.gate}${r.reason ? ` (${r.reason})` : ''}${night}`)
-  lines.push(`OVERREACH: ${v.deloadCue ? 'deload cue' : 'none'}${v.overreach.length ? ` · at the ceiling: ${v.overreach.map(o => `${o.muscle} ${o.sets}/${o.mrv}`).join(', ')}` : ''}${v.workloadReview ? ` · program workload: ${workloadLabel('review_workload')}` : ''}${v.regressionLifts.length ? ` · down: ${v.regressionLifts.join(', ')}` : ''}`)
+  lines.push(`OVERREACH: ${v.deloadCue ? `deload cue (${v.deloadReasons.join('; ')})` : 'none'}${v.stalledLifts.length ? ` · stalled: ${v.stalledLifts.join(', ')}` : ''}${v.regressionLifts.length ? ` · down: ${v.regressionLifts.join(', ')}` : ''}`)
   lines.push(`PRIORITY: ${v.priority ? `${v.priority.exercise} — ${v.priority.action} "${v.priority.actionTitle}"${v.priority.next ? ` · next: ${v.priority.next}` : ''}` : 'none (no decision to act on)'}`)
   lines.push(`BELOW MINIMUM VOLUME: ${v.belowMinimum.length ? v.belowMinimum.slice(0, 4).map(b => `${b.muscle} ${b.sets}/${b.mev}`).join(', ') : 'none'}`)
   lines.push(`IMBALANCE: ${v.balanceFlags.length ? v.balanceFlags.join('; ') : 'none'}`)
