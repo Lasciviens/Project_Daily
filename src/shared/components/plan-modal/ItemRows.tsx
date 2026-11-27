@@ -20,8 +20,8 @@ export const LINE = 'relative before:absolute before:left-3.5 before:right-0 bef
 const ROW = `${LINE} flex min-h-11 w-full items-center gap-2.5 px-3.5 text-lead`
 
 /**
- * A group of rows. A titled card's rows' marks (where each field goes) are one banner tucked behind its top-right,
- * beside its title (FieldMark.CardBanner: `isolate` keeps it under the card and above the sheet). An untitled card
+ * A group of rows. A titled card's rows' marks (where each field goes) are one banner on its heading line, at the right
+ * (FieldMark.CardBanner: small and whole, as tall as the heading's line — no extra row). An untitled card
  * has no room for one above it (only a grey sliver showed — owner-critic, 24.11.2026): its rows' marks go to the
  * next card's banner (`marksTo` here, `carried` there), or stay in their rows when it passes them nowhere.
  */
@@ -37,10 +37,14 @@ export function Section({ title, marksTo, carried, children }: {
   const marks = carried?.length ? [...carried, ...own.marks] : own.marks
   const register = marksTo ?? (title ? own.register : null)
   return (
-    <section className="relative isolate flex flex-col gap-1.5">
-      {title && <h3 className="section-label self-start px-3.5">{title}</h3>}
-      {/* After the heading: the banner is read and tabbed to after the card's name. */}
-      {title && <CardBanner marks={marks} />}
+    <section className="flex flex-col gap-1.5">
+      {title && (
+        <div className="flex min-h-4 items-center justify-between gap-2 px-3.5">
+          <h3 className="section-label">{title}</h3>
+          {/* After the heading: the banner is read and tabbed to after the card's name. */}
+          <CardBanner marks={marks} />
+        </div>
+      )}
       <div className="overflow-hidden rounded-row bg-surface">
         {register ? <CardMarksScope register={register}>{children}</CardMarksScope> : children}
       </div>
@@ -135,8 +139,9 @@ export function NoteRow({ children, tone }: { children: ReactNode; tone?: 'dange
 }
 
 /**
- * A Starts / Ends pill: a date (`wide`) or a time, each of one width — nothing jumps sideways as values change.
- * Open while its wheel or month shows; struck through red when the end can't be.
+ * A Starts / Ends pill: a date (`wide`) or a time, each at least one width — nothing jumps sideways as values change —
+ * and wider only when its text needs it (a wider weekday or system font: "Wed 25.11.2026" ran into the time pill on the
+ * iPhone, owner 27.11.2026), never cut. Open while its wheel or month shows; struck through red when the end can't be.
  */
 export function Pill({ children, label, open, onClick, wide, bad, disabled }: {
   children: ReactNode
@@ -151,7 +156,8 @@ export function Pill({ children, label, open, onClick, wide, bad, disabled }: {
     <button type="button" onClick={onClick} aria-expanded={open} aria-label={label} disabled={disabled}
       className={cx(
         'inline-flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-control px-2 text-lead tabular-nums transition-colors',
-        wide ? 'w-[8.5rem]' : 'w-[4.25rem]',
+        // In em: the pill's own (px) text decides, not the Display scale (9rem squeezed "Starts" at 125 %).
+        wide ? 'min-w-[9.6em]' : 'min-w-[4.5em]',
         bad ? 'bg-danger-soft text-danger line-through'
           : open ? 'bg-accent-50 text-accent-600'
           : 'bg-surface-2 text-fg hover:bg-surface-hover',
