@@ -1,22 +1,27 @@
 // Progress engine — configurable thresholds and the target/policy
-// resolution hierarchy. Every non-obvious number here is a documented
-// product heuristic (see docs/training/progress-engine/DECISION_RULES.md),
-// never presented as a scientific finding.
+// resolution hierarchy. Each number cites its rule in docs/training/science.md
+// (S-ids) or is a documented product heuristic
+// (docs/training/progress-engine/DECISION_RULES.md).
 
 import type {
   ExerciseProgressionPolicy, ExpectationRange, RoutineTarget, RoutineTargetLookup, UserOverrideLookup, ProgressMetricKind,
+  LiftClass, LoadStep,
 } from './types'
 import { normalizeTokens } from '../exerciseGifResolver'
 
-export const ALGORITHM_VERSION = '2.1.0'
+export const ALGORITHM_VERSION = '3.0.0'
 
 export const DEFAULT_POLICY: ExerciseProgressionPolicy = {
   recentWindowSessions: 8,
-  requiredTopRangeConfirmations: 1,
+  // S3/S10: two sessions in a row at the top of the range before adding load
+  // (owner, 27.11.2026: "this page forces me always to go up in weight asap").
+  requiredTopRangeConfirmations: 2,
   progressionStreakMinLength: 3,
   plateau: {
     graceSessions: 3,
-    minSessions: 5,
+    // S13: a stall needs ≥ 4 sessions AND ≥ 3 weeks at the load.
+    minSessions: 4,
+    minDays: 21,
     residualNoiseFloor: 1.0,
     accumulationSlopeFloor: 0.3,
     declineSlopeFloor: 0.3,
@@ -32,6 +37,63 @@ export const DEFAULT_POLICY: ExerciseProgressionPolicy = {
     dumbbell: 2,
     machine: 2.25,
   },
+  loadStep: {
+    // S4: about 2.5–5 % for upper-body or small-muscle lifts, 5–10 % for large
+    // lower-body lifts — the low end of each band, rounded to the equipment.
+    targetPercent: { upper_or_small: 2.5, large_lower: 5 },
+    // S5: a smallest step over 10 % is not taken at the top of the range.
+    maxPercent: 10,
+    percentPerExtraRep: 2.5,
+    // Owner's brief (27.11.2026): reps first means the top of the range +2 at most.
+    repsFirstExtraCap: 2,
+    percentPerRepLost: { low: 3, high: 2 },
+  },
+}
+
+/** S4's two bands, from Hevy's primary muscle group: quads, hamstrings,
+ *  glutes and lower back are large lower-body lifts; everything else
+ *  (calves included) is upper-body or small. Unknown → the smaller band. */
+export function liftClassFor(primaryMuscleGroup: string | null | undefined): LiftClass {
+  const g = (primaryMuscleGroup ?? '').trim().toLowerCase()
+  return g === 'quadriceps' || g === 'hamstrings' || g === 'glutes' || g === 'lower_back' ? 'large_lower' : 'upper_or_small'
+}
+
+function round2(n: number): number { return Math.round(n * 100) / 100 }
+
+/** S4/S5: the next load step as a % of the current load. The S4 band's low
+ *  end is rounded to whole multiples of the equipment's smallest step (at
+ *  least one, never past the 10 % ceiling when a smaller multiple exists);
+ *  `tooBig` when even ONE smallest step is over the ceiling (16 → 18 kg
+ *  dumbbells is +12.5 %). Assisted weight moves the other way and its % of
+ *  the assistance is no measure of difficulty, so it always takes one step. */
+export function resolveLoadStep(
+  loadKg: number, smallestKg: number, liftClass: LiftClass, policy: ExerciseProgressionPolicy, assisted = false,
+): LoadStep {
+  const { targetPercent, maxPercent } = policy.loadStep
+  const pct = (kg: number) => (loadKg > 0 ? Math.round((kg / loadKg) * 1000) / 10 : 0)
+  const smallestPercent = pct(smallestKg)
+  if (assisted || loadKg <= 0) {
+    return { stepKg: smallestKg, nextKg: round2(assisted ? loadKg - smallestKg : loadKg + smallestKg), percent: smallestPercent, smallestKg, smallestPercent, tooBig: false }
+  }
+  let steps = Math.max(1, Math.round((loadKg * targetPercent[liftClass]) / 100 / smallestKg))
+  while (steps > 1 && (steps * smallestKg / loadKg) * 100 > maxPercent) steps--
+  const stepKg = round2(steps * smallestKg)
+  return { stepKg, nextKg: round2(loadKg + stepKg), percent: pct(stepKg), smallestKg, smallestPercent, tooBig: smallestPercent > maxPercent }
+}
+
+/** S5: reps first — aim for the top of the range + ceil(step % ÷ 2.5),
+ *  capped at +2. */
+export function repsFirstExtra(stepPercent: number, policy: ExerciseProgressionPolicy): number {
+  return Math.min(policy.loadStep.repsFirstExtraCap, Math.max(1, Math.ceil(stepPercent / policy.loadStep.percentPerExtraRep)))
+}
+
+/** S5 / §1.3: after a jump of `stepPercent`, reps fall by about 1 per 2–3 %
+ *  of load added. From `reps` at the old load → the [low, high] reps to
+ *  expect at the new one (an estimate, never a target). */
+export function expectedRepsAfterStep(reps: number, stepPercent: number, policy: ExerciseProgressionPolicy): { low: number; high: number } {
+  const { low, high } = policy.loadStep.percentPerRepLost
+  const most = Math.round(stepPercent / high), least = Math.round(stepPercent / low)
+  return { low: Math.max(1, reps - most), high: Math.max(1, reps - least) }
 }
 
 // Bodyweight reps have NO generic default: a 10–15 default made sub-10

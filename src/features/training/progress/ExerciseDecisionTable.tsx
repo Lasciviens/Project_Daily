@@ -4,8 +4,9 @@ import { useProgressDataContext } from './progressDataContext'
 import { actionLabel, improvementScore } from '../progress-engine/copy'
 import type { ExerciseProgressResult, CanonicalExerciseSession, CurrentAction, EvidenceLevel, ProgressMetricKind } from '../progress-engine/types'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
-import { Card, EmptyState, TonePill, cx, type Tone } from '../../../shared/ui'
+import { Card, EmptyState, TonePill, cx } from '../../../shared/ui'
 import { DecisionDetail, DisclosureButton, EvidencePill, ExposureLine } from './decisionParts'
+import { ACTION_TONE } from '../plan/actionTone'
 import { RECENT_DAYS, filterByTab, isUnchanged, type DecisionTab } from './decisionTabs'
 import {
   NO_FILTERS, applyDecisionFilters, effectiveFilters, filtersActive, muscleOptions, muscleRoleFor, routineOptions,
@@ -39,25 +40,13 @@ const SORTS: { id: SortMode; label: string }[] = [
 ]
 
 const ACTION_PRIORITY_RANK: Record<CurrentAction, number> = {
-  READY_TO_INCREASE: 0, CONFIRM_BEFORE_INCREASING: 1, WATCH_FOR_REGRESSION: 1, WATCH_FOR_PLATEAU: 1,
-  CONFIRM_AT_CURRENT_LOAD: 2, REVIEW_LOAD_REDUCTION: 2, LOG_COMPARABLE_SESSION: 2,
+  READY_TO_INCREASE: 0, ALMOST_READY: 0, STEP_BACK: 1, WATCH_FOR_REGRESSION: 1, WATCH_FOR_PLATEAU: 1,
+  CONFIRM_AT_CURRENT_LOAD: 2, REVIEW_LOAD_REDUCTION: 2, LOG_COMPARABLE_SESSION: 2, REPEAT_AT_TOP: 2, NEW_WEIGHT: 2,
   HOLD_STEADY: 3, BUILD_AT_CURRENT_LOAD: 3, INSUFFICIENT_DATA: 4,
 }
 
 const EVIDENCE_RANK: Record<EvidenceLevel, number> = { limited: 0, moderate: 1, strong: 2 }
 
-const ACTION_TONE: Record<CurrentAction, Tone> = {
-  READY_TO_INCREASE:         'success',
-  BUILD_AT_CURRENT_LOAD:     'info',
-  CONFIRM_BEFORE_INCREASING: 'warn',
-  CONFIRM_AT_CURRENT_LOAD:   'warn',
-  REVIEW_LOAD_REDUCTION:     'warn',
-  HOLD_STEADY:               'info',
-  WATCH_FOR_PLATEAU:         'warn',
-  WATCH_FOR_REGRESSION:      'danger',
-  INSUFFICIENT_DATA:         'neutral',
-  LOG_COMPARABLE_SESSION:    'neutral',
-}
 
 function sortDecisions(list: ExerciseProgressResult[], sort: SortMode): ExerciseProgressResult[] {
   const arr = [...list]

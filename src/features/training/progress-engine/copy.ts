@@ -8,7 +8,7 @@ import type {
   RecentProgressTrendState, CurrentLoadProgressState, ProgressEventCode, ProgressMetricKind,
 } from './types'
 import { isWeightBasedMetric } from './metricStrategy'
-import { formatSessionSets, formatQuantity, quantityUnitFor } from './format'
+import { formatKg, formatSessionSets, formatQuantity, quantityUnitFor } from './format'
 
 /** Personal-record events. The engine still emits them (a record in the
  *  latest session is evidence for the program verdict), but the owner asked
@@ -114,10 +114,10 @@ export function currentLoadProgressMeaning(state: CurrentLoadProgressState): str
   switch (state) {
     case 'INSUFFICIENT_HISTORY': return 'Fewer than 3 comparable sessions at this exact load — nothing to read yet.'
     case 'TOO_EARLY_TO_JUDGE': return 'Only a few sessions at this load and nothing has moved yet — normal right after a load change.'
-    case 'BUILDING_BASELINE': return 'A few flat sessions at this load — still short of the 5 it takes to call a plateau.'
+    case 'BUILDING_BASELINE': return 'A few flat sessions at this load — short of the 4 sessions over 3 weeks it takes to call a plateau.'
     case 'ACCUMULATING': return 'Your total reps (or time) at this weight are rising session to session — double progression working.'
     case 'STABLE_VARIATION': return 'Totals at this weight bounce around without a clear direction.'
-    case 'POSSIBLE_PLATEAU': return 'Five or more sessions at this weight with no real change — a review signal, not a diagnosis.'
+    case 'POSSIBLE_PLATEAU': return '4 or more sessions over 3 or more weeks at this weight with no real change — a review signal, not a diagnosis.'
     case 'DECLINING': return 'Your totals at this weight are falling by more than normal noise, session after session.'
   }
 }
@@ -173,9 +173,36 @@ export function buildExplanationSentence(result: ExerciseProgressResult): string
     // implied as a load/count mismatch, which this isn't.
     return `This session has no data your tracked metric can read yet — nothing usable was logged for it. Log a session with the expected data (matching this exercise's tracked metric) to get a real read.`
   }
+  const kg = (v: string | number | null | undefined) => (typeof v === 'number' ? formatKg(v) : 'the previous load')
+  const stepBack = result.reasons.find(r => r.code === 'BELOW_MINIMUM_TWICE_AFTER_JUMP')
+  if (result.currentAction === 'STEP_BACK' && stepBack) {
+    return `Two sessions in a row below your minimum of ${result.expectation.repMin} at ${kg(stepBack.values.fromKg)} (${previousLabel} → ${latestLabel}). That is common after a weight step — going back to ${kg(stepBack.values.toKg)} and building reps there is the usual next move.`
+  }
+  const steppedBack = result.reasons.find(r => r.code === 'STEPPED_BACK')
+  if (steppedBack) {
+    return `Back at ${kg(steppedBack.values.toKg)} after the step to ${kg(steppedBack.values.fromKg)} (${previousLabel} → ${latestLabel}) — a normal step back, not a setback. Reps build from here.`
+  }
   if (result.currentAction === 'REVIEW_LOAD_REDUCTION') {
     const phrase = axisPhrase(result.metricKind)
-    return `${phrase.decreased} from ${previousLabel} to ${latestLabel}. Reason not recorded — confirm whether this was intentional before your next session.`
+    return `${phrase.decreased} (${previousLabel} → ${latestLabel}). Reps build at this load like at any other; if it wasn't planned, go back up next time.`
+  }
+  const almost = result.reasons.find(r => r.code === 'STEP_OVER_TEN_PERCENT')
+  if (result.currentAction === 'ALMOST_READY' && almost) {
+    return `Every set reached the top of your range 2 sessions in a row (${latestLabel}). The next step, ${kg(almost.values.nextKg)}, is +${almost.values.percent} % — over 10 %, so pushing reps first is the gentler way; jumping now works too.`
+  }
+  if (result.currentAction === 'REPEAT_AT_TOP') {
+    const r = result.reasons.find(r2 => r2.code === 'AWAITING_TOP_RANGE_CONFIRMATION')
+    const count = r ? ` — ${r.values.confirmations} of ${r.values.required} sessions in a row at this load` : ''
+    return result.reasons.some(r2 => r2.code === 'TOP_BUT_BELOW_LAST_TIME')
+      ? `Every set is at the top of your range (${latestLabel}), a little below last time (${previousLabel}), so the count starts again${count}. Repeat it and the next step is weight.`
+      : `Every set reached the top of your range (${latestLabel})${count}. Repeat it and the next step is weight.`
+  }
+  if (result.currentAction === 'READY_TO_INCREASE') {
+    return `Every set reached the top of your range 2 sessions in a row at this load (${previousLabel} → ${latestLabel}).`
+  }
+  if (result.currentAction === 'NEW_WEIGHT') {
+    const pct = result.currentState.loadChangePercent
+    return `${axisPhrase(result.metricKind).increased}${pct != null ? ` ${pct > 0 ? '+' : ''}${pct}%` : ''} (${previousLabel} → ${latestLabel}). Fewer reps after a jump are normal — this is the new starting point.`
   }
   if (result.reasons.some(r => r.code === 'ASSISTANCE_REDUCED')) {
     // §4: "stayed at or above the minimum" is a real compliance CLAIM —
@@ -219,7 +246,7 @@ export function buildExplanationSentence(result: ExerciseProgressResult): string
     const which = below ? `set ${below.position} fell below your minimum of ${result.expectation.repMin} (${below.reps} reps)` : 'at least one set fell below your minimum'
     const phrase = axisPhrase(result.metricKind)
     if (result.observedTransition === 'LOAD_INCREASED') {
-      return `${phrase.increased} (${previousLabel} → ${latestLabel}), but ${which} — confirm the new load before increasing again.`
+      return `${phrase.increased} (${previousLabel} → ${latestLabel}); ${which}, which is normal right after a jump.`
     }
     if (result.observedTransition === 'LOAD_UNCHANGED') {
       const drop = result.repDelta === 'REP_DECLINE' ? `, and total reps dropped (${previousLabel} → ${latestLabel})` : ''
@@ -242,32 +269,25 @@ export function buildExplanationSentence(result: ExerciseProgressResult): string
   if (result.currentAction === 'WATCH_FOR_REGRESSION') {
     return `A repeated decline across ${result.trend.currentLoadCycleSessions} sessions at this load.`
   }
-  if (result.currentAction === 'READY_TO_INCREASE') {
-    return `Every evaluated set reached the top of your target range.`
-  }
-  if (result.currentAction === 'BUILD_AT_CURRENT_LOAD' && result.reasons.some(r => r.code === 'AWAITING_TOP_RANGE_CONFIRMATION')) {
-    const r = result.reasons.find(r2 => r2.code === 'AWAITING_TOP_RANGE_CONFIRMATION')
-    return `This session hit the top of the range (${r?.values.confirmations ?? 1} confirmation${(r?.values.confirmations ?? 1) === 1 ? '' : 's'} so far, ${r?.values.required} needed) — one more clean session at the top before recommending an increase.`
-  }
   const unit = quantityUnitFor(result.metricKind)
   const phrase = axisPhrase(result.metricKind)
   if (result.repDelta === 'REP_DECLINE') {
     const unitNoun = totalQuantityNoun(result.metricKind)
     const from = totalOf(currentState.previous?.sets, result.metricKind), to = totalOf(currentState.latest?.sets, result.metricKind)
     const numbers = from != null && to != null ? ` from ${formatQuantity(from, unit)} to ${formatQuantity(to, unit)}` : ''
-    return `Same ${phrase.changedNoun}, but ${unitNoun} dropped${numbers} (${previousLabel} → ${latestLabel}). One off day is normal — aim to get back to last time's numbers.`
+    return `Same ${phrase.changedNoun}, ${unitNoun} down${numbers} (${previousLabel} → ${latestLabel}). One off day is normal — repeating today's numbers is fine, and last time's are progress.`
   }
   if (result.repDelta === 'REP_NO_CHANGE') {
-    const add = unit === 'seconds' ? 'add a few seconds' : unit === 'metres' ? 'match or beat it' : 'add one rep'
-    return `Same ${phrase.changedNoun} and about the same ${totalQuantityNoun(result.metricKind)} as last time (${latestLabel}) — repeat it and ${add}.`
+    const add = unit === 'seconds' ? 'a few seconds more on any set' : unit === 'metres' ? 'more on any set' : 'one more rep anywhere'
+    return `Same ${phrase.changedNoun} and about the same ${totalQuantityNoun(result.metricKind)} as last time (${latestLabel}) — that is on track; ${add} is progress.`
   }
   if (result.currentAction === 'INSUFFICIENT_DATA') {
-    return `Only one session logged so far (${latestLabel}) — repeat it and add a little to start a trend.`
+    return `Only one session logged so far (${latestLabel}) — repeating it is good; one more rep anywhere is progress.`
   }
   if (result.dataQualityFlags.includes('MISSING_PRESCRIBED_SET') || result.dataQualityFlags.includes('EXTRA_UNPRESCRIBED_SET')) {
     return `You logged ${result.currentState.latest?.sets.filter(s => s.kind !== 'dropset').length ?? 0} working sets; your program prescribes ${result.expectation.targetSets}. Log the prescribed sets to get a clean comparison.`
   }
-  return `No clear change since last time (${previousLabel} → ${latestLabel}) — repeat the session and try to add a little.`
+  return `No clear change since last time (${previousLabel} → ${latestLabel}) — that is on track; a little more anywhere is progress.`
 }
 
 /** Why there is no numeric next target — the ACTUAL cause, never one
@@ -285,7 +305,6 @@ export function nextTargetUnavailableText(result: ExerciseProgressResult): strin
     case 'no_sets':
       return 'No working sets logged for this exercise yet.'
     case 'action':
-      if (result.currentAction === 'REVIEW_LOAD_REDUCTION') return 'The load went down and the reason isn\'t recorded. If it was intentional (a deload, a new variation), just keep logging; if not, go back to the previous load next time.'
       return 'No numeric target for this state yet.'
     default:
       return 'No numeric target for this session.'

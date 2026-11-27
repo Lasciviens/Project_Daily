@@ -96,6 +96,9 @@ const routine = (id, title) => ({
     sets: [0, 1, 2].map(i => ({ type: 'normal', reps: null, rep_range_start: 8, rep_range_end: 10, weight_kg: 60, index: i })) }],
 })
 const base = { history, routines: [routine('r1', 'Push')], targetOverrides: [], sleepPoints: [], bodyweight: [], targetDays: 3, today: '2026-09-23' }
+// The same bench at the top of its range twice in a row (S3) — "Add weight".
+const historyReady = { ...history, sets: [...history.sets, ...[0, 1, 2].map(i => ({ ...set('w3', '2026-09-22', 60, 10, i) }))] }
+const baseReady = { ...base, history: historyReady }
 
 console.log('\n4 · computeProgressModel gate')
 {
@@ -134,7 +137,9 @@ console.log('\n5 · Coach snapshot + JSON')
   check('a Decision line per current-program exercise', /Decision: Bench Press: [A-Z_]+ "/.test(text), text)
   check('limitation name resolved, never undefined', text.includes('Limitation: Heavy hip hinge [= Hinge (deadlift pattern)] (limit) — lower back') && !/undefined/.test(text))
   check('latest session with previous numbers', text.includes('Bench Press: 3×10@60kg (previous: 3×8@60kg)'), text)
-  check('a load increase with no known step uses the engine headline, not the old load', /next: Ready to increase from 60 kg/.test(text), text.split('\n').find(l => l.includes('Decision')))
+  check('one session at the top of the range is "Repeat" (S3: 2 in a row), its next is the floor', /Decision: Bench Press: REPEAT_AT_TOP "Repeat" · latest: 60 kg × 10\/10\/10 · next: 60 kg × 10\/10\/10/.test(text), text.split('\n').find(l => l.includes('Decision')))
+  const readyText = formatPtSnapshot({ ...data, progress: computeProgressModel({ ...baseReady, currentProgram: [{ routine_id: 'r1' }] }) })
+  check('a load increase with no known step uses the engine headline, not the old load', /Decision: Bench Press: READY_TO_INCREASE "Add weight" · .*next: Add weight from 60 kg/.test(readyText), readyText.split('\n').find(l => l.includes('Decision')))
   check('no hard-coded split in the snapshot', !/bro-split|Back\/Chest/.test(text))
   check('weight trend line', text.includes("WEIGHT: 79.5kg (-0.5kg since 2026-09-20)"))
 
@@ -268,7 +273,9 @@ console.log('\n9 · The PT assessment\'s verdicts (coachFacts.ts: code decides, 
   const text = formatPtVerdicts(heavy)
   check('the text has one labelled line per verdict, in a fixed order', ['RECOVERY:', 'OVERREACH:', 'PRIORITY:', 'BELOW MINIMUM VOLUME:', 'IMBALANCE:', 'MISSED:'].every((l, i) => text.split('\n')[i].startsWith(l)), text)
   check('OVERREACH names the muscle and its ceiling; BELOW MINIMUM names the gap', /OVERREACH: deload cue · at the ceiling: .* 24\/22/.test(text) && /BELOW MINIMUM VOLUME: .* 2\/6/.test(text), text)
-  check('PRIORITY is the first lift ready to increase, with the engine\'s own target', /PRIORITY: Bench Press — READY_TO_INCREASE/.test(formatPtVerdicts(ptVerdicts(mk({}), 'normal'))), formatPtVerdicts(ptVerdicts(mk({}), 'normal')))
+  const ready = computeProgressModel({ ...baseReady, currentProgram: [{ routine_id: 'r1' }] })
+  check('PRIORITY is the first lift ready to increase, with the engine\'s own target', /PRIORITY: Bench Press — READY_TO_INCREASE "Add weight"/.test(formatPtVerdicts(ptVerdicts(mk({ progress: ready }), 'normal'))), formatPtVerdicts(ptVerdicts(mk({ progress: ready }), 'normal')))
+  check('one session at the top (Repeat) is not a priority to push', /PRIORITY: none/.test(formatPtVerdicts(ptVerdicts(mk({}), 'normal'))))
   check('every figure is a number, never "undefined" or "NaN"', !/undefined|NaN/.test(text))
 }
 

@@ -43,10 +43,12 @@ export interface ProgressTemplateRow {
 // THE one estimated-1RM formula in the app — the progress engine, the charts
 // and the Personal Records list all import this; never re-implement it (two
 // formulas once put two different "1RM"s for the same set on two screens).
-// Epley/Brzycki both carry material error above ~12 reps (commonly cited
-// ~±10% even at ≤10 reps) — sets outside that range are not eligible and
-// return null, which a caller shows as "n/a above 12 reps", never a number.
-export const EST_1RM_MAX_REPS = 12
+// Linear formulas like Epley hold only up to about 10 reps (S15, Reynolds
+// 2006) — a set of more reps is not eligible and returns null, which a caller
+// shows as "n/a above 10 reps", never a number. Sets of more reps still count
+// as progress through reps at the same load (S12). An estimate: watch the
+// direction, never the exact number.
+export const EST_1RM_MAX_REPS = 10
 
 export function est1RM(weightKg: number, reps: number | null | undefined): number | null {
   if (reps == null || !Number.isFinite(weightKg) || reps <= 0 || reps > EST_1RM_MAX_REPS) return null

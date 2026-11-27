@@ -62,8 +62,8 @@ console.log('\n== 1. est1RM (Epley) ==')
 {
   check('100kg x 5 reps -> Epley value', est1RM(100, 5) === 116.7, String(est1RM(100, 5)))
   check('reps=1 is an identity (the weight itself is the 1RM)', est1RM(140, 1) === 140)
-  check('reps=12 (the cutoff) still returns a value', est1RM(60, 12) !== null)
-  check('reps=13 (over the cutoff) returns null — too unreliable to estimate', est1RM(60, 13) === null)
+  check('S15: reps=10 (the cutoff) still returns a value', est1RM(60, 10) !== null)
+  check('S15: reps=11 (over the cutoff) returns null — too unreliable to estimate', est1RM(60, 11) === null)
   check('reps=0 returns null', est1RM(60, 0) === null)
 }
 
