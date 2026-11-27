@@ -5,9 +5,8 @@
 //  Calendar → "Show where each field goes" is on.
 //  Since 24.11.2026 (owner: "those small images are a bit ugly.. Use them as
 //  banner instead. And like a bit shadow. So not fully fully visible") a card's
-//  marks are one banner on its heading line (CardBanner): each place the card's
-//  rows go, once, a little faded, with a soft shadow — whole and small since
-//  27.11.2026 (owner, of the half-hidden marks: "flaws like attached screenshot"). Its
+//  marks are one banner across its top (CardBanner): each place the card's rows
+//  go, drawn large, faded and half out of the card, with a soft shadow. Its
 //  section title says it in words on a tap (or a mouse resting on it), naming
 //  the rows. A mark that is a row's value (the Calendar row's, with the red dot
 //  when Apple refused the item) stays small, in its row.
@@ -64,11 +63,11 @@ export function CardMarksScope({ register, children }: { register: RegisterMark;
 }
 
 /**
- * A titled card's banner: each place its rows go (cardMarkPlaces), small and whole on the card's heading line, at its
- * right (owner, 27.11.2026, of the marks half hidden behind the card: "flaws like attached screenshot"). It is as tall as the
- * heading's line, so it adds no row and covers nothing; a little faded, with a soft shadow (`.mark-banner` in
- * index.css: tokens only, both themes). A tap (or a mouse resting on it) says where the card's rows go, naming them
- * (cardMarksText). Its fade-in and its hover fade run only under useMotion() (Reduce Motion: none).
+ * A titled card's banner: each place its rows go (cardMarkPlaces), drawn large at the card's top-right and tucked
+ * behind it — the card hides its lower part, the rest is faded, with a soft shadow (`.mark-banner` in index.css:
+ * tokens only, both themes). It sits in the free space beside the card's title, never under a row's text or control,
+ * and adds no height. A tap (or a mouse resting on it) says where the card's rows go, naming them (cardMarksText).
+ * Its fade-in and its hover fade run only under useMotion() (Reduce Motion: none).
  */
 export function CardBanner({ marks }: { marks: readonly CardMark[] }) {
   const { show, on } = useContext(BubbleContext)
@@ -78,7 +77,7 @@ export function CardBanner({ marks }: { marks: readonly CardMark[] }) {
   const text = cardMarksText(marks)
   return (
     <button type="button" title={text} aria-label={text} onClick={e => show(e.currentTarget, text)} data-mark-banner=""
-      className={cx('mark-banner flex h-4 shrink-0 cursor-help items-center gap-1.5', motion && 'mark-banner-motion motion-pop-in')}>
+      className={cx('mark-banner absolute -top-2 right-3 -z-10 flex cursor-help gap-1', motion && 'mark-banner-motion motion-pop-in')}>
       {places.map(g => <span key={g} aria-hidden className="mark-banner-art"><MarkIcon goes={g} /></span>)}
     </button>
   )
