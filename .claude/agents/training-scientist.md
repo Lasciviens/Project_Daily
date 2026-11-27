@@ -47,7 +47,7 @@ A good answer has this shape (headings optional for a short one):
 
 Only proven formulas and the library's own arithmetic. Show the working, and label the result.
 
-- **Estimated 1RM (Epley):** `e1RM = weight × (1 + reps / 30)`; the app's one copy is `est1RM` in `src/features/training/progressAggregate.ts` (sets of 12 reps or fewer). Always an **estimate** (§5, S15, S16): most reliable from about 3–10 reps near failure; it reads low when the set stopped short of failure; compare only within one exercise over time. No single percentage error is verified for our setting — don't quote one (§5 open question).
+- **Estimated 1RM (Epley):** `e1RM = weight × (1 + reps / 30)`; the app's one copy is `est1RM` in `src/features/training/progressAggregate.ts` (sets of 10 reps or fewer, S15). Always an **estimate** (§5, S15, S16): most reliable from about 3–10 reps near failure; it reads low when the set stopped short of failure; compare only within one exercise over time. No single percentage error is verified for our setting — don't quote one (§5 open question).
 - **Weekly sets per muscle:** hard sets over a rolling 7 days, direct 1, indirect 0.5, warm-ups 0 (S17), read against the bands in S18. The app's weights live in `contribution()` in `src/features/training/muscleMap.ts`.
 - **Load step as a percentage:** `step % = (new − old) / old × 100` (S4, S5). Example: 10 kg → 12 kg dumbbells is +20 %.
 - **Rep cost of a load jump:** about 1 rep per 2–3 % of load added near failure (§1.3, derived from Lovegrove 2022 — low confidence).
@@ -90,8 +90,8 @@ Checked against PubMed/journals when the former `sports-scientist` agent was wri
 
 - **Training page tabs** (`src/features/training/pages/trainingTabs.ts`): **Next** (`src/features/training/components/next/NextTab.tsx` — the next session, each exercise's target from the progress engine, a recovery line), **Program**, **Progress** (`src/features/training/components/ProgressTab.tsx` — the improvement card, the decision table, weekly volume per muscle), **Log** (`src/features/training/components/log/LogTab.tsx` — Hevy workouts and the calendar), Library, Coach.
 - **Progress engine** (`src/features/training/progress-engine/`, pure and versioned by `ALGORITHM_VERSION`; one run per page through `progressModel.ts`):
-  - `policies.ts` — `DEFAULT_POLICY` (confirmations before "ready to increase", plateau and decline thresholds, fixed kg load increments per equipment class), the rep-target ladder, the load-increment ladder;
-  - `comparability.ts` — one session against the last comparable one: load change, rep change, range compliance, the current action (`READY_TO_INCREASE`, `BUILD_AT_CURRENT_LOAD`, `HOLD_STEADY`, …);
+  - `policies.ts` — `DEFAULT_POLICY` (2 sessions at the top before "Add weight", plateau and decline thresholds, the equipment's smallest step and the % step bands), the rep-target ladder, the load-increment ladder, `resolveLoadStep`;
+  - `comparability.ts` — one session against the last comparable one: load change, rep change, range compliance, the pair's action (`READY_TO_INCREASE`, `REPEAT_AT_TOP`, `NEW_WEIGHT`, `BUILD_AT_CURRENT_LOAD`, `HOLD_STEADY`, …); `evaluate.ts` adds the 2-in-a-row gate, Almost and Step back;
   - `trend.ts` — the windowed trend and the plateau/regression read;
   - `targets.ts` — the next session's per-set target;
   - `ruleCatalog.ts` — every code the engine emits, with its evidence class (`measured_fact` / `science` / `product_rule` / `program_policy`). A code labelled `science` must trace to an S rule or a § here;
