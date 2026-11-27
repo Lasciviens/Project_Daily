@@ -28,9 +28,14 @@ const fail = msg => { console.error(`verify-db-training-sessions: ${msg}`); proc
     const body = sql.slice(f.index, sql.indexOf('$$;', f.index))
     const args = f[2].replace(/\bp_\w+\s+/g, '').trim()
     if (!/set search_path = ''/.test(body)) problems.push(`${f[1]} without search_path ''`)
-    if (!sql.includes(`revoke all on function ${f[1]}(${args}) from public, anon, authenticated`)) problems.push(`${f[1]}(${args}) callable from the browser`)
+    // The browser calls only the owner's move and its Undo, and they run with the caller's rights (row security).
+    const browser = sql.includes(`grant execute on function ${f[1]}(${args}) to authenticated`)
+    if (browser && !/security invoker/.test(body)) problems.push(`${f[1]} is granted to the browser but not SECURITY INVOKER`)
+    if (!browser && !sql.includes(`revoke all on function ${f[1]}(${args}) from public, anon, authenticated`)) problems.push(`${f[1]}(${args}) callable from the browser`)
   }
-  if (/grant execute on function/.test(sql)) problems.push('a grant of a matching function (they are the database\'s own)')
+  const granted = [...sql.matchAll(/grant execute on function (public\.\w+)\(/g)].map(m => m[1]).sort().join(', ')
+  if (granted !== 'public.training_shift_sessions, public.training_shift_undo') problems.push(`the browser may call only the move and its Undo (granted: ${granted})`)
+  if (/cron\.schedule/.test(sql)) problems.push('a scheduled job (owner: the move is an option, never automatic)')
   if (!/create trigger trg_tasks_workout_owner\s+before insert or update of hevy_workout_id, user_id on public\.tasks/.test(sql)) problems.push('no owner check on tasks.hevy_workout_id')
   if (problems.length) fail(`migration 213 has ${problems.join('; ')}`)
 }
@@ -99,7 +104,7 @@ try {
   step('211 seed', () => psql(a, ['-f', join(root, 'scripts/db-tests/linked-plans/seed.sql')]))
   step('211', () => psql(a, ['-f', mig211]))
   step('213 seed', () => psql(a, ['-f', join(root, 'scripts/db-tests/training-sessions/seed.sql')]))
-  step('snapshot before 213', () => psql(a, ['-c', 'create table public.t_before213 as select id, status, title, due_date from public.tasks']))
+  step('snapshot before 213', () => psql(a, ['-c', 'create table public.t_before213 as select id, status, title, due_date, hevy_workout_id from public.tasks']))
   step('213 first run', () => psql(a, ['-f', mig213]))
   step('213 second run', () => psql(a, ['-f', mig213]))
   step('scenarios', () => { passed = runScenarios(a, join(root, 'scripts/db-tests/training-sessions/scenarios.sql')) })
