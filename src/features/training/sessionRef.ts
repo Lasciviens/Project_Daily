@@ -11,7 +11,7 @@
 // a deliberate second step (the popup's ⋯ menu).
 
 import { matchDaySessions, planStartHHMM, planTaskOf, planWorkoutScore } from './components/calendar/calendarSessions'
-import { sessionStatus, SESSION_LABEL, type SessionState, type SessionStatus } from './plan/sessionState'
+import { doneShift, doneWord, sessionStatus, SESSION_LABEL, type SessionState, type SessionStatus } from './plan/sessionState'
 import { formatDate, formatWeekdayDate } from '../../shared/utils/dateFormat'
 import { repeatSummary } from '../daily/recurrence'
 import { formatDurationMinutes } from '../../shared/utils/formatDuration'
@@ -182,9 +182,9 @@ export function coveredPlanNote(plans: readonly CalendarPlanItem[], workout: Day
 /** A plan with the day it falls on. */
 export interface PlanOnDay { plan: CalendarPlanItem; date: string }
 
-/** The workout that closed a plan on another day than the plan's own, and that
- *  workout's local day. */
-export interface DoneElsewhere { workoutId: string; date: string }
+/** The workout that closed a plan on another day than the plan's own, that
+ *  workout's local day, and how many days from the plan's (+ late, − early). */
+export interface DoneElsewhere { workoutId: string; date: string; shift: number }
 
 /** The workout that closed this plan when it was done on another day, else null
  *  (not done by a workout, or done on its own day). `workoutDay`: the workout's
@@ -197,13 +197,14 @@ export function doneElsewhere(
 ): DoneElsewhere | null {
   if (status.state !== 'done' || status.doneBy !== 'workout' || !status.workoutId) return null
   const date = workoutDay(status.workoutId) ?? null
-  return date == null || date === planDate ? null : { workoutId: status.workoutId, date }
+  return date == null || date === planDate ? null : { workoutId: status.workoutId, date, shift: doneShift(planDate, date) ?? 0 }
 }
 
-/** The status word of a plan: "Done 26.11.2026" when a workout on another day
- *  closed it, else THE status word (SESSION_LABEL). */
+/** The status word of a plan: "Done 26.11.2026 · 2 days late" when a workout
+ *  on another day closed it (sessionState.doneWord), else THE status word
+ *  (SESSION_LABEL). */
 export function planStateWord(state: SessionState, elsewhere: DoneElsewhere | null): string {
-  return state === 'done' && elsewhere?.date ? `Done ${formatDate(elsewhere.date)}` : SESSION_LABEL[state]
+  return state === 'done' && elsewhere?.date ? doneWord(elsewhere.shift, elsewhere.date) : SESSION_LABEL[state]
 }
 
 /** "Planned for 24.11.2026 16:45" — a plan of another day that a workout closed. */
