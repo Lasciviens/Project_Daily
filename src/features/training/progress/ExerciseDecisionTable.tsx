@@ -120,7 +120,7 @@ function DecisionRow({ result, sessions, metricKind, title, noChange, muscleRole
           </div>
         </td>
         <td className="px-3 py-2.5"><ExposureLine result={result} />{noChange && <> <NoChangePill /></>}</td>
-        <td className="px-3 py-2.5"><TonePill tone={ACTION_TONE[result.currentAction]}>{actionLabel(result.currentAction)}</TonePill></td>
+        <td className="px-3 py-2.5"><TonePill tone={ACTION_TONE[result.currentAction]}>{actionLabel(result.currentAction, result.metricKind)}</TonePill></td>
         <td className="px-3 py-2.5"><EvidencePill level={result.evidence.progress} label="Trend evidence" /></td>
         <td className="px-3 py-2.5">{result.evidence.recommendation ? <EvidencePill level={result.evidence.recommendation} label="Decision evidence" /> : <span className="text-meta text-fg-faint">—</span>}</td>
       </tr>
@@ -139,7 +139,7 @@ function DecisionCard({ result, sessions, metricKind, title, noChange, muscleRol
     <li className="rounded-row border border-line px-3 pb-3 pt-1">
       <div className="flex items-center justify-between gap-2">
         <ToggleName open={open} onToggle={() => setOpen(v => !v)} title={title} />
-        <TonePill tone={ACTION_TONE[result.currentAction]} className="shrink-0">{actionLabel(result.currentAction)}</TonePill>
+        <TonePill tone={ACTION_TONE[result.currentAction]} className="shrink-0">{actionLabel(result.currentAction, result.metricKind)}</TonePill>
       </div>
       <div className="mt-0.5"><ExposureLine result={result} />{noChange && <> <NoChangePill /></>}</div>
       <div className="mt-1.5 flex flex-wrap items-center gap-2">

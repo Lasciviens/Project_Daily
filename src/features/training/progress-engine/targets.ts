@@ -145,6 +145,10 @@ export interface TargetContext {
   stepBackTo?: CanonicalExerciseSession | null
   /** REPEAT_AT_TOP: how many sessions in a row are at the top, of how many. */
   confirmations?: { count: number; required: number } | null
+  /** Every load this exercise was logged at — a step lands on one when it is within half a step. */
+  loggedLoads?: readonly number[]
+  /** The latest session is below the minimum at a load just jumped to. */
+  belowAfterJump?: boolean
 }
 
 function sentence(text: string): string {
@@ -212,7 +216,7 @@ export function buildNextTargets(
       }
     }
     const smallest = resolveLoadIncrementKg(explicitIncrementKg, equipmentClass, observedIncrements, policy)
-    const step = load != null && smallest != null ? resolveLoadStep(load, smallest, liftClass, policy, assisted) : null
+    const step = load != null && smallest != null ? resolveLoadStep(load, smallest, liftClass, policy, assisted, context.loggedLoads) : null
     const nextLoad = step?.nextKg ?? null
     const floorReps = expectation.repMin
     const setTargets: SetTarget[] = sets.map((s, i) => {
@@ -271,32 +275,40 @@ export function buildNextTargets(
   if (currentAction === 'ALMOST_READY' && load != null && expectation.repMax != null) {
     // S5: the smallest step is over 10 % — reps first, or jump now.
     const smallest = resolveLoadIncrementKg(explicitIncrementKg, equipmentClass, observedIncrements, policy)
-    const step = smallest != null ? resolveLoadStep(load, smallest, liftClass, policy) : null
+    const step = smallest != null ? resolveLoadStep(load, smallest, liftClass, policy, false, context.loggedLoads) : null
     if (step) {
       const repsGoal = expectation.repMax + repsFirstExtra(step.smallestPercent, policy)
       const expect = expectedRepsAfterStep(Math.min(...evaluatedReps(latest)), step.percent, policy)
-      const jumpReps = expectation.repMin ?? expect.low
-      headline = `${loadLabel(step.nextKg)} would be +${step.percent} % (expect about ${expect.low === expect.high ? expect.low : `${expect.low}–${expect.high}`} reps there). Push reps first, up to ${repsGoal} on ${isBackoff ? 'the top set' : 'each set'} — or try ${loadLabel(step.nextKg)} × ${jumpReps} now; both are progress.`
+      const range = expect.low === expect.high ? `${expect.low}` : `${expect.low}–${expect.high}`
+      const where = isBackoff ? 'the top set' : 'each set'
+      // The jump is offered only when the estimate reaches the minimum; otherwise it says so plainly (S5).
+      const jumpOk = expectation.repMin == null || expect.high >= expectation.repMin
+      headline = jumpOk
+        ? `${loadLabel(step.nextKg)} would be +${step.percent} % (expect about ${range} reps there). Push reps first, up to ${repsGoal} on ${where} — or try ${loadLabel(step.nextKg)} × ${expect.high} now; both are progress.`
+        : `${loadLabel(step.nextKg)} would be +${step.percent} %: expect about ${range} reps there, under your ${expectation.repMin} minimum. Push reps first, up to ${repsGoal} on ${where}.`
       explanationCode = 'ALMOST_REPS_FIRST'
       progReq = {
-        headline: `Add weight once ${isBackoff ? 'the top set reaches' : 'every set reaches'} ${repsGoal} reps at ${loadLabel(load)} — or jump to ${loadLabel(step.nextKg)} whenever you choose.`,
+        headline: `Add weight once ${isBackoff ? 'the top set reaches' : 'every set reaches'} ${repsGoal} reps at ${loadLabel(load)}${jumpOk ? ` — or jump to ${loadLabel(step.nextKg)} whenever you choose` : ''}.`,
         loadKg: load, targetSetReps: Array(sets.length).fill(repsGoal), explanationCode: 'PROGRESSION_REQUIREMENT_REPS_FIRST',
       }
     } else headline = `Repeat ${floorText} = good · ${stretchPhrase(unit)}`
   } else if (currentAction === 'REPEAT_AT_TOP' || plan.code === 'REPEAT_TO_CONFIRM') {
     const c = context.confirmations
     const count = c ? ` (top of range ${Math.min(c.count, c.required)} of ${c.required})` : ''
-    headline = `Repeat ${floorText} = good${count} · do it again and the next step is weight.`
+    headline = `Repeat ${floorText} = good${count} · do it again and the next step comes.`
     if (currentAction === 'REPEAT_AT_TOP') explanationCode = 'REPEAT_TO_CONFIRM'
   } else if (plan.code === 'RECOVER_PREVIOUS' && plan.previous) {
     headline = `Repeat ${floorText} = good · back to ${shown(plan.previous)} = progress.`
   } else if (plan.code === 'MATCH_OR_BEAT') {
     headline = `Match ${floorText} = good · more on any set = progress.`
+  } else if (context.belowAfterJump && expectation.repMin != null && unit === 'reps') {
+    // Below the minimum right after a jump: the honest condition, not "+1 rep anywhere".
+    headline = `Repeat ${floorText} = good · ${expectation.repMin} on every set = the jump holds.`
   } else {
     headline = `Repeat ${floorText} = good · ${stretchPhrase(unit)}.`
   }
   if (currentAction === 'NEW_WEIGHT' && load != null) {
-    headline = `New weight — ${headline.charAt(0).toLowerCase()}${headline.slice(1)} Fewer reps after a jump are normal.`
+    headline = `New weight — ${headline.charAt(0).toLowerCase()}${headline.slice(1)}${context.belowAfterJump ? '' : ' Fewer reps after a jump are normal.'}`
   } else if (currentAction === 'REVIEW_LOAD_REDUCTION' && load != null) {
     headline = `Lighter than last time — ${headline.charAt(0).toLowerCase()}${headline.slice(1)}`
   }

@@ -60,7 +60,9 @@ function totalQuantityNoun(metricKind: ProgressMetricKind): string {
   }
 }
 
-export function actionLabel(action: CurrentAction): string {
+/** The pill for an action. An assisted exercise's "Add weight" is "Less assist" — less help is its step. */
+export function actionLabel(action: CurrentAction, metricKind?: ProgressMetricKind): string {
+  if (action === 'READY_TO_INCREASE' && metricKind === 'assistedWeight') return 'Less assist'
   return RULE_CATALOG[action]?.title ?? action
 }
 
@@ -197,8 +199,8 @@ export function buildExplanationSentence(result: ExerciseProgressResult): string
     const r = result.reasons.find(r2 => r2.code === 'AWAITING_TOP_RANGE_CONFIRMATION')
     const count = r ? ` — ${r.values.confirmations} of ${r.values.required} sessions in a row at this load` : ''
     return result.reasons.some(r2 => r2.code === 'TOP_BUT_BELOW_LAST_TIME')
-      ? `Every set is at the top of your range (${latestLabel}), a little below last time (${previousLabel}), so the count starts again${count}. Repeat it and the next step is weight.`
-      : `Every set reached the top of your range (${latestLabel})${count}. Repeat it and the next step is weight.`
+      ? `Every set is at the top of your range (${latestLabel}), a little below last time (${previousLabel}), so the count starts again${count}. Repeat it and the next step comes.`
+      : `Every set reached the top of your range (${latestLabel})${count}. Repeat it and the next step comes.`
   }
   if (result.currentAction === 'READY_TO_INCREASE') {
     return `Every set reached the top of your range 2 sessions in a row at this load (${previousLabel} → ${latestLabel}).`

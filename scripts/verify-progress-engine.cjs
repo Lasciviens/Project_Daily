@@ -1756,7 +1756,7 @@ console.log('\n== 23. Progression rules 3.0 — the owner\'s example (27.11.2026
   check('...its target: repeat 8/8/8 = good · +1 rep anywhere = progress', big(eights) === '16 kg × 8/8/8' && headline(eights) === 'Repeat 8/8/8 = good · +1 rep anywhere = progress.', `${big(eights)} | ${headline(eights)}`)
   const eightsTop = run('ex16b', [[16, [8, 7, 6]], [16, [8, 8, 8]]], { expectation: DEFAULT_EXPECTATION(6, 8, 3) })
   check('in a 6–8 range, 8/8/8 once → Repeat (top of range 1 of 2), not Ready', eightsTop.currentAction === 'REPEAT_AT_TOP' && actionLabel(eightsTop.currentAction) === 'Repeat'
-    && headline(eightsTop) === 'Repeat 8/8/8 = good (top of range 1 of 2) · do it again and the next step is weight.', headline(eightsTop))
+    && headline(eightsTop) === 'Repeat 8/8/8 = good (top of range 1 of 2) · do it again and the next step comes.', headline(eightsTop))
   const twelveOnce = run('ex16', [[16, [8, 7, 6]], [16, [8, 8, 8]], [16, [10, 10, 9]], [16, [12, 12, 12]]])
   check('12/12/12 once → Repeat (1 of 2)', twelveOnce.currentAction === 'REPEAT_AT_TOP' && twelveOnce.reasons.some(r => r.code === 'AWAITING_TOP_RANGE_CONFIRMATION' && r.values.confirmations === 1 && r.values.required === 2))
   const twelveTwice = run('ex16', [[16, [8, 7, 6]], [16, [8, 8, 8]], [16, [10, 10, 9]], [16, [12, 12, 12]], [16, [12, 12, 12]]])
@@ -1787,15 +1787,19 @@ console.log('\n== 23. Progression rules 3.0 — the owner\'s example (27.11.2026
   // A jump that doesn't hold, twice → Step back, with a concrete target.
   const jumped = [[16, [12, 12, 12]], [16, [12, 12, 12]], [18, [7, 6, 6]]]
   const newWeight = run('jump', jumped)
-  check('the first session at 18 kg (7/6/6) → New weight, never a warning', newWeight.currentAction === 'NEW_WEIGHT' && actionLabel(newWeight.currentAction) === 'New weight' && headline(newWeight).startsWith('New weight — repeat 7/6/6 = good'), headline(newWeight))
-  const stepBack = run('jump', [...jumped, [18, [7, 7, 6]]])
-  check('18 kg below the minimum twice in a row → Step back', stepBack.currentAction === 'STEP_BACK' && actionLabel(stepBack.currentAction) === 'Step back', stepBack.currentAction)
+  check('the first session at 18 kg (7/6/6) → New weight, never a warning', newWeight.currentAction === 'NEW_WEIGHT' && actionLabel(newWeight.currentAction) === 'New weight', headline(newWeight))
+  const gaining = run('jump', [...jumped, [18, [7, 7, 6]]])
+  check('18 kg 7/6/6 → 7/7/6: below the minimum twice but better → no Step back (the jump is settling in)', gaining.currentAction !== 'STEP_BACK' && gaining.currentAction === 'BUILD_AT_CURRENT_LOAD', gaining.currentAction)
+  check('…its line says the honest condition: "8 on every set = the jump holds"', headline(gaining) === 'Repeat 7/7/6 = good · 8 on every set = the jump holds.', headline(gaining))
+  check('New weight below the minimum says it too', headline(newWeight) === 'New weight — repeat 7/6/6 = good · 8 on every set = the jump holds.', headline(newWeight))
+  const stepBack = run('jump', [...jumped, [18, [6, 6, 6]]])
+  check('18 kg below the minimum twice in a row, the second no better (7/6/6 → 6/6/6) → Step back', stepBack.currentAction === 'STEP_BACK' && actionLabel(stepBack.currentAction) === 'Step back', stepBack.currentAction)
   check('...with a concrete target at the previous load: 16 kg × 12/12/12', big(stepBack) === '16 kg × 12/12/12' && stepBack.nextTargets.nextSession.loadKg === 16, big(stepBack))
   check('...and calls it "Not a setback"', /^Step back to 16 kg: 12\/12\/12 \(your last sets there\)\. Not a setback/.test(headline(stepBack)), headline(stepBack))
   check('...its explanation names the minimum and both loads', /Two sessions in a row below your minimum of 8 at 18 kg/.test(buildExplanationSentence(stepBack)) && /going back to 16 kg/.test(buildExplanationSentence(stepBack)), buildExplanationSentence(stepBack))
   const holds = run('jumpok', [[16, [12, 12, 12]], [16, [12, 12, 12]], [18, [7, 6, 6]], [18, [8, 8, 8]]])
   check('below the minimum only once after a jump → no Step back', holds.currentAction !== 'STEP_BACK', holds.currentAction)
-  const back = run('jump', [...jumped, [18, [7, 7, 6]], [16, [12, 12, 12]]])
+  const back = run('jump', [...jumped, [18, [6, 6, 6]], [16, [12, 12, 12]]])
   check('back at 16 kg after the step back → a normal step back (Repeat 1 of 2), never "load reduction, intent unknown"',
     back.currentAction === 'REPEAT_AT_TOP' && back.reasons.some(r => r.code === 'STEPPED_BACK') && !back.reasons.some(r => r.code === 'LOAD_DECREASED_UNKNOWN_INTENT'), back.currentAction)
   check('...its explanation says it is not a setback', /not a setback/.test(buildExplanationSentence(back)), buildExplanationSentence(back))
@@ -1808,7 +1812,23 @@ console.log('\n== 23. Progression rules 3.0 — the owner\'s example (27.11.2026
 
   // Assisted: the step is always one step down, never "Almost".
   const assist = evaluateExerciseProgress({ exerciseTemplateId: 'assist', metricKind: 'assistedWeight', sessions: buildCanonicalSessions(history('assist', [[10, [10, 10, 10]], [10, [10, 10, 10]]]), 'assist'), expectation: DEFAULT_EXPECTATION(6, 10, 3), equipmentClass: 'machine' }, DEFAULT_POLICY)
-  check('assisted at the top twice → one step less assistance, never Almost', assist.currentAction === 'READY_TO_INCREASE' && assist.nextTargets.nextSession.loadKg === 7.75)
+  check('assisted at the top twice → one step less assistance, never Almost', assist.currentAction === 'READY_TO_INCREASE' && assist.nextTargets.nextSession.loadKg === 7.5)
+  check('assisted at the top twice → the pill says "Less assist", never "Add weight"', actionLabel(assist.currentAction, assist.metricKind) === 'Less assist' && actionLabel('READY_TO_INCREASE', 'est1rm') === 'Add weight')
+
+  // Almost when even the estimate's high end is under the minimum: reps first only, said plainly.
+  const tight = run('tight', [[16, [9, 9, 9]], [16, [10, 10, 10]], [16, [10, 10, 10]]], { expectation: DEFAULT_EXPECTATION(8, 10, 3) })
+  check('Almost with 16 kg × 10/10/10 (8–10): 18 kg estimates 4–6 reps, under 8 → no jump offered, said plainly', tight.currentAction === 'ALMOST_READY'
+    && headline(tight) === '18 kg would be +12.5 %: expect about 4–6 reps there, under your 8 minimum. Push reps first, up to 12 on each set.'
+    && !/whenever you choose/.test(tight.nextTargets.progressionRequirement.headline), headline(tight))
+  check('…and when the estimate reaches the minimum, the jump uses its high end (18 kg × 8)', /or try 18 kg × 8 now; both are progress\.$/.test(headline(twelveTwice)))
+
+  // Loads you can set: machines step 2.5 kg; a step lands on a load already logged within half a step.
+  const machine = run('cable', [[62.5, [12, 12, 12]], [62.5, [12, 12, 12]]], { equipment: 'machine' })
+  check('a 62.5 kg cable at the top twice → 65 kg (never 64.75)', machine.nextTargets.nextSession.loadKg === 65, machine.nextTargets.nextSession.loadKg)
+  const press = run('press', [[180, [12, 12, 12]], [180, [12, 12, 12]]], { equipment: 'machine', liftClass: 'large_lower' })
+  check('a 180 kg leg press (large lower body) → 190 kg (+5.6 %)', press.nextTargets.nextSession.loadKg === 190, press.nextTargets.nextSession.loadKg)
+  check('resolveLoadStep lands on a load already logged within half a step (62 kg logged → 62, not 62.5)', resolveLoadStep(60, 2.5, 'upper_or_small', DEFAULT_POLICY, false, [57.5, 62]).nextKg === 62 && resolveLoadStep(60, 2.5, 'upper_or_small', DEFAULT_POLICY, false, [65]).nextKg === 62.5)
+  check('READY_TO_INCREASE is a product rule, low confidence (S3/S10), its ACSM range named as the moderate part', RULE_CATALOG.READY_TO_INCREASE.evidenceClass === 'product_rule' && RULE_CATALOG.READY_TO_INCREASE.confidence === 'low' && /ACSM 2009’s \(moderate\)/.test(RULE_CATALOG.READY_TO_INCREASE.shortDefinition))
 
   // The Progress table's tabs read the same decision as the pill.
   const { filterByTab: tabOf } = require('../src/features/training/progress/decisionTabs')
@@ -1818,7 +1838,7 @@ console.log('\n== 23. Progression rules 3.0 — the owner\'s example (27.11.2026
   check('tabs: Repeat builds; Step back is on "Check"', inTab(twelveOnce, 'building') && inTab(stepBack, 'attention') && !inTab(stepBack, 'building'))
 
   check('ALGORITHM_VERSION is bumped to 3.0.0', ALGORITHM_VERSION === '3.0.0')
-  check('no target line says "must", "failed" or "behind"', [first, eights, eightsTop, twelveOnce, twelveTwice, fourteen, bench, worse, newWeight, stepBack, back].every(r => !/\b(must|failed|behind)\b/i.test(headline(r) + ' ' + buildExplanationSentence(r))))
+  check('no target line says "must", "failed" or "behind"', [first, eights, eightsTop, twelveOnce, twelveTwice, fourteen, bench, worse, newWeight, gaining, stepBack, back, tight].every(r => !/\b(must|failed|behind)\b/i.test(headline(r) + ' ' + buildExplanationSentence(r))))
 }
 
 console.log(`\n${failed === 0 ? '✅ ALL PASS' : '❌ FAILURES'} — ${passed} passed, ${failed} failed\n`)

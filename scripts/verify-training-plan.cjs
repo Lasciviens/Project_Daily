@@ -72,6 +72,11 @@ console.log('\nnextSession')
   check('alerts: workload review included', alerts.some(a => a.id === 'workload' && a.text.includes('sleep down')))
   check('alerts: danger first, info last', alerts[0].tone === 'danger' && alerts[alerts.length - 1].tone === 'info', J(alerts.map(a => a.tone)))
   check('alerts: HOLD_STEADY adds nothing', !alerts.some(a => a.exerciseIds.includes('g')))
+  const broke = N.buildTrainingAlerts([d('x', 'BUILD_AT_CURRENT_LOAD', 'POSSIBLE_PLATEAU', 13)], id => id)
+  check('alerts: a trend plateau never adds a "flat" line under an "Add reps" card — only the card\'s own Check (WATCH_FOR_PLATEAU)', broke.length === 0, J(broke))
+  const plank = N.buildTrainingAlerts([{ ...d('p', 'WATCH_FOR_PLATEAU', 'POSSIBLE_PLATEAU', 7), metricKind: 'duration' }], () => 'Plank')
+  check('alerts: a timed hold is flat "at this time", not "at this load"', plank[0]?.text === 'Plank flat for 7 sessions at this time', J(plank))
+  check('alerts: a lighter load reads like its "Lighter" pill, never "planned?"', alerts.find(a => a.id === 'lower:f')?.text === 'Press: lighter than last time — build reps there')
   check('alerts: none for nothing', N.buildTrainingAlerts([], () => '').length === 0)
   const many = N.buildTrainingAlerts(['a', 'b', 'c', 'e', 'f'].map(id => d(id, 'READY_TO_INCREASE')), id => titles[id])
   check('alerts: long list folds to "+N more"', many[0].text.endsWith('+2 more'), many[0].text)
@@ -313,7 +318,7 @@ check('S16: the "flat" band is 3 % (day-to-day scatter is 3–6 %), mirrored by 
   check('higherIsBetter false only for assistance', !I.higherIsBetter('assistedWeight') && I.higherIsBetter('reps'))
   check('session top: best e1RM, warm-up ignored', I.sessionTopValue([row('w', 'd', 't', 200, 1, 'warmup'), row('w', 'd', 't', 100, 5), row('w', 'd', 't', 90, 8)], 'est1rm') === 116.7)
   check('session top: dropset ignored', I.sessionTopValue([row('w', 'd', 't', 100, 5, 'dropset')], 'est1rm') === null)
-  check('session top: >12 reps has no e1RM', I.sessionTopValue([row('w', 'd', 't', 40, 15)], 'est1rm') === null)
+  check('S15: session top: >10 reps has no e1RM', I.sessionTopValue([row('w', 'd', 't', 40, 11)], 'est1rm') === null && I.sessionTopValue([row('w', 'd', 't', 40, 10)], 'est1rm') !== null)
   check('session top: assisted = least assistance', I.sessionTopValue([row('w', 'd', 't', 30, 8), row('w', 'd', 't', 20, 6)], 'assistedWeight') === 20)
   check('session top: reps = max reps', I.sessionTopValue([row('w', 'd', 't', null, 8), row('w', 'd', 't', null, 11)], 'reps') === 11)
 
@@ -335,7 +340,13 @@ check('S16: the "flat" band is 3 % (day-to-day scatter is 3–6 %), mirrored by 
   const shortWin = I.computeLiftChanges(sets, templates, '2026-09-27', 4)
   check('4-week window only sees the last sessions (bench: 2 sessions → insufficient)', shortWin.find(c => c.templateId === 'b').status === 'insufficient', J(shortWin.find(c => c.templateId === 'b')))
   const sum = I.summarizeImprovement(changes)
-  check('summary counts', sum.improved === 2 && sum.flat === 1 && sum.declined === 0 && sum.insufficient === 1 && sum.judged === 3, J(sum))
+  check('summary counts', sum.improved === 2 && sum.flat === 1 && sum.declined === 0 && sum.insufficient === 1 && sum.judged === 3 && sum.highReps === 0, J(sum))
+  // S15 + S12: a curl moving from 8-rep to 12-rep sets has no e1RM at the end — never judged "flat" off its old sessions.
+  { const curlSets = [row('1', '2026-08-01', 'c', 16, 8), row('2', '2026-08-10', 'c', 16, 9), row('3', '2026-08-20', 'c', 16, 11), row('4', '2026-09-01', 'c', 16, 12), row('5', '2026-09-20', 'c', 16, 12)]
+    const curl = I.computeLiftChanges(curlSets, [{ id: 'c', title: 'Curl', type: 'weight_reps' }], '2026-09-27', 12)[0]
+    check('S15: an est1rm lift whose last sessions are all above 10 reps → high_reps (no e1RM), not flat', curl.status === 'high_reps' && curl.changePct === null && curl.sessions === 5, J(curl))
+    const s2 = I.summarizeImprovement([curl])
+    check('…the summary counts it apart and it is no main lift', s2.highReps === 1 && s2.judged === 0 && s2.insufficient === 0 && I.mainLifts([curl]).length === 0, J(s2)) }
   const decl = I.liftChange([{ date: '2026-08-01', workoutId: 'a', value: 100 }, { date: '2026-08-05', workoutId: 'b', value: 100 }, { date: '2026-08-20', workoutId: 'c', value: 90 }, { date: '2026-08-25', workoutId: 'd', value: 95 }], 'est1rm', { templateId: 'x', title: 'X' })
   check('declined beyond the flat band', decl.status === 'declined' && decl.changePct === -5, J(decl))
   const tooClose = I.liftChange([{ date: '2026-08-01', workoutId: 'a', value: 1 }, { date: '2026-08-03', workoutId: 'b', value: 2 }, { date: '2026-08-05', workoutId: 'c', value: 3 }], 'est1rm', { templateId: 'x', title: 'X' })

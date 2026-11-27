@@ -21,7 +21,7 @@ class, per `ruleCatalog.ts`:
 | `plateau.declineSlopeFloor` | 0.3 (reps/session) | product_rule | Minimum negative slope to call `DECLINING` |
 | `decline.absoluteFloor` | 3 reps | product_rule | Decline-detection floor — never applied to a positive read |
 | `decline.percentFloor` | 0.08 | product_rule | Decline-detection floor, proportional |
-| `loadIncrementKg.{barbell,dumbbell,machine}` | 2.5 / 2 / 2.25 | product_rule | The equipment's smallest step — our own defaults, explicitly labeled as such wherever shown |
+| `loadIncrementKg.{barbell,dumbbell,machine}` | 2.5 / 2 / 2.5 | product_rule | The equipment's smallest step — our own defaults, explicitly labeled as such wherever shown |
 | `loadStep.targetPercent` | upper/small 2.5 · large lower 5 | science (S4, moderate for 2–10 %, low for the bands) | The step as a % of the load, rounded to whole smallest steps (at least one) |
 | `loadStep.maxPercent` | 10 | product_rule (S5, low) | A smallest step above this is `ALMOST_READY`: reps first or jump |
 | `loadStep.percentPerExtraRep` / `repsFirstExtraCap` | 2.5 / 2 | product_rule (S5; cap from the owner's brief) | Reps first aims for the top + ceil(step % ÷ 2.5), at most +2 |
@@ -37,10 +37,10 @@ reps (`EST_1RM_MAX_REPS`, S15).
 |---|---|
 | Load increased, not every set at the top (the first session at a heavier load) | `NEW_WEIGHT` ("New weight") |
 | Every set at the top, but not 2 sessions in a row at this load, or worse than last time | `REPEAT_AT_TOP` ("Repeat") |
-| Every set at the top 2 sessions in a row at one load, step ≤ 10 % | `READY_TO_INCREASE` ("Add weight") |
+| Every set at the top 2 sessions in a row at one load, step ≤ 10 % | `READY_TO_INCREASE` ("Add weight"; "Less assist" when assisted) |
 | …the smallest step is > 10 % and the sets are short of top + extra | `ALMOST_READY` ("Almost") |
 | Same load, clean rep increase, not yet at the top | `BUILD_AT_CURRENT_LOAD` ("Add reps") |
-| The last 2 sessions at a jumped-to load both below the minimum | `STEP_BACK` ("Step back"), target at the previous load |
+| The last 2 sessions at a jumped-to load both below the minimum, the second no better | `STEP_BACK` ("Step back"), target at the previous load |
 | A forward-motion read compromised by a `dataQualityFlags` entry | `CONFIRM_AT_CURRENT_LOAD` ("Check sets") |
 | Load decrease right after a jump | read at the lower load (`STEPPED_BACK` reason) |
 | Raw load decrease otherwise, external-load metric | `REVIEW_LOAD_REDUCTION` ("Lighter", never "deload"), with a target |

@@ -192,17 +192,23 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
   }
 
   const weightBased = isWeightBasedMetric(metricKind)
+  const loggedLoads = cycles.map(c => c.weightKg).filter((w): w is number => w != null)
   const loadOfCycle = (i: number) => (i >= 0 && i < cycles.length ? cycles[i].weightKg : null)
   const last = cycles.length - 1
   const reasons: DecisionReason[] = []
 
   // S6 — a jump that didn't hold: the last two sessions, both at the new
-  // (heavier) load, each had a set below the minimum. Suggest the previous
-  // load, with a concrete target there: the sets last done at it.
+  // (heavier) load, each had a set below the minimum, and the second was no
+  // better than the first (a session that gained reps is a jump settling in).
+  // Suggest the previous load, with a concrete target there: the sets last
+  // done at it.
   let stepBackTo: CanonicalExerciseSession | null = null
   const jumpedUp = weightBased && last >= 1 && isPositiveLoadChange(metricKind, loadOfCycle(last - 1), loadOfCycle(last)) === true
-  if (jumpedUp && pair.dataQualityFlags.length === 0 && currentCycle.points.length >= 2
-    && sessions.slice(-2).every(s => sessionRangeCompliance(s, expectation, metricKind) === 'BELOW_MINIMUM')) {
+  const lastTwo = sessions.slice(-2)
+  const secondNoBetter = lastTwo.length === 2
+    && (totalQuantity(lastTwo[1].comparableWorkingSets, metricKind) ?? Infinity) <= (totalQuantity(lastTwo[0].comparableWorkingSets, metricKind) ?? -Infinity)
+  if (jumpedUp && pair.dataQualityFlags.length === 0 && currentCycle.points.length >= 2 && secondNoBetter
+    && lastTwo.every(s => sessionRangeCompliance(s, expectation, metricKind) === 'BELOW_MINIMUM')) {
     stepBackTo = sessions[cycleStartIndex(cycles, last) - 1] ?? null
     if (stepBackTo) {
       currentAction = 'STEP_BACK'
@@ -233,7 +239,7 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
     const load = bestComparableSet(latest, metricKind)?.weightKg ?? null
     const smallest = resolveLoadIncrementKg(explicitIncrementKg, equipmentClass, observedLoadIncrements(cycles, metricKind), policy)
     if (load != null && load > 0 && smallest != null && expectation.repMax != null) {
-      const step = resolveLoadStep(load, smallest, liftClass, policy)
+      const step = resolveLoadStep(load, smallest, liftClass, policy, false, loggedLoads)
       if (step.tooBig) {
         const repsGoal = expectation.repMax + repsFirstExtra(step.smallestPercent, policy)
         const reps = evaluatedReps(latest)
@@ -301,7 +307,9 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
     evidence: { progress: computeProgressEvidence(recent.n, recent.weekSpan), recommendation: recommendationEvidence },
     reasons, events, currentState,
     nextTargets: buildNextTargets(latest, expectation, metricKind, currentAction, policy, explicitIncrementKg, equipmentClass, observedLoadIncrements(cycles, metricKind), previous, {
-      liftClass, stepBackTo,
+      liftClass, stepBackTo, loggedLoads,
+      // Below the minimum at a load just jumped to: the honest condition is "8 on every set = the jump holds".
+      belowAfterJump: jumpedUp && sessionRangeCompliance(latest, expectation, metricKind) === 'BELOW_MINIMUM',
       confirmations: topRangeConfirmations != null ? { count: topRangeConfirmations, required: policy.requiredTopRangeConfirmations } : null,
     }),
     nextTargetBlocker: nextTargetBlocker(latest, expectation, metricKind, currentAction),

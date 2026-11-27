@@ -115,7 +115,7 @@ export function formatPtSnapshot(d: CoachData): string {
       const latest = r.currentState.latest ? formatSessionSets(r.currentState.latest.sets, r.metricKind, { rpe: true }) : '—'
       const next = nextTargetText(r)
       const nextText = next ? ` · next: ${next}` : ''
-      lines.push(`  Decision: ${title}: ${r.currentAction} "${actionLabel(r.currentAction)}" · latest: ${latest}${nextText} · evidence ${r.evidence.progress}`)
+      lines.push(`  Decision: ${title}: ${r.currentAction} "${actionLabel(r.currentAction, r.metricKind)}" · latest: ${latest}${nextText} · evidence ${r.evidence.progress}`)
     }
   }
 

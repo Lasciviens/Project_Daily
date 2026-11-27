@@ -32,7 +32,7 @@ export function NextExerciseCard({ row }: { row: PlanRow }) {
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-meta text-fg-muted">
             {row.prescription && <span className="chip">{row.prescription}</span>}
             {row.restSeconds != null && <span className="inline-flex items-center gap-1"><Timer aria-hidden className="h-3.5 w-3.5" />{fmtRest(row.restSeconds)}</span>}
-            {d && <TonePill tone={ACTION_TONE[d.currentAction]}>{actionLabel(d.currentAction)}</TonePill>}
+            {d && <TonePill tone={ACTION_TONE[d.currentAction]}>{actionLabel(d.currentAction, d.metricKind)}</TonePill>}
           </div>
         </div>
       </div>
@@ -45,8 +45,8 @@ export function NextExerciseCard({ row }: { row: PlanRow }) {
             target (your override, else the routine&apos;s, else a labelled default). Matching last time is on track; one more rep
             anywhere is progress. Weight goes up after 2 sessions in a row at the top of the range, by about 2.5–5 % of the load
             (5–10 % for big lower-body lifts), rounded to your equipment. When the next step is over 10 % (light dumbbells) it says
-            Almost: reps first, or jump. Below the minimum twice after a jump, it suggests stepping back. RPE is a note only — it
-            never changes the target. Each set keeps its own load, so a backoff set stays at the backoff weight.
+            Almost: reps first, or jump. Below the minimum twice after a jump, with no gain, it suggests stepping back. Each set
+            keeps its own load, so a backoff set stays at the backoff weight.
             <span className="mt-1.5 block"><SourceNote ids={['acsm2009', 'plotkin2022']} /></span>
           </InfoBubble>
         </p>

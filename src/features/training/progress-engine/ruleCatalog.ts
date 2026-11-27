@@ -206,13 +206,13 @@ export const RULE_CATALOG: Record<string, RuleCatalogEntry> = {
   },
   REPEAT_AT_TOP: {
     title: 'Repeat',
-    shortDefinition: 'Every set reached the top of your range. Do it once more at this load — 2 sessions in a row — and the next step is weight.',
+    shortDefinition: 'Every set reached the top of your range. Do it once more at this load — 2 sessions in a row — and the next step comes (Add weight, or Almost when the step is big).',
     evidenceClass: 'product_rule', docAnchor: '#current-action', sRules: ['S3', 'S10'], confidence: 'low',
   },
   READY_TO_INCREASE: {
     title: 'Add weight',
-    shortDefinition: 'Every prescribed set reached the top of your range in 2 sessions in a row at this load (for a top set + backoffs: the top set at the top, every backoff at or above the minimum). The step is about 2.5–5 % of the load for upper-body or small lifts and 5–10 % for big lower-body lifts, rounded to your equipment (ACSM 2009: 2–10 %).',
-    evidenceClass: 'science', docAnchor: '#current-action', sRules: ['S3', 'S4', 'S10'], confidence: 'moderate',
+    shortDefinition: 'Every prescribed set reached the top of your range in 2 sessions in a row at this load (for a top set + backoffs: the top set at the top, every backoff at or above the minimum). The step is about 2.5–5 % of the load for upper-body or small lifts and 5–10 % for big lower-body lifts, rounded to your equipment. The 2–10 % step range is ACSM 2009’s (moderate); the 2-sessions trigger is expert practice no trial has tested (low).',
+    evidenceClass: 'product_rule', docAnchor: '#current-action', sRules: ['S3', 'S4', 'S10'], confidence: 'low',
   },
   ALMOST_READY: {
     title: 'Almost',

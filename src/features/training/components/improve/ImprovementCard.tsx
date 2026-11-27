@@ -9,7 +9,7 @@ import {
   type LiftChange, type LiftStatus, type WindowWeeks,
 } from '../../plan/improvement'
 
-const STATUS_TONE: Record<LiftStatus, Tone> = { improved: 'success', flat: 'neutral', declined: 'warn', insufficient: 'neutral' }
+const STATUS_TONE: Record<LiftStatus, Tone> = { improved: 'success', flat: 'neutral', declined: 'warn', insufficient: 'neutral', high_reps: 'neutral' }
 function Change({ c }: { c: LiftChange }) {
   const Icon = c.status === 'improved' ? ArrowUpRight : c.status === 'declined' ? ArrowDownRight : ArrowRight
   return (
@@ -77,6 +77,7 @@ export function ImprovementCard({ preferIds }: { preferIds: ReadonlySet<string> 
       <p className="-mt-2 text-meta text-fg-muted">
         {summary.judged > 0 ? `of ${summary.judged} exercises with enough sessions in the last ${weeks} weeks` : `No exercise has 3 sessions over 2+ weeks in the last ${weeks} weeks yet`}
         {summary.insufficient > 0 ? ` · ${summary.insufficient} more trained too rarely to judge` : ''}
+        {summary.highReps > 0 ? ` · ${summary.highReps} trained above 10 reps — no e1RM, the decision table judges their reps` : ''}
         {bw ? ` · bodyweight ${bw.startKg} → ${bw.endKg} kg (${bw.deltaKg > 0 ? '+' : ''}${bw.deltaKg})` : ''}
       </p>
 

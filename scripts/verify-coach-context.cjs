@@ -298,6 +298,12 @@ console.log('\n9 · The PT assessment\'s verdicts (coachFacts.ts: code decides, 
   }
   const ready = computeProgressModel({ ...baseReady, currentProgram: [{ routine_id: 'r1' }] })
   check('PRIORITY is the first lift ready to increase, with the engine\'s own target', /PRIORITY: Bench Press — READY_TO_INCREASE "Add weight"/.test(formatPtVerdicts(ptVerdicts(mk({ progress: ready }), 'normal'))), formatPtVerdicts(ptVerdicts(mk({ progress: ready }), 'normal')))
+  { const fs = require('fs'), path = require('path')
+    const fmt = fs.readFileSync(path.join(__dirname, '../src/features/training/coach/coachFormat.ts'), 'utf8')
+    const facts = fs.readFileSync(path.join(__dirname, '../src/features/training/coach/coachFacts.ts'), 'utf8')
+    check('the Decision word and PRIORITY title come from actionLabel(action, metricKind) ("Less assist" on an assisted lift); the job names every word incl. Check sets',
+      fmt.includes('actionLabel(r.currentAction, r.metricKind)') && facts.includes('actionLabel(pick.currentAction, pick.metricKind)')
+      && ['Add reps', 'Repeat', 'Add weight', 'Less assist', 'Almost', 'New weight', 'Step back', 'Check', 'Check sets', 'Lighter', 'First time'].every(w => PT_SYSTEM_PROMPT.includes(w))) }
   check('one session at the top (Repeat) is not a priority to push', /PRIORITY: none/.test(formatPtVerdicts(ptVerdicts(mk({}), 'normal'))))
   check('every figure is a number, never "undefined" or "NaN"', !/undefined|NaN/.test(text))
 }

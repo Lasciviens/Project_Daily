@@ -168,7 +168,7 @@ export function DecisionDetail({ result, sessions, metricKind, title }: { result
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <p className="flex flex-wrap items-center gap-1.5 text-body font-semibold text-fg">
-            {title} — {actionLabel(result.currentAction)}
+            {title} — {actionLabel(result.currentAction, result.metricKind)}
             {actionInfo && <InfoBubble label={`About ${actionInfo.title}`}><b>{actionInfo.title}</b> {actionInfo.shortDefinition}</InfoBubble>}
           </p>
           <p className="text-body text-fg-2">{buildExplanationSentence(result)}</p>

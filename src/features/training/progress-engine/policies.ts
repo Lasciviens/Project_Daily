@@ -35,7 +35,8 @@ export const DEFAULT_POLICY: ExerciseProgressionPolicy = {
   loadIncrementKg: {
     barbell: 2.5,
     dumbbell: 2,
-    machine: 2.25,
+    // A stack or plate-loaded machine: whole 2.5 kg steps, so a load is one you can set (never 64.75 kg).
+    machine: 2.5,
   },
   loadStep: {
     // S4: about 2.5–5 % for upper-body or small-muscle lifts, 5–10 % for large
@@ -68,6 +69,7 @@ function round2(n: number): number { return Math.round(n * 100) / 100 }
  *  the assistance is no measure of difficulty, so it always takes one step. */
 export function resolveLoadStep(
   loadKg: number, smallestKg: number, liftClass: LiftClass, policy: ExerciseProgressionPolicy, assisted = false,
+  loggedLoads: readonly number[] = [],
 ): LoadStep {
   const { targetPercent, maxPercent } = policy.loadStep
   const pct = (kg: number) => (loadKg > 0 ? Math.round((kg / loadKg) * 1000) / 10 : 0)
@@ -77,8 +79,12 @@ export function resolveLoadStep(
   }
   let steps = Math.max(1, Math.round((loadKg * targetPercent[liftClass]) / 100 / smallestKg))
   while (steps > 1 && (steps * smallestKg / loadKg) * 100 > maxPercent) steps--
-  const stepKg = round2(steps * smallestKg)
-  return { stepKg, nextKg: round2(loadKg + stepKg), percent: pct(stepKg), smallestKg, smallestPercent, tooBig: smallestPercent > maxPercent }
+  let nextKg = round2(loadKg + steps * smallestKg)
+  // A load already logged within half a step is one the equipment surely has: use it.
+  const logged = loggedLoads.filter(l => l > loadKg && Math.abs(l - nextKg) <= smallestKg / 2).sort((a, b) => Math.abs(a - nextKg) - Math.abs(b - nextKg))[0]
+  if (logged != null) nextKg = logged
+  const stepKg = round2(nextKg - loadKg)
+  return { stepKg, nextKg, percent: pct(stepKg), smallestKg, smallestPercent, tooBig: smallestPercent > maxPercent }
 }
 
 /** S5: reps first — aim for the top of the range + ceil(step % ÷ 2.5),

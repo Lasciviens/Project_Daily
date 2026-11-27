@@ -95,7 +95,9 @@ function daysApart(a: string, b: string): number {
   return Math.round((new Date(`${b}T12:00:00`).getTime() - new Date(`${a}T12:00:00`).getTime()) / 86_400_000)
 }
 
-export type LiftStatus = 'improved' | 'flat' | 'declined' | 'insufficient'
+/** `high_reps`: an est1rm lift with enough sessions, but its first or last sessions had no set of ≤ 10 reps, so no e1RM
+ *  to compare (S15) — never judged on older sessions alone; the Progress table judges its reps at the load (S12). */
+export type LiftStatus = 'improved' | 'flat' | 'declined' | 'insufficient' | 'high_reps'
 
 export interface LiftChange {
   templateId: string
@@ -130,6 +132,27 @@ export function liftChange(series: readonly SessionValue[], kind: ProgressMetric
   return { ...base, start, end, changePct, status }
 }
 
+/** Every session of one exercise (warm-up-only ones aside), with its value or null, oldest first. */
+function allSessions(sets: readonly ProgressSetRow[], templateId: string, kind: ProgressMetricKind): { date: string; value: number | null }[] {
+  const byWorkout = new Map<string, { date: string; sets: ProgressSetRow[] }>()
+  for (const s of sets) {
+    if (s.exercise_template_id !== templateId || !COUNTED.has(s.set_type)) continue
+    const g = byWorkout.get(s.workout_id) ?? { date: s.date, sets: [] }
+    g.sets.push(s)
+    byWorkout.set(s.workout_id, g)
+  }
+  return [...byWorkout.entries()].map(([id, g]) => ({ id, date: g.date, value: sessionTopValue(g.sets, kind) }))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
+}
+
+/** An est1rm lift whose first or last two sessions have no e1RM (every set above 10 reps, S15): enough sessions to
+ *  judge, but not by e1RM — `high_reps`, so the card never reads it "flat" off older sessions while the Progress
+ *  table (reps at the load, S12) says it moved. */
+function highRepsOnly(all: readonly { date: string; value: number | null }[]): boolean {
+  if (all.length < MIN_SESSIONS || daysApart(all[0].date, all[all.length - 1].date) < MIN_SPAN_DAYS) return false
+  return [all[0], all[1], all[all.length - 2], all[all.length - 1]].some(s => s.value == null)
+}
+
 /** Every exercise trained in the window, with its change. */
 export function computeLiftChanges(sets: readonly ProgressSetRow[], templates: readonly TemplateInfo[], today: string, weeks: number): LiftChange[] {
   const from = windowStart(today, weeks)
@@ -139,16 +162,23 @@ export function computeLiftChanges(sets: readonly ProgressSetRow[], templates: r
   return ids.map(id => {
     const t = byId.get(id)
     const kind = metricKindForExerciseType(t?.type ?? 'weight_reps')
-    return liftChange(exerciseSeries(inWindow, id, kind), kind, { templateId: id, title: t?.title ?? 'Unknown exercise' })
+    const info = { templateId: id, title: t?.title ?? 'Unknown exercise' }
+    if (kind === 'est1rm') {
+      const all = allSessions(inWindow, id, kind)
+      if (highRepsOnly(all)) {
+        return { ...info, kind, sessions: all.length, start: null, end: null, changePct: null, status: 'high_reps' as const, firstDate: all[0].date, lastDate: all[all.length - 1].date }
+      }
+    }
+    return liftChange(exerciseSeries(inWindow, id, kind), kind, info)
   }).sort((a, b) => b.sessions - a.sessions || a.title.localeCompare(b.title))
 }
 
-export interface ImprovementSummary { improved: number; flat: number; declined: number; judged: number; insufficient: number }
+export interface ImprovementSummary { improved: number; flat: number; declined: number; judged: number; insufficient: number; highReps: number }
 
 export function summarizeImprovement(changes: readonly LiftChange[]): ImprovementSummary {
   const count = (s: LiftStatus) => changes.filter(c => c.status === s).length
   const improved = count('improved'), flat = count('flat'), declined = count('declined')
-  return { improved, flat, declined, judged: improved + flat + declined, insufficient: count('insufficient') }
+  return { improved, flat, declined, judged: improved + flat + declined, insufficient: count('insufficient'), highReps: count('high_reps') }
 }
 
 /** The main weighted lifts: estimated-1RM exercises that could be judged,
@@ -156,7 +186,7 @@ export function summarizeImprovement(changes: readonly LiftChange[]): Improvemen
  *  current program's exercises) are ranked ahead of everything else. */
 export function mainLifts(changes: readonly LiftChange[], n = 5, preferIds: ReadonlySet<string> = new Set()): LiftChange[] {
   return changes
-    .filter(c => c.kind === 'est1rm' && c.status !== 'insufficient')
+    .filter(c => c.kind === 'est1rm' && c.status !== 'insufficient' && c.status !== 'high_reps')
     .sort((a, b) => Number(preferIds.has(b.templateId)) - Number(preferIds.has(a.templateId)) || b.sessions - a.sessions || (b.end ?? 0) - (a.end ?? 0))
     .slice(0, n)
 }

@@ -152,7 +152,7 @@ export function ptVerdicts(d: CoachData, feeling: PtFeeling): PtVerdicts {
   const priority = pick
     ? {
         exercise: d.progress.titleById.get(pick.exerciseTemplateId) ?? pick.exerciseTemplateId,
-        action: pick.currentAction, actionTitle: actionLabel(pick.currentAction), next: nextTargetText(pick),
+        action: pick.currentAction, actionTitle: actionLabel(pick.currentAction, pick.metricKind), next: nextTargetText(pick),
       }
     : null
 
