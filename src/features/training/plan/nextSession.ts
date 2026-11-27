@@ -106,7 +106,14 @@ export interface TrainingAlert {
   exerciseIds: string[]
 }
 
-type AlertDecision = Pick<ExerciseProgressResult, 'exerciseTemplateId' | 'currentAction' | 'trend'>
+type AlertDecision = Pick<ExerciseProgressResult, 'exerciseTemplateId' | 'currentAction' | 'trend'> & Partial<Pick<ExerciseProgressResult, 'metricKind'>>
+
+/** Where a flat lift is flat: its load, or — a timed hold — its time. */
+function atWhat(d: AlertDecision): string {
+  if (d.metricKind === 'duration') return ' at this time'
+  if (d.metricKind === 'reps' || d.metricKind === 'distance') return ''
+  return ' at this load'
+}
 
 const TONE_ORDER: Record<AlertTone, number> = { danger: 0, warn: 1, success: 2, info: 3 }
 
@@ -129,20 +136,20 @@ export function buildTrainingAlerts(
   if (ready.length > 0) {
     out.push({
       id: 'ready', tone: 'success', exerciseIds: ready.map(d => d.exerciseTemplateId),
-      text: `${ready.length} ${ready.length === 1 ? 'lift' : 'lifts'} ready to increase: ${listNames(ready.map(d => titleOf(d.exerciseTemplateId)))}`,
+      text: `${ready.length} ${ready.length === 1 ? 'lift' : 'lifts'} ready for more weight: ${listNames(ready.map(d => titleOf(d.exerciseTemplateId)))}`,
     })
   }
   for (const d of decisions) {
-    const flat = d.currentAction === 'WATCH_FOR_PLATEAU' || d.trend.currentLoadProgress === 'POSSIBLE_PLATEAU'
-    if (flat && d.currentAction !== 'WATCH_FOR_REGRESSION') {
+    // Only the card's own call: a trend read alone (a plateau the latest session just broke) would contradict it.
+    if (d.currentAction === 'WATCH_FOR_PLATEAU') {
       const n = d.trend.currentLoadCycleSessions
-      out.push({ id: `flat:${d.exerciseTemplateId}`, tone: 'warn', exerciseIds: [d.exerciseTemplateId], text: `${titleOf(d.exerciseTemplateId)} flat for ${n} ${n === 1 ? 'session' : 'sessions'} at this load` })
+      out.push({ id: `flat:${d.exerciseTemplateId}`, tone: 'warn', exerciseIds: [d.exerciseTemplateId], text: `${titleOf(d.exerciseTemplateId)} flat for ${n} ${n === 1 ? 'session' : 'sessions'}${atWhat(d)}` })
     }
     if (d.currentAction === 'WATCH_FOR_REGRESSION') {
       out.push({ id: `down:${d.exerciseTemplateId}`, tone: 'danger', exerciseIds: [d.exerciseTemplateId], text: `${titleOf(d.exerciseTemplateId)} dropping at its current load` })
     }
     if (d.currentAction === 'REVIEW_LOAD_REDUCTION') {
-      out.push({ id: `lower:${d.exerciseTemplateId}`, tone: 'info', exerciseIds: [d.exerciseTemplateId], text: `${titleOf(d.exerciseTemplateId)}: load went down last time — planned?` })
+      out.push({ id: `lower:${d.exerciseTemplateId}`, tone: 'info', exerciseIds: [d.exerciseTemplateId], text: `${titleOf(d.exerciseTemplateId)}: lighter than last time — build reps there` })
     }
   }
   if (program?.workload === 'review_workload') {

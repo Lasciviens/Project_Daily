@@ -9,7 +9,7 @@ import {
   type LiftChange, type LiftStatus, type WindowWeeks,
 } from '../../plan/improvement'
 
-const STATUS_TONE: Record<LiftStatus, Tone> = { improved: 'success', flat: 'neutral', declined: 'warn', insufficient: 'neutral' }
+const STATUS_TONE: Record<LiftStatus, Tone> = { improved: 'success', flat: 'neutral', declined: 'warn', insufficient: 'neutral', high_reps: 'neutral' }
 function Change({ c }: { c: LiftChange }) {
   const Icon = c.status === 'improved' ? ArrowUpRight : c.status === 'declined' ? ArrowDownRight : ArrowRight
   return (
@@ -50,10 +50,10 @@ export function ImprovementCard({ preferIds }: { preferIds: ReadonlySet<string> 
           <InfoBubble>
             Each exercise&apos;s sessions in the window are reduced to one number in its own measure — estimated 1-rep max (e1RM)
             for weighted lifts, top-set reps for bodyweight moves, least assistance for assisted ones. The start is the better
-            of its first two sessions, the end the better of its last two. Within ±2.5% counts as flat (a noise band we chose,
-            not a research cut-off). An exercise needs 3 sessions over at least 2 weeks to be judged.
-            <span className="mt-1.5 block"><b>e1RM</b> (Epley) is an estimate, typically within about ±10% and only computed for
-            sets of 12 reps or fewer — watch its direction, not the exact kilos.</span>
+            of its first two sessions, the end the better of its last two. Within ±3% counts as flat — day-to-day scatter is
+            about 3–6%, so a smaller change is noise. An exercise needs 3 sessions over at least 2 weeks to be judged.
+            <span className="mt-1.5 block"><b>e1RM</b> (Epley) is an estimate, only computed for sets of 10 reps or fewer —
+            watch its direction, not the exact kilos.</span>
           </InfoBubble>
         </span>}
         action={
@@ -77,6 +77,7 @@ export function ImprovementCard({ preferIds }: { preferIds: ReadonlySet<string> 
       <p className="-mt-2 text-meta text-fg-muted">
         {summary.judged > 0 ? `of ${summary.judged} exercises with enough sessions in the last ${weeks} weeks` : `No exercise has 3 sessions over 2+ weeks in the last ${weeks} weeks yet`}
         {summary.insufficient > 0 ? ` · ${summary.insufficient} more trained too rarely to judge` : ''}
+        {summary.highReps > 0 ? ` · ${summary.highReps} trained above 10 reps — no e1RM, the decision table judges their reps` : ''}
         {bw ? ` · bodyweight ${bw.startKg} → ${bw.endKg} kg (${bw.deltaKg > 0 ? '+' : ''}${bw.deltaKg})` : ''}
       </p>
 
@@ -87,9 +88,9 @@ export function ImprovementCard({ preferIds }: { preferIds: ReadonlySet<string> 
             {/* Says what est1RM (progressAggregate) and sessionTopValue (plan/improvement) do: change them together. */}
             <InfoBubble label="What 1RM means">
               <b>1RM</b> (one-rep max): the most you could lift for a single rep. Estimated from your logged sets, so you
-              never have to test it: each session&apos;s best set of 12 reps or fewer counts as weight × (1 + reps ÷ 30)
-              (the Epley formula; warm-ups and drop sets are left out). The kilos are the window&apos;s start → end. An
-              estimate can be about ±10% off, so watch the direction, not the exact number.
+              never have to test it: each session&apos;s best set of 10 reps or fewer counts as weight × (1 + reps ÷ 30)
+              (the Epley formula; warm-ups and drop sets are left out). The kilos are the window&apos;s start → end. It is
+              an estimate, so watch the direction, not the exact number.
             </InfoBubble>
           </p>
           <ul className="flex flex-col gap-1.5">

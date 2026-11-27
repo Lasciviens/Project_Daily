@@ -71,11 +71,24 @@ export type DataQualityFlag =
    *  record. See docs/training/progress-engine/DATA_AND_LIMITATIONS.md. */
   | 'PROGRAM_CHANGED'
 
+/** One action per exercise, each with its own short pill (ruleCatalog.ts
+ *  titles): First time · Add reps · Repeat · Add weight · Almost · New weight ·
+ *  Step back · Check · Lighter · Check sets. */
 export type CurrentAction =
   | 'INSUFFICIENT_DATA'
   | 'BUILD_AT_CURRENT_LOAD'
+  /** Every set at the top of the range, but not yet 2 sessions in a row at
+   *  this load (or this session was worse than the last one) — S3. */
+  | 'REPEAT_AT_TOP'
   | 'READY_TO_INCREASE'
-  | 'CONFIRM_BEFORE_INCREASING'
+  /** Ready, but the smallest step the equipment allows is over 10 % of the
+   *  load (16 → 18 kg dumbbells) — reps first, or jump now (S5). */
+  | 'ALMOST_READY'
+  /** The first session at a heavier load — reps near the bottom are normal. */
+  | 'NEW_WEIGHT'
+  /** Two sessions in a row below the minimum after a jump — go back to the
+   *  previous load and build reps there (S6). */
+  | 'STEP_BACK'
   | 'CONFIRM_AT_CURRENT_LOAD'
   | 'HOLD_STEADY'
   | 'REVIEW_LOAD_REDUCTION'
@@ -213,6 +226,22 @@ export type NextTargetBlocker =
    *  unknown intent). */
   | 'action'
 
+/** Which S4 step band an exercise sits in: about 5–10 % for a large lower-body
+ *  lift, about 2.5–5 % for an upper-body or small-muscle one. */
+export type LiftClass = 'large_lower' | 'upper_or_small'
+
+/** The next load step (S4/S5): the step in kg, both as % of the current load,
+ *  and whether even the smallest step the equipment allows is over the 10 %
+ *  ceiling (reps first). */
+export interface LoadStep {
+  stepKg: number
+  nextKg: number
+  percent: number
+  smallestKg: number
+  smallestPercent: number
+  tooBig: boolean
+}
+
 export interface ExerciseProgressResult {
   algorithmVersion: string
   exerciseTemplateId: string
@@ -245,7 +274,7 @@ export interface ExerciseProgressResult {
 // ── Policy — the hierarchical fallback the brief specified ─────────────────
 export interface ExerciseProgressionPolicy {
   recentWindowSessions: number          // default 8
-  requiredTopRangeConfirmations: number // default 1 — consecutive ALL_SETS_AT_TOP reads required before READY_TO_INCREASE fires
+  requiredTopRangeConfirmations: number // default 2 (S3) — consecutive ALL_SETS_AT_TOP sessions at one load before READY_TO_INCREASE fires
   /** Consecutive forward-motion pairs (load-up in the metric's own positive
    *  direction, or a clean progression) required for PROGRESSION_STREAK to
    *  fire. A documented product heuristic (default 3), never a scientific
@@ -253,7 +282,9 @@ export interface ExerciseProgressionPolicy {
   progressionStreakMinLength: number
   plateau: {
     graceSessions: number      // default 3
-    minSessions: number        // default 5
+    minSessions: number        // default 4 (S13)
+    /** S13: a plateau also needs this many days at the load (default 21). */
+    minDays: number
     /** Rep-counted totals (every rep-based metric kind): absolute floors. */
     residualNoiseFloor: number // default 1.0 (RMS reps)
     accumulationSlopeFloor: number // default 0.3 (reps/session)
@@ -267,10 +298,24 @@ export interface ExerciseProgressionPolicy {
     absoluteFloor: number   // default 3 reps
     percentFloor: number    // default 0.08
   }
+  /** The smallest step each equipment class allows. */
   loadIncrementKg: {
     barbell: number
     dumbbell: number
     machine: number
+  }
+  /** S4/S5: the step as a % of the load. `targetPercent` is the low end of each
+   *  band (the step is rounded to the equipment's smallest step, at least one);
+   *  above `maxPercent` even the smallest step is too big to take at the top of
+   *  the range. Reps first then aims for the top + ceil(step % ÷
+   *  `percentPerExtraRep`), capped at `repsFirstExtraCap`. */
+  loadStep: {
+    targetPercent: Record<LiftClass, number>
+    maxPercent: number
+    percentPerExtraRep: number
+    repsFirstExtraCap: number
+    /** S5 / §1.3: reps fall by about 1 per 2–3 % of load added. */
+    percentPerRepLost: { low: number; high: number }
   }
 }
 

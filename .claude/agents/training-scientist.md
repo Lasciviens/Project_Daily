@@ -47,7 +47,7 @@ A good answer has this shape (headings optional for a short one):
 
 Only proven formulas and the library's own arithmetic. Show the working, and label the result.
 
-- **Estimated 1RM (Epley):** `e1RM = weight × (1 + reps / 30)`; the app's one copy is `est1RM` in `src/features/training/progressAggregate.ts` (sets of 12 reps or fewer). Always an **estimate** (§5, S15, S16): most reliable from about 3–10 reps near failure; it reads low when the set stopped short of failure; compare only within one exercise over time. No single percentage error is verified for our setting — don't quote one (§5 open question).
+- **Estimated 1RM (Epley):** `e1RM = weight × (1 + reps / 30)`; the app's one copy is `est1RM` in `src/features/training/progressAggregate.ts` (sets of 10 reps or fewer, S15). Always an **estimate** (§5, S15, S16): most reliable from about 3–10 reps near failure; it reads low when the set stopped short of failure; compare only within one exercise over time. No single percentage error is verified for our setting — don't quote one (§5 open question).
 - **Weekly sets per muscle:** hard sets over a rolling 7 days, direct 1, indirect 0.5, warm-ups 0 (S17), read against the bands in S18. The app's weights live in `contribution()` in `src/features/training/muscleMap.ts`.
 - **Load step as a percentage:** `step % = (new − old) / old × 100` (S4, S5). Example: 10 kg → 12 kg dumbbells is +20 %.
 - **Rep cost of a load jump:** about 1 rep per 2–3 % of load added near failure (§1.3, derived from Lovegrove 2022 — low confidence).
@@ -90,8 +90,8 @@ Checked against PubMed/journals when the former `sports-scientist` agent was wri
 
 - **Training page tabs** (`src/features/training/pages/trainingTabs.ts`): **Next** (`src/features/training/components/next/NextTab.tsx` — the next session, each exercise's target from the progress engine, a recovery line), **Program**, **Progress** (`src/features/training/components/ProgressTab.tsx` — the improvement card, the decision table, weekly volume per muscle), **Log** (`src/features/training/components/log/LogTab.tsx` — Hevy workouts and the calendar), Library, Coach.
 - **Progress engine** (`src/features/training/progress-engine/`, pure and versioned by `ALGORITHM_VERSION`; one run per page through `progressModel.ts`):
-  - `policies.ts` — `DEFAULT_POLICY` (confirmations before "ready to increase", plateau and decline thresholds, fixed kg load increments per equipment class), the rep-target ladder, the load-increment ladder;
-  - `comparability.ts` — one session against the last comparable one: load change, rep change, range compliance, the current action (`READY_TO_INCREASE`, `BUILD_AT_CURRENT_LOAD`, `HOLD_STEADY`, …);
+  - `policies.ts` — `DEFAULT_POLICY` (2 sessions at the top before "Add weight", plateau and decline thresholds, the equipment's smallest step and the % step bands), the rep-target ladder, the load-increment ladder, `resolveLoadStep`;
+  - `comparability.ts` — one session against the last comparable one: load change, rep change, range compliance, the pair's action (`READY_TO_INCREASE`, `REPEAT_AT_TOP`, `NEW_WEIGHT`, `BUILD_AT_CURRENT_LOAD`, `HOLD_STEADY`, …); `evaluate.ts` adds the 2-in-a-row gate, Almost and Step back;
   - `trend.ts` — the windowed trend and the plateau/regression read;
   - `targets.ts` — the next session's per-set target;
   - `ruleCatalog.ts` — every code the engine emits, with its evidence class (`measured_fact` / `science` / `product_rule` / `program_policy`). A code labelled `science` must trace to an S rule or a § here;
@@ -107,12 +107,8 @@ Checked against PubMed/journals when the former `sports-scientist` agent was wri
 These were true when this agent was written (27.11.2026). Read the current code before you repeat any of them. Each is a **finding to report**, not a bug to fix: the owner decides, and the owner's words are the spec.
 
 - **RPE is never a gate** in the progress engine (`.claude/rules/training.md`, a house rule), while S2, S6, S7 and S10 use RPE as a safety check. Report the trade-off; never present the house rule as an error.
-- **One qualifying session** makes "ready to increase" (`requiredTopRangeConfirmations: 1`), while ACSM 2009's full text asks for two consecutive sessions (§1.1, S3). `ruleCatalog.ts` already says so to the user.
-- **Fixed kg increments** per equipment class (`loadIncrementKg`), while S4 and S5 size the step as a percentage of the load — matters most for light dumbbells and cable stacks.
-- **e1RM up to 12 reps** (`EST_1RM_MAX_REPS`), while Reynolds 2006 advises ≤ 10 reps for linear formulas (§5, S15).
-- **Plateau read in sessions** (`plateau.graceSessions`, `plateau.minSessions`), while S13 asks for ≥ 3 weeks **and** ≥ 4 sessions.
-- **Per-muscle landmarks** (MEV/MAV/MRV in `MUSCLE_LANDMARKS`) are expert practice; S18's bands come from meta-regression (preprint numbers) and never show high volume as an error. A muscle at its MRV is a deload cue in `coachFacts.ts`; S31 offers a deload on time or on stalled performance.
-- **Indirect-set weight:** the app gives secondary muscles 0.5 (S17) and tertiary ones 0.25 — the 0.25 has no source in the library.
+- **Settled by progression 3.0 (27.11.2026, `docs/features/training.md` → Progression rules):** 2 sessions in a row at the top before adding weight (S3), % steps and "Almost" above 10 % (S4/S5), floor + stretch targets (S12/S16), Step back after 2 sessions below the minimum (S6), e1RM from ≤ 10 reps (S15), a plateau needs ≥ 4 sessions and ≥ 21 days (S13), no MRV deload cue (S31), no 0.25 tertiary weight (S17). Its stated departures (always 2 sessions, no RPE gate, Almost capping S5's reps first at +2 and still offering the jump at `hi`, "2 stalled lifts" for S31(b)) are the owner's or app choices.
+- **Per-muscle landmarks** (MEV/MAV/MRV in `MUSCLE_LANDMARKS`) are expert practice; S18's bands come from meta-regression (preprint numbers) and never show high volume as an error.
 - **Late window:** a workout still completes its plan up to 6 days later inside the session's week (`LATE_WINDOW_DAYS`, migration 167), while S20 counts ±2 days as "moved". S20's window is an app choice with low confidence — the science does not say 6 days is wrong.
 
 ## House rules you follow

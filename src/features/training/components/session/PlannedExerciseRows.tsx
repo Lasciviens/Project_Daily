@@ -54,7 +54,7 @@ export function PlannedExerciseRows({ rows, targetsLoading }: { rows: readonly P
               <div className="flex flex-wrap items-center gap-1.5 text-fg-muted">
                 {r.prescription && <span className="chip">{r.prescription}</span>}
                 {r.restSeconds != null && <span className="inline-flex items-center gap-1"><Timer aria-hidden className="h-3.5 w-3.5" />{fmtRest(r.restSeconds)}</span>}
-                {d && <TonePill tone={ACTION_TONE[d.currentAction]}>{actionLabel(d.currentAction)}</TonePill>}
+                {d && <TonePill tone={ACTION_TONE[d.currentAction]}>{actionLabel(d.currentAction, d.metricKind)}</TonePill>}
               </div>
               {!targetsLoading && (
                 r.target

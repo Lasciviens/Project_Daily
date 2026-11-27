@@ -91,15 +91,16 @@ export function buildTemplateMuscleMap(
 // precise. The CONTRIBUTION_OVERRIDES seam is where a real per-exercise % goes.
 //
 // FUTURE: we'll store a per-(exercise, muscle) contribution PERCENTAGE in the
-// DB (primary/secondary/tertiary as explicit numbers). `contribution()` already
+// DB (primary/secondary as explicit numbers). `contribution()` already
 // routes through an override table, so that day only the resolver reads from the
 // DB — the volume math, bands and UI downstream never reference primary/
 // secondary directly and won't change.
-export type MuscleRole = 'primary' | 'secondary' | 'tertiary'
+// S17: a direct set counts 1, an indirect set 0.5. (A 0.25 "tertiary" weight
+// sat here unused, with no source; it is gone so nobody switches it on.)
+export type MuscleRole = 'primary' | 'secondary'
 export const ROLE_WEIGHTS: Record<MuscleRole, number> = {
   primary:   1.0,
   secondary: 0.5,
-  tertiary:  0.25,
 }
 
 // Placeholder for the future DB-backed overrides: CONTRIBUTION_OVERRIDES[templateId][slug] = 0..1

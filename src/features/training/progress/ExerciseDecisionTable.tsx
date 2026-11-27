@@ -4,8 +4,9 @@ import { useProgressDataContext } from './progressDataContext'
 import { actionLabel, improvementScore } from '../progress-engine/copy'
 import type { ExerciseProgressResult, CanonicalExerciseSession, CurrentAction, EvidenceLevel, ProgressMetricKind } from '../progress-engine/types'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
-import { Card, EmptyState, TonePill, cx, type Tone } from '../../../shared/ui'
+import { Card, EmptyState, TonePill, cx } from '../../../shared/ui'
 import { DecisionDetail, DisclosureButton, EvidencePill, ExposureLine } from './decisionParts'
+import { ACTION_TONE } from '../plan/actionTone'
 import { RECENT_DAYS, filterByTab, isUnchanged, type DecisionTab } from './decisionTabs'
 import {
   NO_FILTERS, applyDecisionFilters, effectiveFilters, filtersActive, muscleOptions, muscleRoleFor, routineOptions,
@@ -23,9 +24,9 @@ import { DecisionFilterBar } from './DecisionFilterBar'
 type Tab = DecisionTab
 const TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'recent', label: 'Recent changes', hint: 'Every exercise you trained in the last 14 days, most recent first. “No change” means the load and reps matched last time.' },
-  { id: 'increase', label: 'Ready to increase', hint: 'Every prescribed set reached the top of the range — try the next load.' },
-  { id: 'building', label: 'Building', hint: 'Keep the load and add reps toward the top of the range.' },
-  { id: 'attention', label: 'Needs attention', hint: 'Below the minimum, a load reduction to check, or a plateau/decline at this load.' },
+  { id: 'increase', label: 'Add weight', hint: 'Every set at the top of the range 2 sessions in a row. Almost: the next step is over 10 % of the load — reps first, or jump.' },
+  { id: 'building', label: 'Add reps', hint: 'Keep the load: matching last time is on track, one more rep anywhere is progress.' },
+  { id: 'attention', label: 'Check', hint: 'A step back after a jump, a set below the minimum, or no change in 3+ weeks at this load.' },
   { id: 'all', label: 'All exercises', hint: 'Every current-program exercise you have logged, including ones with only one session so far.' },
 ]
 
@@ -39,25 +40,13 @@ const SORTS: { id: SortMode; label: string }[] = [
 ]
 
 const ACTION_PRIORITY_RANK: Record<CurrentAction, number> = {
-  READY_TO_INCREASE: 0, CONFIRM_BEFORE_INCREASING: 1, WATCH_FOR_REGRESSION: 1, WATCH_FOR_PLATEAU: 1,
-  CONFIRM_AT_CURRENT_LOAD: 2, REVIEW_LOAD_REDUCTION: 2, LOG_COMPARABLE_SESSION: 2,
+  READY_TO_INCREASE: 0, ALMOST_READY: 0, STEP_BACK: 1, WATCH_FOR_REGRESSION: 1, WATCH_FOR_PLATEAU: 1,
+  CONFIRM_AT_CURRENT_LOAD: 2, REVIEW_LOAD_REDUCTION: 2, LOG_COMPARABLE_SESSION: 2, REPEAT_AT_TOP: 2, NEW_WEIGHT: 2,
   HOLD_STEADY: 3, BUILD_AT_CURRENT_LOAD: 3, INSUFFICIENT_DATA: 4,
 }
 
 const EVIDENCE_RANK: Record<EvidenceLevel, number> = { limited: 0, moderate: 1, strong: 2 }
 
-const ACTION_TONE: Record<CurrentAction, Tone> = {
-  READY_TO_INCREASE:         'success',
-  BUILD_AT_CURRENT_LOAD:     'info',
-  CONFIRM_BEFORE_INCREASING: 'warn',
-  CONFIRM_AT_CURRENT_LOAD:   'warn',
-  REVIEW_LOAD_REDUCTION:     'warn',
-  HOLD_STEADY:               'info',
-  WATCH_FOR_PLATEAU:         'warn',
-  WATCH_FOR_REGRESSION:      'danger',
-  INSUFFICIENT_DATA:         'neutral',
-  LOG_COMPARABLE_SESSION:    'neutral',
-}
 
 function sortDecisions(list: ExerciseProgressResult[], sort: SortMode): ExerciseProgressResult[] {
   const arr = [...list]
@@ -131,7 +120,7 @@ function DecisionRow({ result, sessions, metricKind, title, noChange, muscleRole
           </div>
         </td>
         <td className="px-3 py-2.5"><ExposureLine result={result} />{noChange && <> <NoChangePill /></>}</td>
-        <td className="px-3 py-2.5"><TonePill tone={ACTION_TONE[result.currentAction]}>{actionLabel(result.currentAction)}</TonePill></td>
+        <td className="px-3 py-2.5"><TonePill tone={ACTION_TONE[result.currentAction]}>{actionLabel(result.currentAction, result.metricKind)}</TonePill></td>
         <td className="px-3 py-2.5"><EvidencePill level={result.evidence.progress} label="Trend evidence" /></td>
         <td className="px-3 py-2.5">{result.evidence.recommendation ? <EvidencePill level={result.evidence.recommendation} label="Decision evidence" /> : <span className="text-meta text-fg-faint">—</span>}</td>
       </tr>
@@ -150,7 +139,7 @@ function DecisionCard({ result, sessions, metricKind, title, noChange, muscleRol
     <li className="rounded-row border border-line px-3 pb-3 pt-1">
       <div className="flex items-center justify-between gap-2">
         <ToggleName open={open} onToggle={() => setOpen(v => !v)} title={title} />
-        <TonePill tone={ACTION_TONE[result.currentAction]} className="shrink-0">{actionLabel(result.currentAction)}</TonePill>
+        <TonePill tone={ACTION_TONE[result.currentAction]} className="shrink-0">{actionLabel(result.currentAction, result.metricKind)}</TonePill>
       </div>
       <div className="mt-0.5"><ExposureLine result={result} />{noChange && <> <NoChangePill /></>}</div>
       <div className="mt-1.5 flex flex-wrap items-center gap-2">

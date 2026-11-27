@@ -64,20 +64,22 @@ export function evaluatePair(
 
   const setCountMismatch = prevWorking.length !== latestWorking.length
   let repDelta: RepDelta = 'NOT_APPLICABLE'
+  // Fewer total reps (or seconds/metres) than last time at the same load and
+  // set count, by any amount — such a session never makes "ready" (S13/S16).
+  let worseThanLast = false
   if (observedTransition === 'LOAD_UNCHANGED' && !setCountMismatch && latest.loadStructure !== 'mixed_load') {
+    const prevTotal = totalQuantity(prevWorking, metricKind)
+    const latestTotal = totalQuantity(latestWorking, metricKind)
+    worseThanLast = prevTotal != null && latestTotal != null && latestTotal < prevTotal
     if (isCleanProgression(prevWorking, latestWorking, metricKind)) repDelta = 'REP_INCREASE'
-    else {
-      const prevTotal = totalQuantity(prevWorking, metricKind)
-      const latestTotal = totalQuantity(latestWorking, metricKind)
-      if (prevTotal == null || latestTotal == null) {
-        repDelta = 'NOT_APPLICABLE'
-      } else {
-        // The total's quantity axis (reps/duration/distance) is always
-        // "more is better", never inverted by metric kind — see
-        // isCleanProgression's own note in metricStrategy.ts.
-        const declinedBy = prevTotal - latestTotal
-        repDelta = declinedBy >= meaningfulDeclineReps(Math.abs(prevTotal), policy) ? 'REP_DECLINE' : 'REP_NO_CHANGE'
-      }
+    else if (prevTotal == null || latestTotal == null) {
+      repDelta = 'NOT_APPLICABLE'
+    } else {
+      // The total's quantity axis (reps/duration/distance) is always
+      // "more is better", never inverted by metric kind — see
+      // isCleanProgression's own note in metricStrategy.ts.
+      const declinedBy = prevTotal - latestTotal
+      repDelta = declinedBy >= meaningfulDeclineReps(Math.abs(prevTotal), policy) ? 'REP_DECLINE' : 'REP_NO_CHANGE'
     }
   }
 
@@ -128,7 +130,7 @@ export function evaluatePair(
 
   const currentAction = deriveCurrentAction({
     evaluationScope, rangeCompliance, observedTransition, repDelta, progressDirection,
-    compromised: dataQualityFlags.length > 0, backoffsClearMinimum,
+    compromised: dataQualityFlags.length > 0, backoffsClearMinimum, worseThanLast, weightBased,
   })
 
   return { observedTransition, repDelta, rangeCompliance, evaluationScope, dataQualityFlags, currentAction, progressDirection, loadChangePercent }
@@ -163,8 +165,9 @@ export function sessionRangeCompliance(
 function deriveCurrentAction(input: {
   evaluationScope: EvaluationScope; rangeCompliance: RangeCompliance; observedTransition: ObservedTransition
   repDelta: RepDelta; progressDirection: boolean | null; compromised: boolean; backoffsClearMinimum: boolean
+  worseThanLast: boolean; weightBased: boolean
 }): CurrentAction {
-  const { evaluationScope, rangeCompliance, observedTransition, repDelta, progressDirection, compromised, backoffsClearMinimum } = input
+  const { evaluationScope, rangeCompliance, observedTransition, repDelta, progressDirection, compromised, backoffsClearMinimum, worseThanLast, weightBased } = input
 
   // Nothing comparable this session (mixed loads, or nothing the metric can
   // read) — ask for a comparable session instead of pretending it held steady.
@@ -172,28 +175,36 @@ function deriveCurrentAction(input: {
 
   // observedTransition is already direction-aware: LOAD_DECREASED means the
   // metric moved the easy way — a lighter weight, or MORE assistance on an
-  // assisted exercise. Intent is unknown either way, so it's never labelled a
-  // deload (§8). (A drop in assistance reads LOAD_INCREASED and is handled as
-  // forward motion below.)
-  if (observedTransition === 'LOAD_DECREASED') return 'REVIEW_LOAD_REDUCTION'
+  // assisted exercise. Intent is unknown here, so it's never labelled a
+  // deload (§8); evaluate.ts reads it as a step back when it follows a jump.
+  // (A drop in assistance reads LOAD_INCREASED and is handled as forward
+  // motion below.)
+  // With no load axis (bodyweight reps, a timed hold, a distance) "decreased"
+  // means a lower top set: an off day at the same exercise, not a lighter load.
+  if (observedTransition === 'LOAD_DECREASED') return weightBased ? 'REVIEW_LOAD_REDUCTION' : 'HOLD_STEADY'
 
-  // §2: READY_TO_INCREASE requires every prescribed set to have been checked:
-  // a full uniform session at the top of the range, or a complete top-set +
-  // backoff session whose top set is at the top and whose backoff sets all
-  // clear the minimum. A top set alone, with backoff work missing or short,
-  // is never enough.
+  // §2: the top of the range needs every prescribed set checked: a full
+  // uniform session at the top of the range, or a complete top-set + backoff
+  // session whose top set is at the top and whose backoff sets all clear the
+  // minimum. A top set alone, with backoff work missing or short, is never
+  // enough. This is ONE session; evaluate.ts asks for two in a row (S3).
   const readyEligible = rangeCompliance === 'ALL_SETS_AT_TOP'
     && (evaluationScope === 'ALL_PRESCRIBED_WORKING_SETS' || (evaluationScope === 'TOP_SET_ONLY' && backoffsClearMinimum))
 
   const isForwardMotion = progressDirection === true || (observedTransition === 'LOAD_UNCHANGED' && repDelta === 'REP_INCREASE')
-  if (isForwardMotion) {
-    if (readyEligible) return compromised ? 'CONFIRM_AT_CURRENT_LOAD' : 'READY_TO_INCREASE'
-    if (rangeCompliance === 'BELOW_MINIMUM') return 'CONFIRM_BEFORE_INCREASING'
-    return compromised ? 'CONFIRM_AT_CURRENT_LOAD' : 'BUILD_AT_CURRENT_LOAD'
+  if (compromised) return isForwardMotion || readyEligible ? 'CONFIRM_AT_CURRENT_LOAD' : 'HOLD_STEADY'
+  if (readyEligible) {
+    // Never "ready" off a session worse than the last one at the same load
+    // (S13/S16: one session is noise, a worse one is no evidence of
+    // readiness) — repeat it instead.
+    return worseThanLast ? 'REPEAT_AT_TOP' : 'READY_TO_INCREASE'
   }
-  if (readyEligible) return compromised ? 'CONFIRM_AT_CURRENT_LOAD' : 'READY_TO_INCREASE'
+  // The first session at a heavier load: reps near (or under) the bottom of
+  // the range are expected right after a jump (S5/S6), never a warning.
+  if (weightBased && observedTransition === 'LOAD_INCREASED') return 'NEW_WEIGHT'
+  if (isForwardMotion) return 'BUILD_AT_CURRENT_LOAD'
   // Evaluated, but no forward motion: the same numbers, a small dip, or a
   // set count that didn't line up. The target layer turns this into a
-  // concrete "repeat it and add a rep" (or "get back to last time") plan.
+  // concrete "repeat = good, +1 rep = progress" plan.
   return 'HOLD_STEADY'
 }

@@ -281,7 +281,7 @@ export function computeRelativeStrengthFindings(inputs: RelativeStrengthFindingI
     const b1 = mean(points.slice(-3).map(p => p.bodyweightKg))
 
     if (r1 >= r0 * 1.05 && s1 >= s0 * 1.03) {
-      out.push({ id: `rel-strength-gain-${title}`, tier: 'measured', positive: true, text: `${title}: strength-per-bodyweight rose ${pct(r1 / r0 - 1)} over ${points.length} sessions, and the absolute estimate rose too (${round1(s0)} kg → ${round1(s1)} kg) while bodyweight stayed near-flat (${round1(b0)} → ${round1(b1)} kg). Both the numerator and denominator agree, which is when this ratio is worth reading. Estimated 1RMs carry roughly ±10% error.` })
+      out.push({ id: `rel-strength-gain-${title}`, tier: 'measured', positive: true, text: `${title}: strength-per-bodyweight rose ${pct(r1 / r0 - 1)} over ${points.length} sessions, and the absolute estimate rose too (${round1(s0)} kg → ${round1(s1)} kg) while bodyweight stayed near-flat (${round1(b0)} → ${round1(b1)} kg). Both the numerator and denominator agree, which is when this ratio is worth reading. Estimated 1RMs are estimates — read the direction, not the exact kilos.` })
     } else if (r1 >= r0 * 1.05 && s1 <= s0 * 1.01 && b1 <= b0 * 0.98) {
       out.push({ id: `rel-strength-bw-${title}`, tier: 'measured', positive: null, text: `${title}: the bodyweight-adjusted number improved ${pct(r1 / r0 - 1)}, but the estimated 1RM barely moved (${round1(s0)} kg → ${round1(s1)} kg) — bodyweight fell from ${round1(b0)} to ${round1(b1)} kg. The ratio improved because the denominator shrank, not because you got stronger. Holding absolute strength through a bodyweight drop is a real result — it just isn't the same result as getting stronger.` })
     } else if (r1 <= r0 * 0.95 && s1 <= s0 * 0.97) {

@@ -96,6 +96,9 @@ const routine = (id, title) => ({
     sets: [0, 1, 2].map(i => ({ type: 'normal', reps: null, rep_range_start: 8, rep_range_end: 10, weight_kg: 60, index: i })) }],
 })
 const base = { history, routines: [routine('r1', 'Push')], targetOverrides: [], sleepPoints: [], bodyweight: [], targetDays: 3, today: '2026-09-23' }
+// The same bench at the top of its range twice in a row (S3) — "Add weight".
+const historyReady = { ...history, sets: [...history.sets, ...[0, 1, 2].map(i => ({ ...set('w3', '2026-09-22', 60, 10, i) }))] }
+const baseReady = { ...base, history: historyReady }
 
 console.log('\n4 · computeProgressModel gate')
 {
@@ -134,7 +137,9 @@ console.log('\n5 · Coach snapshot + JSON')
   check('a Decision line per current-program exercise', /Decision: Bench Press: [A-Z_]+ "/.test(text), text)
   check('limitation name resolved, never undefined', text.includes('Limitation: Heavy hip hinge [= Hinge (deadlift pattern)] (limit) — lower back') && !/undefined/.test(text))
   check('latest session with previous numbers', text.includes('Bench Press: 3×10@60kg (previous: 3×8@60kg)'), text)
-  check('a load increase with no known step uses the engine headline, not the old load', /next: Ready to increase from 60 kg/.test(text), text.split('\n').find(l => l.includes('Decision')))
+  check('one session at the top of the range is "Repeat" (S3: 2 in a row), its next is the floor', /Decision: Bench Press: REPEAT_AT_TOP "Repeat" · latest: 60 kg × 10\/10\/10 · next: 60 kg × 10\/10\/10/.test(text), text.split('\n').find(l => l.includes('Decision')))
+  const readyText = formatPtSnapshot({ ...data, progress: computeProgressModel({ ...baseReady, currentProgram: [{ routine_id: 'r1' }] }) })
+  check('a load increase with no known step uses the engine headline, not the old load', /Decision: Bench Press: READY_TO_INCREASE "Add weight" · .*next: Add weight from 60 kg/.test(readyText), readyText.split('\n').find(l => l.includes('Decision')))
   check('no hard-coded split in the snapshot', !/bro-split|Back\/Chest/.test(text))
   check('weight trend line', text.includes("WEIGHT: 79.5kg (-0.5kg since 2026-09-20)"))
 
@@ -262,13 +267,44 @@ console.log('\n9 · The PT assessment\'s verdicts (coachFacts.ts: code decides, 
     { slug: 'quadriceps', sets: 1, landmarks: { mev: 6, mav: 12, mrv: 16 }, restriction: 'limit' },
     { slug: 'biceps', sets: 9, landmarks: { mev: 6, mav: 14, mrv: 20 }, restriction: null },
   ] }), 'normal')
-  check('a muscle at its ceiling is a deload cue, named with its sets', heavy.deloadCue && heavy.overreach.length === 1 && heavy.overreach[0].sets === 24 && heavy.overreach[0].mrv === 22, heavy.overreach)
+  check('S18/S31: a muscle over its weekly ceiling is no longer a deload cue on its own', !heavy.deloadCue && !('overreach' in heavy), heavy.deloadReasons)
   check('below the minimum: only an unrestricted muscle is listed', heavy.belowMinimum.length === 1 && heavy.belowMinimum[0].sets === 2, heavy.belowMinimum)
   check('nothing over, nothing under: no cue, none listed', !ptVerdicts(mk({}), 'normal').deloadCue && ptVerdicts(mk({}), 'normal').belowMinimum.length === 0)
   const text = formatPtVerdicts(heavy)
   check('the text has one labelled line per verdict, in a fixed order', ['RECOVERY:', 'OVERREACH:', 'PRIORITY:', 'BELOW MINIMUM VOLUME:', 'IMBALANCE:', 'MISSED:'].every((l, i) => text.split('\n')[i].startsWith(l)), text)
-  check('OVERREACH names the muscle and its ceiling; BELOW MINIMUM names the gap', /OVERREACH: deload cue · at the ceiling: .* 24\/22/.test(text) && /BELOW MINIMUM VOLUME: .* 2\/6/.test(text), text)
-  check('PRIORITY is the first lift ready to increase, with the engine\'s own target', /PRIORITY: Bench Press — READY_TO_INCREASE/.test(formatPtVerdicts(ptVerdicts(mk({}), 'normal'))), formatPtVerdicts(ptVerdicts(mk({}), 'normal')))
+  check('OVERREACH says none for high volume alone; BELOW MINIMUM names the gap', /OVERREACH: none/.test(text) && /BELOW MINIMUM VOLUME: .* 2\/6/.test(text), text)
+
+  // S31 triggers (offer, never force).
+  { const { weeksSinceEasyWeek, DELOAD_AFTER_WEEKS } = require('../src/features/training/coach/coachFacts')
+    // Weekly sessions, Mondays, before Monday 23.11.2026 (today Wednesday 25.11.2026).
+    const weeksBack = (n, perWeek) => Array.from({ length: n }, (_, w) => Array.from({ length: perWeek }, (_, k) => shiftDays('2026-11-16', -7 * w + k))).flat()
+    function shiftDays(date, days) { const d = new Date(date + 'T12:00:00'); d.setDate(d.getDate() + days); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+    check('S31(a): 7 full weeks of 3 sessions (target 3) → 7 weeks without an easy week', weeksSinceEasyWeek(weeksBack(7, 3), '2026-11-25', 3) === 7)
+    const withEasy = weeksBack(7, 3).filter(d => !(d >= '2026-10-26' && d < '2026-11-02')).concat(['2026-10-27'])
+    check('S32: a week with half or fewer of the planned sessions (1 of 3, week of 26.10) is easy and ends the run', weeksSinceEasyWeek(withEasy, '2026-11-25', 3) === 3, weeksSinceEasyWeek(withEasy, '2026-11-25', 3))
+    check('S31(a): no weekly target → not judged (null)', weeksSinceEasyWeek(weeksBack(7, 3), '2026-11-25', null) === null)
+    const sessions = weeksBack(DELOAD_AFTER_WEEKS, 3).map((date, i) => ({ workoutId: `w${i}`, date, title: 'Push', routineId: 'r1', exercises: [] }))
+    const long = ptVerdicts(mk({ today: '2026-11-25', sessions, profile: { training_days_per_week: 3 } }), 'normal')
+    check('S31(a): 6 weeks without an easy week → deload cue, with its reason', long.deloadCue && long.deloadReasons[0] === '6 weeks without an easy week', long.deloadReasons)
+    check('...and the verdict line names it', /OVERREACH: deload cue \(6 weeks without an easy week\)/.test(formatPtVerdicts(long)), formatPtVerdicts(long))
+    const short = ptVerdicts(mk({ today: '2026-11-25', sessions: sessions.slice(0, 9), profile: { training_days_per_week: 3 } }), 'normal')
+    check('3 weeks in → no cue', !short.deloadCue && short.weeksSinceEasy === 3, short)
+    const flat = (id) => ({ ...progress.decisions[0], exerciseTemplateId: id, currentAction: 'WATCH_FOR_PLATEAU' })
+    const stalledProgress = { ...progress, decisions: [flat('a'), flat('b')], titleById: new Map([['a', 'Bench'], ['b', 'Row']]) }
+    const stalled = ptVerdicts(mk({ progress: stalledProgress }), 'normal')
+    check('S31(b): two lifts not rising at their load → deload cue', stalled.deloadCue && stalled.stalledLifts.join() === 'Bench,Row' && /2 lifts not rising/.test(stalled.deloadReasons.join()), stalled.deloadReasons)
+    const oneFlat = { ...progress, decisions: [flat('a')], titleById: new Map([['a', 'Bench']]) }
+    check('S31: one stalled lift alone → no cue; with "very tired" → cue', !ptVerdicts(mk({ progress: oneFlat }), 'normal').deloadCue && ptVerdicts(mk({ progress: oneFlat }), 'very tired').deloadCue)
+  }
+  const ready = computeProgressModel({ ...baseReady, currentProgram: [{ routine_id: 'r1' }] })
+  check('PRIORITY is the first lift ready to increase, with the engine\'s own target', /PRIORITY: Bench Press — READY_TO_INCREASE "Add weight"/.test(formatPtVerdicts(ptVerdicts(mk({ progress: ready }), 'normal'))), formatPtVerdicts(ptVerdicts(mk({ progress: ready }), 'normal')))
+  { const fs = require('fs'), path = require('path')
+    const fmt = fs.readFileSync(path.join(__dirname, '../src/features/training/coach/coachFormat.ts'), 'utf8')
+    const facts = fs.readFileSync(path.join(__dirname, '../src/features/training/coach/coachFacts.ts'), 'utf8')
+    check('the Decision word and PRIORITY title come from actionLabel(action, metricKind) ("Less assist" on an assisted lift); the job names every word incl. Check sets',
+      fmt.includes('actionLabel(r.currentAction, r.metricKind)') && facts.includes('actionLabel(pick.currentAction, pick.metricKind)')
+      && ['Add reps', 'Repeat', 'Add weight', 'Less assist', 'Almost', 'New weight', 'Step back', 'Check', 'Check sets', 'Lighter', 'First time'].every(w => PT_SYSTEM_PROMPT.includes(w))) }
+  check('one session at the top (Repeat) is not a priority to push', /PRIORITY: none/.test(formatPtVerdicts(ptVerdicts(mk({}), 'normal'))))
   check('every figure is a number, never "undefined" or "NaN"', !/undefined|NaN/.test(text))
 }
 

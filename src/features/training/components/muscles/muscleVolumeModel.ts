@@ -29,11 +29,10 @@ export function presetWindowIso(anchorDay: string, days: number): { fromIso: str
   return { fromIso: subDays(end, days).toISOString(), toIso: end.toISOString() }
 }
 
-export const ROLE_LABEL: Record<MuscleRole, string> = { primary: 'Primary', secondary: 'Secondary', tertiary: 'Tertiary' }
+export const ROLE_LABEL: Record<MuscleRole, string> = { primary: 'Primary', secondary: 'Secondary' }
 export const ROLE_BADGE: Record<MuscleRole, string> = {
   primary:   'bg-surface-hover text-fg',
   secondary: 'bg-surface-2 text-fg-muted',
-  tertiary:  'bg-surface-2 text-fg-faint',
 }
 
 // A muscle flagged by an active athlete limitation is a THIRD state, deliberately

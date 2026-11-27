@@ -169,7 +169,7 @@ function computeProgressionStreak(
 /** ESTIMATED_STRENGTH_PR needs the actual per-session best-set e1RM series,
  *  which the representative-point series doesn't carry for non-est1rm
  *  metrics — computed separately here from the real sessions so est1RM's
- *  12-rep eligibility ceiling is respected exactly once, in one place.
+ *  10-rep e1RM ceiling (S15) is respected exactly once, in one place.
  *
  *  `e1rmOf` selects the set with the HIGHEST actual e1RM VALUE among a
  *  session's eligible sets — never "whichever set has the most reps", which

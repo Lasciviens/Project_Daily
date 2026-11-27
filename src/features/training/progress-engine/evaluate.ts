@@ -4,15 +4,15 @@
 
 import type {
   CanonicalExerciseSession, ExpectationRange, ExerciseProgressionPolicy, ExerciseProgressResult,
-  DecisionReason, SessionExposure, CurrentStateSummary, EvidenceLevel, ProgressMetricKind, CurrentAction,
+  DecisionReason, SessionExposure, CurrentStateSummary, EvidenceLevel, ProgressMetricKind, CurrentAction, LiftClass,
 } from './types'
-import { ALGORITHM_VERSION } from './policies'
+import { ALGORITHM_VERSION, isPositiveLoadChange, repsFirstExtra, resolveLoadIncrementKg, resolveLoadStep, expectedRepsAfterStep } from './policies'
 import { bestComparableSet } from './normalize'
 import { buildRepresentativePoints, buildLoadCycles, computeRecentProgressTrend, computeCurrentLoadProgress, type LoadCycle } from './trend'
 import { evaluatePair, sessionRangeCompliance } from './comparability'
 import { detectProgressEvents, detectEstimatedStrengthPr } from './events'
-import { buildNextTargets, nextTargetBlocker } from './targets'
-import { isQualifiedForPositiveSignal, sessionBestE1rm } from './metricStrategy'
+import { buildNextTargets, nextTargetBlocker, evaluatedReps } from './targets'
+import { isQualifiedForPositiveSignal, isWeightBasedMetric, sessionBestE1rm, totalQuantity } from './metricStrategy'
 
 function round1(n: number): number { return Math.round(n * 10) / 10 }
 
@@ -68,21 +68,41 @@ function observedLoadIncrements(cycles: readonly LoadCycle[], metricKind: Progre
   return diffs
 }
 
-/** How many CONSECUTIVE trailing sessions (ending at `latest`) independently
- *  land ALL_SETS_AT_TOP — the real gate behind `requiredTopRangeConfirmations`
- *  (§6): a single top-of-range session is not, by itself, enough to justify
- *  READY_TO_INCREASE once the policy asks for more than one confirmation. */
-function countConsecutiveTopRangeSessions(
+/** How many CONSECUTIVE trailing sessions (ending at `latest`) land
+ *  ALL_SETS_AT_TOP at the latest session's load — the gate behind
+ *  `requiredTopRangeConfirmations` (S3). The run stops at a different load
+ *  (16 kg at the top, then 18 kg at the top is one session at 18 kg, not two)
+ *  and at a session that was worse than the one before it: a worse session
+ *  starts the count again (S13/S16). */
+export function countConsecutiveTopRangeSessions(
   sessions: readonly CanonicalExerciseSession[],
   expectation: ExpectationRange,
   metricKind: ProgressMetricKind,
 ): number {
+  const last = sessions.length - 1
+  if (last < 0) return 0
+  const loadOf = (s: CanonicalExerciseSession) => (isWeightBasedMetric(metricKind) ? bestComparableSet(s, metricKind)?.weightKg ?? null : null)
+  const latestLoad = loadOf(sessions[last])
   let count = 0
-  for (let i = sessions.length - 1; i >= 0; i--) {
-    if (sessionRangeCompliance(sessions[i], expectation, metricKind) !== 'ALL_SETS_AT_TOP') break
+  for (let i = last; i >= 0; i--) {
+    const s = sessions[i]
+    if (loadOf(s) !== latestLoad) break
+    if (sessionRangeCompliance(s, expectation, metricKind) !== 'ALL_SETS_AT_TOP') break
+    if (i < last) {
+      const newer = totalQuantity(sessions[i + 1].comparableWorkingSets, metricKind)
+      const older = totalQuantity(s.comparableWorkingSets, metricKind)
+      if (newer == null || older == null || newer < older) break
+    }
     count++
   }
   return count
+}
+
+/** Where a session sits in `sessions` (the points/cycles keep that order). */
+function cycleStartIndex(cycles: readonly LoadCycle[], cycleIndex: number): number {
+  let start = 0
+  for (let i = 0; i < cycleIndex; i++) start += cycles[i].points.length
+  return start
 }
 
 export interface EvaluateExerciseProgressInput {
@@ -101,10 +121,14 @@ export interface EvaluateExerciseProgressInput {
    *  DATA_AND_LIMITATIONS.md); left undefined/null everywhere it's not
    *  wired, which correctly falls through to rung 2. */
   explicitIncrementKg?: number | null
+  /** S4's step band (`liftClassFor` on Hevy's primary muscle group); unknown
+   *  → the smaller upper-body band. */
+  liftClass?: LiftClass | null
 }
 
 export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, policy: ExerciseProgressionPolicy): ExerciseProgressResult {
   const { exerciseTemplateId, metricKind, sessions, expectation, equipmentClass = null, explicitIncrementKg = null } = input
+  const liftClass: LiftClass = input.liftClass ?? 'upper_or_small'
   const comparableSessions = sessions.length
   const weekSpan = comparableSessions >= 2 ? Math.round(daysBetween(sessions[0].date, sessions[sessions.length - 1].date) / 7) : 0
 
@@ -112,7 +136,7 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
     const only = sessions[0]
     // One session is enough for a "repeat it and add a rep" plan — the
     // start of a trend — even though there is nothing to compare yet.
-    const firstTargets = only ? buildNextTargets(only, expectation, metricKind, 'INSUFFICIENT_DATA', policy, explicitIncrementKg, equipmentClass, [], null) : null
+    const firstTargets = only ? buildNextTargets(only, expectation, metricKind, 'INSUFFICIENT_DATA', policy, explicitIncrementKg, equipmentClass, [], null, { liftClass }) : null
     return {
       algorithmVersion: ALGORITHM_VERSION, exerciseTemplateId, metricKind,
       observedTransition: 'NO_COMPARISON', repDelta: 'NOT_APPLICABLE', rangeCompliance: 'NOT_EVALUATED', evaluationScope: 'NOT_EVALUATED',
@@ -158,20 +182,74 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
   let currentAction: CurrentAction = pair.currentAction
   const latestQualified = isQualifiedForPositiveSignal({ loadStructure: latest.loadStructure, sets: latest.comparableWorkingSets }, expectation, metricKind)
   const freshImprovement = latestQualified && (pair.observedTransition === 'LOAD_INCREASED' || pair.repDelta === 'REP_INCREASE')
-  if (!freshImprovement && pair.dataQualityFlags.length === 0) {
+  // Sets at the top of the range, or the first session at a new load, are
+  // never a plateau or a decline: those states describe flat or falling
+  // totals at one load, not a lift waiting for its next step.
+  const atTopOrNew = currentAction === 'READY_TO_INCREASE' || currentAction === 'REPEAT_AT_TOP' || currentAction === 'NEW_WEIGHT'
+  if (!freshImprovement && !atTopOrNew && pair.dataQualityFlags.length === 0) {
     if (clp.state === 'POSSIBLE_PLATEAU') currentAction = 'WATCH_FOR_PLATEAU'
     else if (clp.state === 'DECLINING') currentAction = 'WATCH_FOR_REGRESSION'
   }
 
-  // requiredTopRangeConfirmations gate: READY_TO_INCREASE only stands once
-  // at least N consecutive trailing sessions independently land at the top
-  // of the range — a single session's read is downgraded back to
-  // BUILD_AT_CURRENT_LOAD (still compliant, just not yet confirmed) rather
-  // than recommending a load increase off one data point.
+  const weightBased = isWeightBasedMetric(metricKind)
+  const loggedLoads = cycles.map(c => c.weightKg).filter((w): w is number => w != null)
+  const loadOfCycle = (i: number) => (i >= 0 && i < cycles.length ? cycles[i].weightKg : null)
+  const last = cycles.length - 1
+  const reasons: DecisionReason[] = []
+
+  // S6 — a jump that didn't hold: the last two sessions, both at the new
+  // (heavier) load, each had a set below the minimum, and the second was no
+  // better than the first (a session that gained reps is a jump settling in).
+  // Suggest the previous load, with a concrete target there: the sets last
+  // done at it.
+  let stepBackTo: CanonicalExerciseSession | null = null
+  const jumpedUp = weightBased && last >= 1 && isPositiveLoadChange(metricKind, loadOfCycle(last - 1), loadOfCycle(last)) === true
+  const lastTwo = sessions.slice(-2)
+  const secondNoBetter = lastTwo.length === 2
+    && (totalQuantity(lastTwo[1].comparableWorkingSets, metricKind) ?? Infinity) <= (totalQuantity(lastTwo[0].comparableWorkingSets, metricKind) ?? -Infinity)
+  if (jumpedUp && pair.dataQualityFlags.length === 0 && currentCycle.points.length >= 2 && secondNoBetter
+    && lastTwo.every(s => sessionRangeCompliance(s, expectation, metricKind) === 'BELOW_MINIMUM')) {
+    stepBackTo = sessions[cycleStartIndex(cycles, last) - 1] ?? null
+    if (stepBackTo) {
+      currentAction = 'STEP_BACK'
+      reasons.push({ code: 'BELOW_MINIMUM_TWICE_AFTER_JUMP', severity: 'info', values: { fromKg: loadOfCycle(last), toKg: loadOfCycle(last - 1) } })
+    }
+  }
+
+  // S6 — back at a lighter load right after a jump: a step back, not an
+  // unexplained load cut. It builds at this load like any other.
+  if (currentAction === 'REVIEW_LOAD_REDUCTION' && last >= 2
+    && isPositiveLoadChange(metricKind, loadOfCycle(last - 2), loadOfCycle(last - 1)) === true) {
+    reasons.push({ code: 'STEPPED_BACK', severity: 'info', values: { fromKg: loadOfCycle(last - 1), toKg: loadOfCycle(last) } })
+    currentAction = sessionRangeCompliance(latest, expectation, metricKind) === 'ALL_SETS_AT_TOP' ? 'READY_TO_INCREASE' : 'BUILD_AT_CURRENT_LOAD'
+  }
+
+  // S3 — two sessions in a row at the top of the range, at this load, the
+  // second no worse than the first. One session is "Repeat (1 of 2)".
   let topRangeConfirmations: number | null = null
-  if (currentAction === 'READY_TO_INCREASE' && policy.requiredTopRangeConfirmations > 1) {
+  if (currentAction === 'READY_TO_INCREASE' || currentAction === 'REPEAT_AT_TOP') {
     topRangeConfirmations = countConsecutiveTopRangeSessions(sessions, expectation, metricKind)
-    if (topRangeConfirmations < policy.requiredTopRangeConfirmations) currentAction = 'BUILD_AT_CURRENT_LOAD'
+    if (topRangeConfirmations < policy.requiredTopRangeConfirmations) currentAction = 'REPEAT_AT_TOP'
+  }
+
+  // S4/S5 — the step as a % of the load. When even the smallest step is over
+  // 10 %, reps come first ("Almost"): the top of the range + up to 2 on every
+  // evaluated set, or jump now and accept that reps restart near the bottom.
+  if (currentAction === 'READY_TO_INCREASE' && weightBased && metricKind !== 'assistedWeight') {
+    const load = bestComparableSet(latest, metricKind)?.weightKg ?? null
+    const smallest = resolveLoadIncrementKg(explicitIncrementKg, equipmentClass, observedLoadIncrements(cycles, metricKind), policy)
+    if (load != null && load > 0 && smallest != null && expectation.repMax != null) {
+      const step = resolveLoadStep(load, smallest, liftClass, policy, false, loggedLoads)
+      if (step.tooBig) {
+        const repsGoal = expectation.repMax + repsFirstExtra(step.smallestPercent, policy)
+        const reps = evaluatedReps(latest)
+        if (!reps.every(r => r >= repsGoal)) {
+          currentAction = 'ALMOST_READY'
+          const expect = expectedRepsAfterStep(Math.min(...reps), step.percent, policy)
+          reasons.push({ code: 'STEP_OVER_TEN_PERCENT', severity: 'info', values: { nextKg: step.nextKg, percent: step.percent, repsGoal, expectLow: expect.low, expectHigh: expect.high } })
+        }
+      }
+    }
   }
 
   const strengthPr = detectEstimatedStrengthPr(sessions, latestIndex, metricKind)
@@ -180,7 +258,6 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
     ...(strengthPr ? [strengthPr] : []),
   ]
 
-  const reasons: DecisionReason[] = []
   if (pair.observedTransition === 'LOAD_INCREASED' && pair.loadChangePercent != null) {
     reasons.push({ code: 'LOAD_INCREASED_PCT', severity: 'positive', values: { percent: pair.loadChangePercent } })
   }
@@ -195,7 +272,10 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
   if (currentAction === 'REVIEW_LOAD_REDUCTION') reasons.push({ code: 'LOAD_DECREASED_UNKNOWN_INTENT', severity: 'caution', values: { fromKg: bestComparableSet(previous, metricKind)?.weightKg ?? null, toKg: bestComparableSet(latest, metricKind)?.weightKg ?? null } })
   if (metricKind === 'assistedWeight' && pair.progressDirection === true) reasons.push({ code: 'ASSISTANCE_REDUCED', severity: 'positive', values: {} })
   if (currentAction === 'WATCH_FOR_PLATEAU' || currentAction === 'WATCH_FOR_REGRESSION') reasons.push({ code: 'NO_TREND_AT_CURRENT_LOAD', severity: 'caution', values: { sessionsAtLoad: clp.n } })
-  if (topRangeConfirmations != null && currentAction === 'BUILD_AT_CURRENT_LOAD') {
+  if (pair.currentAction === 'REPEAT_AT_TOP' && currentAction === 'REPEAT_AT_TOP') {
+    reasons.push({ code: 'TOP_BUT_BELOW_LAST_TIME', severity: 'info', values: {} })
+  }
+  if (topRangeConfirmations != null && currentAction === 'REPEAT_AT_TOP') {
     reasons.push({ code: 'AWAITING_TOP_RANGE_CONFIRMATION', severity: 'info', values: { confirmations: topRangeConfirmations, required: policy.requiredTopRangeConfirmations } })
   }
   for (const flag of pair.dataQualityFlags) {
@@ -226,7 +306,12 @@ export function evaluateExerciseProgress(input: EvaluateExerciseProgressInput, p
     },
     evidence: { progress: computeProgressEvidence(recent.n, recent.weekSpan), recommendation: recommendationEvidence },
     reasons, events, currentState,
-    nextTargets: buildNextTargets(latest, expectation, metricKind, currentAction, policy, explicitIncrementKg, equipmentClass, observedLoadIncrements(cycles, metricKind), previous),
+    nextTargets: buildNextTargets(latest, expectation, metricKind, currentAction, policy, explicitIncrementKg, equipmentClass, observedLoadIncrements(cycles, metricKind), previous, {
+      liftClass, stepBackTo, loggedLoads,
+      // Below the minimum at a load just jumped to: the honest condition is "8 on every set = the jump holds".
+      belowAfterJump: jumpedUp && sessionRangeCompliance(latest, expectation, metricKind) === 'BELOW_MINIMUM',
+      confirmations: topRangeConfirmations != null ? { count: topRangeConfirmations, required: policy.requiredTopRangeConfirmations } : null,
+    }),
     nextTargetBlocker: nextTargetBlocker(latest, expectation, metricKind, currentAction),
     expectation, comparableSessions, weekSpan,
   }

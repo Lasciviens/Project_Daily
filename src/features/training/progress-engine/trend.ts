@@ -167,8 +167,8 @@ function dominantSetCount(points: readonly RepresentativePoint[]): number {
  *  "stable" while its mirror-image noisy decline read "declining". With no
  *  real direction, a noisy series is STABLE_VARIATION; a quiet flat one
  *  resolves to TOO_EARLY_TO_JUDGE inside the post-load-change grace window,
- *  BUILDING_BASELINE past grace but short of the plateau floor, and only
- *  then POSSIBLE_PLATEAU. Mixed-load / not-evaluable points (`total ==
+ *  BUILDING_BASELINE past grace but short of the plateau floor (S13: 4
+ *  sessions AND 21 days), and only then POSSIBLE_PLATEAU. Mixed-load / not-evaluable points (`total ==
  *  null`) are excluded before regression ever runs — never a NaN. */
 export function computeCurrentLoadProgress(
   cyclePoints: readonly RepresentativePoint[],
@@ -188,7 +188,8 @@ export function computeCurrentLoadProgress(
 
   const series = usable.map(p => p.total as number)
   const { slope, residualSpread } = linearFit(series)
-  const { graceSessions, minSessions } = policy.plateau
+  const { graceSessions, minSessions, minDays } = policy.plateau
+  const spanDays = daysBetweenDates(usable[0].date, usable[usable.length - 1].date)
   const floors = currentLoadFloors(metricKind, series, policy)
   const significant = residualSpread <= floors.noise || slopeTStatistic(slope, residualSpread, series.length) >= tCriticalOneSided95(series.length)
 
@@ -197,7 +198,9 @@ export function computeCurrentLoadProgress(
   else if (slope <= -floors.decline && significant) state = 'DECLINING'
   else if (residualSpread > floors.noise) state = 'STABLE_VARIATION'
   else if (usable.length <= graceSessions) state = 'TOO_EARLY_TO_JUDGE'
-  else if (usable.length < minSessions) state = 'BUILDING_BASELINE'
+  // S13: a plateau needs both ≥ 4 sessions and ≥ 3 weeks at the load — for
+  // a lift done twice a week, 4 sessions can be under 2 weeks.
+  else if (usable.length < minSessions || !(spanDays >= minDays)) state = 'BUILDING_BASELINE'
   else state = 'POSSIBLE_PLATEAU'
 
   return { state, n: usable.length, slope, residualSpread }

@@ -10,7 +10,7 @@
 
 import type { ProgressSetRow, ProgressTemplateRow, ProgressMetricKind } from '../progressAggregate'
 import { metricKindForExerciseType, mondayOf } from '../progressAggregate'
-import { metricValueOf, higherIsBetterFor } from './metricStrategy'
+import { metricValueOf, higherIsBetterFor, sessionBestE1rm } from './metricStrategy'
 import type { CanonicalSet } from './types'
 
 export type WeeklyChangeKind = 'new' | 'load' | 'volume'
@@ -80,7 +80,8 @@ export function computeWeeklyChangeFlags(
     if (!entry) { entry = { best: null, setCount: 0 }; byWeek.set(week, entry) }
     entry.setCount++
 
-    const value = metricValueOf(asCanonical(s), metricKind)
+    // est1rm compares the e1RM itself — only sets of ≤ 10 reps carry one (S15).
+    const value = metricKind === 'est1rm' ? sessionBestE1rm([asCanonical(s)]) : metricValueOf(asCanonical(s), metricKind)
     if (value == null) continue
     const better = entry.best == null || (higherIsBetterFor(metricKind) ? value > entry.best : value < entry.best)
     if (better) entry.best = value

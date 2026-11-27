@@ -13,7 +13,7 @@
 //     plan/improvement.ts, better of the first two vs the last two sessions,
 //     3+ sessions over 14+ days in the last 4 weeks, up to 5 lifts).
 //     DOWN = est. 1RM down more than 5 % on 2+ main lifts. HOLDING = 2+ lifts
-//     judged and none down more than 2.5 %. Strength is the signal that tells
+//     judged and none down more than 3 %. Strength is the signal that tells
 //     real muscle loss from scale noise.
 //   SCALE (measured) — per the goal report's rules (analyseComposition picks
 //     ONE scale; two are never mixed): lean mass (and, from the photo
@@ -93,7 +93,7 @@ export interface MuscleWatchInput {
 
 // ── thresholds ─────────────────────────────────────────────────────────────
 export const LIFT_DOWN_PCT = 5
-export const LIFT_FLAT_PCT = 2.5 // = plan/improvement.FLAT_BAND_PCT
+export const LIFT_FLAT_PCT = 3 // = plan/improvement.FLAT_BAND_PCT (S16: under 3 % is noise)
 export const MIN_LIFTS_DOWN = 2
 export const SCALE_DROP_KG = 1.0
 export const SCALE_MIN_DAYS = 28

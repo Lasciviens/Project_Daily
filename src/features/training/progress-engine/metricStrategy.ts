@@ -2,8 +2,11 @@
 // set is best" / "is this set even usable for this metric" / "what's the
 // comparable total" goes through this ONE module, so the direction-aware
 // behaviour (assisted-weight: lower is better) and the eligibility rules
-// (est1rm's <=12-rep ceiling, distance requiring a real duration to pair
-// with it) are never duplicated or drifted per call site.
+// (distance requiring a real duration to pair with it) are never duplicated
+// or drifted per call site. The est1rm metric ranks a session's sets by an
+// uncapped Epley score — every set of reps counts for progression — while the
+// e1RM NUMBER anyone sees (`sessionBestE1rm`, charts, records) comes only from
+// sets of ≤ 10 reps (S15, `est1RM`).
 
 import { est1RM, EST_1RM_MAX_REPS } from '../progressAggregate'
 import type { CanonicalSet, ExpectationRange, ProgressMetricKind, RangeCompliance, SessionLoadStructure } from './types'
@@ -30,9 +33,13 @@ export interface MetricStrategy {
 }
 
 const STRATEGIES: Record<ProgressMetricKind, MetricStrategy> = {
+  // Every weighted set counts for progression: a 12/12/12 or a 15-rep set is
+  // a real session at its load, never "not evaluable". The value is only a
+  // ranking score inside one session (the most reps at the load wins) and is
+  // never shown — the e1RM shown is `sessionBestE1rm` (≤ 10 reps, S15).
   est1rm: {
-    isEligible: s => s.weightKg != null && s.reps != null && s.reps > 0 && s.reps <= EST_1RM_MAX_REPS,
-    valueOf: s => est1RM(s.weightKg as number, s.reps as number) as number,
+    isEligible: s => s.weightKg != null && s.reps != null && s.reps > 0,
+    valueOf: s => (s.weightKg as number) * (1 + (s.reps as number) / 30),
     higherIsBetter: true,
   },
   reps: {
@@ -141,11 +148,18 @@ export function selectRepresentativeSet(
 
 /** A session's highest estimated 1RM across its comparable working sets —
  *  the set with the best e1RM VALUE, never "whichever set has the most reps"
- *  (60 kg × 8 ≈ 76 kg beats 45 kg × 12 ≈ 63 kg), regardless of which set
- *  played the top-set role. The ONE per-session e1RM every consumer uses
- *  (current state, the estimated-strength event, the charts). */
+ *  (60 kg × 8 ≈ 76 kg beats 45 kg × 10 ≈ 60 kg), regardless of which set
+ *  played the top-set role. Only sets of ≤ `EST_1RM_MAX_REPS` (10, S15)
+ *  carry one. The ONE per-session e1RM every consumer uses (current state,
+ *  the estimated-strength event, the charts). */
 export function sessionBestE1rm(sets: readonly CanonicalSet[]): number | null {
-  return metricValueOf(selectRepresentativeSet(sets, 'uniform_working_load', 'est1rm'), 'est1rm')
+  let best: number | null = null
+  for (const s of sets) {
+    if (s.weightKg == null || s.reps == null || s.reps > EST_1RM_MAX_REPS) continue
+    const e = est1RM(s.weightKg, s.reps)
+    if (e != null && (best == null || e > best)) best = e
+  }
+  return best
 }
 
 /** The metric's own natural additive quantity for one set — reps for every
@@ -159,7 +173,7 @@ export function sessionBestE1rm(sets: readonly CanonicalSet[]): number | null {
  *  above): summing plain durations while silently ignoring a real weight
  *  change would be exactly the dishonest reading this guards against. reps
  *  is deliberately NOT gated on est1rm/addedWeight/assistedWeight eligibility
- *  here — a >12-rep set is ineligible for an e1RM ESTIMATE but still
+ *  here — a set of more than 10 reps carries no e1RM ESTIMATE but still
  *  genuinely happened, and still counts toward a total-reps/volume read. */
 export function quantityFor(set: CanonicalSet, metricKind: ProgressMetricKind): number | null {
   switch (metricKind) {

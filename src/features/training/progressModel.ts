@@ -3,7 +3,7 @@ import {
   type BodyweightAnchor, type BodyweightChange, type ProgressSetRow,
 } from './progressAggregate'
 import {
-  buildCanonicalSessions, evaluateExerciseProgress, resolveExpectation, inferEquipmentClass, routineTargetFromSets,
+  buildCanonicalSessions, evaluateExerciseProgress, resolveExpectation, inferEquipmentClass, liftClassFor, routineTargetFromSets,
   computeProgramDecision, sleepCorroboratingSignal, filterToCurrentProgram, suggestCurrentProgramRoutineIds,
   isImproving, isAnalyzable, DEFAULT_POLICY,
   type ExerciseProgressResult, type RoutineTargetLookup, type UserOverrideLookup, type CanonicalExerciseSession,
@@ -159,6 +159,7 @@ export function computeProgressModel(input: ProgressModelInput): ProgressData {
   const templateIds = [...new Set(filteredSets.map(s => s.exercise_template_id))].filter(inScope)
   const titleById = new Map(history.templates.map(t => [t.id, t.title]))
   const typeById = new Map(history.templates.map(t => [t.id, t.type]))
+  const primaryGroupById = new Map(history.templates.map(t => [t.id, t.primary_muscle_group]))
   const musclesByTemplateId = buildTemplateMuscleMap(history.templates)
 
   const sessionsByTemplateId = new Map<string, CanonicalExerciseSession[]>()
@@ -171,7 +172,8 @@ export function computeProgressModel(input: ProgressModelInput): ProgressData {
     const fallbackTargetSets = sessions[sessions.length - 1]?.comparableWorkingSets.length || 3
     const expectation = resolveExpectation(templateId, metricKind, fallbackTargetSets, routineTarget, userOverride)
     const equipmentClass = inferEquipmentClass(titleById.get(templateId) ?? '')
-    return evaluateExerciseProgress({ exerciseTemplateId: templateId, metricKind, sessions, expectation, equipmentClass }, DEFAULT_POLICY)
+    const liftClass = liftClassFor(primaryGroupById.get(templateId))
+    return evaluateExerciseProgress({ exerciseTemplateId: templateId, metricKind, sessions, expectation, equipmentClass, liftClass }, DEFAULT_POLICY)
   }).sort((a, b) => b.comparableSessions - a.comparableSessions || a.exerciseTemplateId.localeCompare(b.exerciseTemplateId))
 
   const signal = sleepCorroboratingSignal(computeWeeklySleepTrend(computeSleepSummary([...sleepPoints])), lastCompleteWeek(today))
