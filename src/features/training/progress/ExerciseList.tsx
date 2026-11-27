@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown, SlidersHorizontal } from 'lucide-react'
 import { useProgressDataContext } from './progressDataContext'
-import { actionLabel } from '../progress-engine/copy'
 import { formatSetTargets } from '../progress-engine/format'
 import type { ExerciseProgressResult, CanonicalExerciseSession, ProgressMetricKind } from '../progress-engine/types'
 import { InfoBubble } from '../../../shared/components/InfoBubble'
@@ -9,7 +8,7 @@ import { Card, CardHeader, EmptyState, SegmentedControl, TonePill, Truncate, cx 
 import { DecisionDetail } from './decisionParts'
 import { ACTION_TONE } from '../plan/actionTone'
 import {
-  NEXT_ACTION_GROUPS, firstGroup, groupCounts, nextActionGroup, routinesInNextOrder, sortByNextSession, type NextActionGroup,
+  NEXT_ACTION_GROUPS, firstGroup, groupCounts, nextActionGroup, routinesInNextOrder, rowPill, sortByNextSession, type NextActionGroup,
 } from './decisionTabs'
 import {
   NO_FILTERS, applyDecisionFilters, effectiveFilters, filtersActive, muscleOptions, muscleRoleFor, routineOptions,
@@ -44,11 +43,13 @@ function MuscleRoleChip({ role, muscle }: MuscleRoleTag) {
   )
 }
 
-function ExerciseRow({ result, sessions, metricKind, title, muscleRole }: {
+function ExerciseRow({ result, sessions, metricKind, title, muscleRole, groupLabel }: {
   result: ExerciseProgressResult; sessions: CanonicalExerciseSession[]; metricKind: ProgressMetricKind; title: string; muscleRole: MuscleRoleTag | null
+  groupLabel: string
 }) {
   const [open, setOpen] = useState(false)
   const target = targetText(result)
+  const pill = rowPill(result.currentAction, result.metricKind, groupLabel)
   return (
     <li className="border-b border-line py-1.5 last:border-0">
       <button type="button" aria-expanded={open} onClick={() => setOpen(v => !v)} title={`${title}: why, the evidence, recent sessions and the chart`}
@@ -57,7 +58,7 @@ function ExerciseRow({ result, sessions, metricKind, title, muscleRole }: {
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
             <Truncate className="min-w-0 text-body font-semibold text-fg">{title}</Truncate>
-            <TonePill tone={ACTION_TONE[result.currentAction]} className="shrink-0">{actionLabel(result.currentAction, result.metricKind)}</TonePill>
+            {pill && <TonePill tone={ACTION_TONE[result.currentAction]} className="shrink-0">{pill}</TonePill>}
             {muscleRole && <MuscleRoleChip {...muscleRole} />}
           </span>
           <span className="block text-meta tabular-nums text-fg-2">{target ? <>Next: {target}</> : <span className="text-fg-muted">No target yet — open for why</span>}</span>
@@ -104,6 +105,7 @@ export function ExerciseList() {
     const role = muscleRoleFor(musclesByTemplateId.get(templateId), filters.muscle)
     return role ? { role, muscle: muscleLabel } : null
   }
+  const groupLabel = NEXT_ACTION_GROUPS.find(g => g.id === group)?.label ?? ''
   const words = NEXT_ACTION_GROUPS.find(g => g.id === group)?.tip.replace(/^[^:]+: /, '') ?? ''
   const meaning = words.charAt(0).toUpperCase() + words.slice(1)
 
@@ -131,9 +133,9 @@ export function ExerciseList() {
           muscles={muscles} routines={routines} shown={filtered.length} total={decisions.length}
         />
       )}
-      {/* A tab row: on a narrow phone with big counts it scrolls sideways (its thin bar shows with a mouse) instead of
-          cutting the last group off. */}
-      <div className="scroll-x -mx-1 px-1">
+      {/* Four groups in one row; below 22rem of the card's own width two rows of two, so no group is ever cut off or
+          scrolled out of sight (a 360px phone, big counts). */}
+      <div className="[&_.seg]:grid-flow-row [&_.seg]:grid-cols-2 @[22rem]:[&_.seg]:grid-flow-col @[22rem]:[&_.seg]:grid-cols-none">
       <SegmentedControl<NextActionGroup>
         size="sm" fit fullWidth label="Group" value={group} onChange={setChosen}
         options={NEXT_ACTION_GROUPS.map(g => ({
@@ -154,6 +156,7 @@ export function ExerciseList() {
               metricKind={metricKindByTemplateId.get(d.exerciseTemplateId) ?? 'est1rm'}
               title={titleById.get(d.exerciseTemplateId) ?? 'Unknown exercise'}
               muscleRole={roleOf(d.exerciseTemplateId)}
+              groupLabel={groupLabel}
             />
           ))}
         </ul>

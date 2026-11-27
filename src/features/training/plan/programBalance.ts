@@ -8,29 +8,26 @@
 //  - Sets are counted "fractionally": 1.0 for the exercise's primary muscle,
 //    0.5 for each secondary. That counting fitted best in the largest
 //    dose-response meta-regression (Pelland 2025, Sports Med; 67 studies).
-//  - Pelland's hypertrophy tiers: <4 sets/week is below the minimum effective
-//    dose; 5–10, 11–18, 19–29, 30–42 are progressively LESS efficient per
-//    extra set (diminishing returns, no clear plateau). ACSM 2026 (Currier):
-//    ≥10 sets/week enhances hypertrophy. A 10–20 target suits most
-//    recreational lifters (Baz-Valle 2022 for trained men: 12–20).
-//  - MEV/MAV/MRV (Renaissance Periodization) are PRACTITIONER heuristics, not
-//    trial-derived; they are shown next to the tiers and labelled as such.
+//  - The ranges are S18's (plan/volumeBands.ts, the one source — Results'
+//    Weekly sets card and the body map read the same): under 4 sets/week below
+//    the minimum, 4–9 low but still works, 10–20 target, 21–30 high (extra
+//    sets add less), over 30 very high — diminishing returns, no band an
+//    error (Pelland 2025; ACSM 2026: ≥10 sets/week enhances hypertrophy;
+//    Baz-Valle 2022 for trained men: 12–20). The Pelland tiers and the RP
+//    MEV/MAV/MRV landmarks shown here before 27.11.2026 are gone.
 //  - The push:pull and quad:hamstring ratio + verdict come from
 //    muscleBalance.ts — the same function the Muscles body map and the AI
 //    coach use. Only the knee-flexion check and the planned-week notes live
 //    here (van Dyk 2019: programmes with the Nordic hamstring curl roughly
 //    halved hamstring injuries in athletes).
 
-import {
-  MUSCLE_LANDMARKS, BANDS_META, MAJOR_MUSCLES, bandForWeeklySets, creditedMuscles, labelForSlug,
-  scaleLandmarksForExperience, templateMuscleCredit, type Landmarks,
-} from '../muscleMap'
+import { MAJOR_MUSCLES, creditedMuscles, labelForSlug, templateMuscleCredit } from '../muscleMap'
 import {
   BALANCE_LIMIT, PULL_SLUGS, PUSH_SLUGS, balanceTotals, readMuscleBalance,
   type MuscleBalance, type PlannedRoutineBalance,
 } from './muscleBalance'
-import { VOLUME_HIGH_MAX, VOLUME_MIN_SETS, VOLUME_TARGET } from './volumeBands'
-import type { ExperienceLevel, MusclePreference } from '../types.athlete'
+import { VOLUME_HIGH_MAX, VOLUME_MIN_SETS, VOLUME_TARGET, volumeBandOf, type VolumeBand } from './volumeBands'
+import type { MusclePreference } from '../types.athlete'
 import type { Tone } from '../../../shared/ui/Tone'
 
 export interface ProgramRoutineInput {
@@ -151,29 +148,6 @@ export function buildPlannedProgram<R extends RoutineLike>(args: {
   }
 }
 
-// ── Pelland 2025 hypertrophy tiers (Table 3) ────────────────────────────────
-export type VolumeTier = 'below_med' | 'med' | 'high_eff' | 'intermediate' | 'lower_eff' | 'lowest_eff' | 'no_data'
-
-export const TIER_LABEL: Record<VolumeTier, string> = {
-  below_med:    'Below minimum dose',
-  med:          'Minimum effective dose',
-  high_eff:     'Most efficient range',
-  intermediate: 'Intermediate',
-  lower_eff:    'Lower efficiency',
-  lowest_eff:   'Lowest efficiency',
-  no_data:      'Beyond studied range',
-}
-
-export function tierFor(weeklySets: number): VolumeTier {
-  if (weeklySets < 4) return 'below_med'
-  if (weeklySets < 5) return 'med'
-  if (weeklySets < 11) return 'high_eff'
-  if (weeklySets < 19) return 'intermediate'
-  if (weeklySets < 30) return 'lower_eff'
-  if (weeklySets < 43) return 'lowest_eff'
-  return 'no_data'
-}
-
 /** The 10–20 sets a week target — S18's, from the one source of the ranges (plan/volumeBands.ts). */
 export const RECOMMENDED_RANGE = VOLUME_TARGET
 
@@ -184,12 +158,9 @@ export interface MuscleRead {
   label: string
   weeklySets: number
   directSets: number
-  tier: VolumeTier
+  /** S18's words for the planned sets (plan/volumeBands.ts) — the same as Results' Weekly sets card. */
+  band: VolumeBand
   status: MuscleStatus
-  /** RP band (heuristic), experience-scaled — idx into BANDS_META. */
-  rpBand: number
-  rpBandLabel: string
-  landmarks: Landmarks | null
   priority: boolean
   excludeDirect: boolean
   restriction: 'avoid' | 'limit' | null
@@ -203,14 +174,10 @@ export interface MuscleRead {
  *  "no direct work" nag, a restricted one is never told to add volume. */
 export function readMuscle(
   m: Pick<PlannedMuscle, 'slug' | 'label' | 'weeklySets' | 'directSets'>,
-  ctx: { preference: MusclePreference | null; restriction: 'avoid' | 'limit' | null; experience: ExperienceLevel | null },
+  ctx: { preference: MusclePreference | null; restriction: 'avoid' | 'limit' | null },
 ): MuscleRead {
-  const base = MUSCLE_LANDMARKS[m.slug]
-  const landmarks = base ? scaleLandmarksForExperience(base, ctx.experience) : null
-  const rpBand = bandForWeeklySets(m.slug, m.weeklySets, landmarks ?? undefined)
   const priority = ctx.preference === 'priority'
   const excludeDirect = ctx.preference === 'exclude_direct'
-  const tier = tierFor(m.weeklySets)
   const s = m.weeklySets
   let status: MuscleStatus
   let advice: string
@@ -254,8 +221,7 @@ export function readMuscle(
   }
 
   return {
-    slug: m.slug, label: m.label, weeklySets: s, directSets: m.directSets, tier, status,
-    rpBand, rpBandLabel: BANDS_META[rpBand]?.label ?? '', landmarks, priority, excludeDirect,
+    slug: m.slug, label: m.label, weeklySets: s, directSets: m.directSets, band: volumeBandOf(s), status, priority, excludeDirect,
     restriction: ctx.restriction, advice, setsToAdd,
   }
 }
@@ -267,14 +233,13 @@ export function readProgramMuscles(
   ctx: {
     preferences: ReadonlyMap<string, MusclePreference>
     restrictions: ReadonlyMap<string, 'avoid' | 'limit'>
-    experience: ExperienceLevel | null
   },
 ): MuscleRead[] {
   const bySlug = new Map(planned.map(p => [p.slug, p]))
   const slugs = new Set<string>([...MAJOR_MUSCLES, ...planned.filter(p => p.weeklySets > 0).map(p => p.slug), ...[...ctx.preferences.entries()].filter(([, v]) => v === 'priority').map(([k]) => k)])
   return [...slugs].map(slug => {
     const p = bySlug.get(slug) ?? { slug, label: labelForSlug(slug), weeklySets: 0, directSets: 0 }
-    return readMuscle(p, { preference: ctx.preferences.get(slug) ?? null, restriction: ctx.restrictions.get(slug) ?? null, experience: ctx.experience })
+    return readMuscle(p, { preference: ctx.preferences.get(slug) ?? null, restriction: ctx.restrictions.get(slug) ?? null })
   }).sort((a, b) => Number(b.priority) - Number(a.priority) || b.weeklySets - a.weeklySets || a.label.localeCompare(b.label))
 }
 

@@ -28,7 +28,7 @@ function RoutineExercises({ routine, todayStr }: { routine: HevyRoutine; todaySt
       <div className="mb-1 flex items-center gap-1.5">
         <p className="section-label">Exercises · {rows.length}</p>
         <InfoBubble label="About the targets">
-          <b>The same targets as Training → Next.</b> The progress engine compares your last comparable sessions of each exercise
+          <b>The same targets as Training → Today.</b> The progress engine compares your last comparable sessions of each exercise
           with its rep target and uses double progression: add reps at the same load until every set reaches the top of the range,
           then add load. Tap an exercise for last time and the routine&apos;s own plan.
           <span className="mt-1.5 block"><SourceNote ids={['acsm2009', 'plotkin2022']} /></span>

@@ -24,7 +24,7 @@ import type { CoachData } from './coachFormat'
 // Gathers the ONE AI-coach data set (coachFormat.ts renders it for the PT
 // Coach tab and for Ask-AI Coach mode). A handful of reads, all in parallel;
 // the progress decisions come from progressModel.computeProgressModel — the
-// same function the Progress tab runs — over the same 6-month history.
+// same function the Results tab runs — over the same 6-month history.
 // Optional sources (pre-migration tables, Health data) degrade to empty.
 
 const soft = async <T>(p: Promise<T>, fallback: T): Promise<T> => {
@@ -38,9 +38,9 @@ export async function gatherCoachData(): Promise<CoachData> {
   // The program verdict's sleep signal compares the last 4 COMPLETE weeks
   // (up to ~34 days back, plus the evening before), so sleep needs a longer
   // read than the 30-day context — with 31 days its oldest week lost nights
-  // and the coach's workload verdict could differ from the Progress tab's.
+  // and the coach's workload verdict could differ from the Results tab's.
   const sleepFrom = shiftDateStr(today, -42)
-  // Balance inputs (the Program tab's): every template and the recurring
+  // Balance inputs (the Plan tab's): every template and the recurring
   // training days — fetched alongside the reads below.
   const balanceInputs = Promise.all([soft(fetchHevyExerciseTemplates(), []), soft(fetchScheduleBlocks(), [])])
   // The goal's phase (cut / maintain / gain) — the training focus no longer
@@ -88,7 +88,7 @@ export async function gatherCoachData(): Promise<CoachData> {
     today, profile, limitations, progress, routines,
     sessions: sessionsFromHistory(history),
     sessionsThisWeek: sessionsThisWeek(sessionsFromSets(history.sets), today),
-    weeklyMuscleSets: weeklyMuscleDose(history, shiftDateStr(today, -6), profile, limitations),
+    weeklyMuscleSets: weeklyMuscleDose(history, shiftDateStr(today, -6), limitations),
     sleep: computeSleepSummary(sleepPts).map(s => ({ date: s.date, total: s.total, deep: s.deep, rem: s.rem })),
     steps: computeDailySeries('step_count', stepPts),
     activeKcal: computeDailySeries('active_energy', energyPts),

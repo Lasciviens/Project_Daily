@@ -56,7 +56,7 @@ export function WorkedMuscles() {
       end   = new Date(`${customTo}T23:59:59`)
       days  = Math.max(1, differenceInCalendarDays(end, start) + 1)
     } else {
-      // presetWindowIso: the same window (and query) the Program tab's
+      // presetWindowIso: the same window (and query) the Plan tab's
       // "done in the last 30 days" balance reads.
       days = PRESETS.find(p => p.id === period)?.days ?? 30
       const w = presetWindowIso(anchorDay, days)
@@ -126,7 +126,7 @@ export function WorkedMuscles() {
   )
 
   const balance = useMemo(() => computeBalance(ctx), [ctx])
-  // Planned (Program tab) vs done here — same ratio function; a custom range
+  // Planned (Plan tab) vs done here — same ratio function; a custom range
   // isn't "the last N days", so it shows the done ratio alone.
   const plan = usePlannedProgram()
   const comparison = useMemo(

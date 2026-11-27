@@ -9,6 +9,7 @@ import { restrictionsBySlug } from '../../muscleMap'
 import { limitationNote, weeklyMuscleSets, type MuscleSets } from '../../plan/results'
 import { VOLUME_BANDS, wholeSets } from '../../plan/volumeBands'
 import { WorkedMuscles } from '../WorkedMuscles'
+import { FailedRead } from './FailedRead'
 
 function Row({ m }: { m: MuscleSets }) {
   const note = limitationNote(m)
@@ -17,7 +18,9 @@ function Row({ m }: { m: MuscleSets }) {
       <span className="flex min-w-0 flex-col">
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
           <Truncate className="min-w-0 text-body font-medium text-fg">{m.label}</Truncate>
-          <TonePill tone={m.band.tone} className="shrink-0">{m.band.label}</TonePill>
+          <span title={`4-wk average: ${wholeSets(m.average)} sets a week — ${m.band.note}`} className="inline-flex shrink-0">
+            <TonePill tone={m.band.tone}>{m.band.label}</TonePill>
+          </span>
         </span>
         {note && <span className="text-meta text-fg-muted">{note}</span>}
       </span>
@@ -31,7 +34,7 @@ function Row({ m }: { m: MuscleSets }) {
  *  The body map (the same counting, by period) opens behind a tap. */
 export function WeeklySetsCard() {
   const today = useTodayStr()
-  const { data: history, isLoading } = useTrainingHistory()
+  const { data: history, isLoading, isError } = useTrainingHistory()
   const { data: limitations = [] } = useAthleteLimitations(true)
   const [showMap, setShowMap] = useState(false)
   const rows = useMemo(() => {
@@ -39,7 +42,7 @@ export function WeeklySetsCard() {
     return weeklyMuscleSets(history.sets, history.templates, today, restrictionsBySlug(limitations))
   }, [history, today, limitations])
 
-  if (isLoading) return <Skeleton rounded="rounded-card" className="h-72" />
+  if (isLoading && !isError) return <Skeleton rounded="rounded-card" className="h-72" />
   return (
     <Card className="flex flex-col">
       <CardHeader
@@ -63,7 +66,7 @@ export function WeeklySetsCard() {
         <span title="Hard sets in the last 7 days">7 days</span>
         <span title="Average a week over the last 4 weeks">4-wk</span>
       </div>
-      {rows.length === 0
+      {isError ? <FailedRead what="your workouts" /> : rows.length === 0
         ? <p className="py-3 text-body text-fg-muted">No workouts in the last 4 weeks.</p>
         : <ul className="flex flex-col">{rows.map(m => <Row key={m.slug} m={m} />)}</ul>}
       <div className="mt-2 border-t border-line pt-2">

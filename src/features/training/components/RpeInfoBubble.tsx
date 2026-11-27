@@ -2,7 +2,7 @@ import { InfoBubble } from '../../../shared/components/InfoBubble'
 import { SourceNote } from './program/SourceNote'
 
 /** The one RPE explainer — shown once per screen, next to the first place a
- *  rated set appears (workout detail, Next tab). */
+ *  rated set appears (workout detail, Today tab). */
 export function RpeInfoBubble() {
   return (
     <InfoBubble label="About RPE">

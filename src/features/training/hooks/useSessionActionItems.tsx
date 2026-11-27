@@ -21,7 +21,7 @@ const PRIMARY: ReadonlySet<SessionAction> = new Set(['done', 'move', 'skip', 're
 
 /**
  * THE action list of one planned training session — every view (the session
- * popup, the task row, Daily's agenda, Training → Next) gets the same entries
+ * popup, the task row, Daily's agenda, Training → Today) gets the same entries
  * with the same effects from here (owner, 12.10.2026). `weekly`: the plan is
  * a day of a weekly plan nobody acted on yet (its own entries change or
  * delete the whole weekly plan). `skipId`: a skip of the routine's week that

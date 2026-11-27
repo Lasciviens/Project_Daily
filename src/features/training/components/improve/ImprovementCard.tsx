@@ -9,7 +9,7 @@ import {
   type LiftStatus, type WindowWeeks,
 } from '../../plan/improvement'
 
-const STATUS_TONE: Record<LiftStatus, Tone> = { improved: 'success', flat: 'neutral', declined: 'warn', insufficient: 'neutral', high_reps: 'neutral' }
+const STATUS_TONE: Record<LiftStatus, Tone> = { improved: 'success', flat: 'neutral', declined: 'neutral', insufficient: 'neutral', high_reps: 'neutral' }
 /** The window's answer to "am I getting stronger?" across every lift: how many improved, stayed flat or declined,
  *  and bodyweight over the same window. The main lifts' own trend is Results' Main lifts card (plan/results.ts). */
 export function ImprovementCard() {

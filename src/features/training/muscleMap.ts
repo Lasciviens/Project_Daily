@@ -1,17 +1,10 @@
 import type { Slug } from 'react-muscle-highlighter'
-import type { ExperienceLevel } from './types.athlete'
-import type { Tone } from '../../shared/ui/Tone'
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Muscle mapping + a volume-based, evidence-anchored coloring model.
-//
-//  Designed with an elite S&C coach + an exercise-physiology reviewer:
-//  color encodes weekly HARD-SET VOLUME per muscle against published per-muscle
-//  volume landmarks (MV/MEV/MAV/MRV, Renaissance Periodization; Schoenfeld
-//  dose-response), NOT rank-relative-to-your-own-max. So a muscle reads
-//  "under-dosed" or "optimal" on an ABSOLUTE scale — the colouring is meaningful,
-//  not arbitrary. It is a diverging scale: cold = too little, green = the growth
-//  sweet spot, hot = beyond what you can recover from.
+//  Muscle mapping and the one set-counting rule: which body muscle each Hevy
+//  muscle group is, how a set credits it (direct 1, helper 0.5 — S17), and
+//  which muscles an active limitation reaches. How many sets a week is enough
+//  is S18's, in plan/volumeBands.ts (the body map's colours read it there).
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Complete Hevy `primary_muscle_group` enum → body slug. cardio/full_body/other
@@ -132,64 +125,9 @@ export function creditedMuscles(
   return out
 }
 
-// ── Per-muscle weekly working-set landmarks ─────────────────────────────────
-// MV maintenance · MEV minimum effective · MAV maximum adaptive · MRV maximum
-// recoverable. Per-muscle (large muscles tolerate more; small synergist-heavy
-// muscles have lower ceilings). Tunable in one place; every colour derives here.
-export interface Landmarks { mv: number; mev: number; mav: number; mrv: number }
-export const MUSCLE_LANDMARKS: Record<string, Landmarks> = {
-  chest:        { mv: 6, mev: 8,  mav: 20, mrv: 22 },
-  'upper-back': { mv: 8, mev: 10, mav: 22, mrv: 25 },
-  'lower-back': { mv: 4, mev: 6,  mav: 14, mrv: 18 },
-  trapezius:    { mv: 4, mev: 8,  mav: 20, mrv: 26 },
-  deltoids:     { mv: 6, mev: 8,  mav: 22, mrv: 26 },
-  biceps:       { mv: 6, mev: 8,  mav: 20, mrv: 26 },
-  triceps:      { mv: 4, mev: 6,  mav: 14, mrv: 18 },
-  forearm:      { mv: 2, mev: 4,  mav: 12, mrv: 16 },
-  abs:          { mv: 0, mev: 6,  mav: 20, mrv: 25 },
-  obliques:     { mv: 0, mev: 4,  mav: 16, mrv: 20 },
-  quadriceps:   { mv: 6, mev: 8,  mav: 18, mrv: 20 },
-  hamstring:    { mv: 4, mev: 6,  mav: 16, mrv: 20 },
-  gluteal:      { mv: 0, mev: 4,  mav: 12, mrv: 16 },
-  adductors:    { mv: 2, mev: 4,  mav: 12, mrv: 16 },
-  calves:       { mv: 6, mev: 8,  mav: 16, mrv: 20 },
-  neck:         { mv: 0, mev: 4,  mav: 12, mrv: 16 },
-}
-
-// ── Diverging bands ─────────────────────────────────────────────────────────
-// `tone` is the band's semantic status (chips, pills); SVG fills and swatches
-// resolve it to a colour through useBandColors (components/muscleBandColors.ts).
-export interface BandMeta { idx: number; label: string; tone: Tone; desc: string }
-export const BANDS_META: BandMeta[] = [
-  { idx: 0, label: 'Not trained',       tone: 'neutral', desc: 'No working sets for this muscle in the period.' },
-  // Labels softened to conditional language per the science review: a low
-  // 30-day average can just be a deload, and "over MRV" depends on unmeasured
-  // recovery/effort — so neither asserts loss or wasted work as fact.
-  { idx: 1, label: 'Below maintenance', tone: 'info', desc: 'Probably not enough to build or hold this muscle over time. (A low number can also just reflect a recent light/rest week — check the trend.)' },
-  { idx: 2, label: 'Maintenance',       tone: 'info', desc: 'Enough to maintain, but below the minimum that reliably drives growth (MEV).' },
-  { idx: 3, label: 'Optimal growth',    tone: 'success', desc: 'Inside the productive hypertrophy range (MEV–MAV) — the sweet spot.' },
-  { idx: 4, label: 'High',              tone: 'warn', desc: 'Above the typical adaptive range (MAV) — near the usual recoverable ceiling.' },
-  { idx: 5, label: 'Over MRV',          tone: 'danger', desc: 'More than typical recovery guidelines suggest. Whether it is actually "too much" depends on your effort, sleep and recovery — none of which this measures. If you are recovering fine, no need to cut.' },
-]
-
-// `landmarksOverride` lets a caller that already scaled the landmarks for
-// experience level (scaleLandmarksForExperience) pass that SAME object in,
-// so the band this returns always agrees with whatever band/threshold is
-// drawn on screen from it — real bug, fixed: WeeklySetsPerMuscleChart used to
-// draw its ReferenceArea/ReferenceLine from scaled landmarks but call this
-// function with no override, silently falling back to the raw unscaled
-// table for the badge color, disagreeing by exactly the ±15% experience
-// multiplier. WorkedMuscles.tsx never had this bug (it always scales first).
-export function bandForWeeklySets(slug: string, weeklySets: number, landmarksOverride?: Landmarks): number {
-  if (weeklySets <= 0) return 0
-  const L = landmarksOverride ?? MUSCLE_LANDMARKS[slug]
-  if (!L) return 3
-  if (weeklySets < L.mv)  return 1
-  if (weeklySets < L.mev) return 2
-  if (weeklySets <= L.mav) return 3
-  if (weeklySets <= L.mrv) return 4
-  return 5
-}
+// Weekly set RANGES (how many sets a week is below the minimum, low, target, high, very high) live in ONE place,
+// plan/volumeBands.ts (science.md S18). The Renaissance Periodization landmarks (MV/MEV/MAV/MRV) that graded a
+// muscle here until 27.11.2026 are gone: no screen and no coach line grades by them.
 
 // Which mapped slugs are visible on each body side (some show on both).
 export const SIDE_SLUGS: Record<'front' | 'back', ReadonlySet<Slug>> = {
@@ -390,43 +328,3 @@ export function limitedSlugsFromLimitations(limitations: readonly LimitationLike
   return new Map([...restrictionsBySlug(limitations)].map(([slug, r]) => [slug, r.weight]))
 }
 
-/** How far a weekly-set figure sits from the growth range (MEV–MRV), in
- *  whole sets: below MEV → add (≈4 sets per extra session); above MRV → cut. */
-export type WeeklySetGap =
-  | { kind: 'add'; sets: number; sessions: number; mev: number; mav: number }
-  | { kind: 'cut'; sets: number; mrv: number }
-
-export function weeklySetGap(weeklySets: number, L: Landmarks | undefined): WeeklySetGap | null {
-  if (!L) return null
-  if (weeklySets < L.mev) {
-    const deficit = Math.max(1, Math.round(L.mev - weeklySets))
-    return { kind: 'add', sets: deficit, sessions: Math.max(1, Math.ceil(deficit / 4)), mev: L.mev, mav: L.mav }
-  }
-  if (weeklySets > L.mrv) return { kind: 'cut', sets: Math.max(1, Math.round(weeklySets - L.mrv)), mrv: L.mrv }
-  return null
-}
-
-// ── Experience-scaled landmarks ──────────────────────────────────────────────
-// RP framework: MEV/MRV shift with training age (a novice grows on less
-// volume and can't yet tolerate as much; an advanced lifter needs more to
-// keep progressing and can recover from more). MV/MAV are left UNSCALED on
-// purpose — scaling the whole landmark set by experience would overclaim
-// precision on a table that is already a heuristic, not a measured constant
-// (same honesty as ROLE_WEIGHTS/BANDS_META above).
-export const EXPERIENCE_MULTIPLIER: Record<ExperienceLevel, number> = {
-  novice:       0.85,
-  intermediate: 1,
-  advanced:     1.15,
-}
-
-/** Scales MEV/MRV for experience, then keeps the landmarks in order:
- *  mv ≤ mev < mav < mrv. Scaling MRV alone once put a novice's "maximum
- *  recoverable" line BELOW the top of the "optimal" band (chest MAV 20 vs
- *  MRV 19), so 19.5 sets read "Optimal growth" and "over MRV" at once. */
-export function scaleLandmarksForExperience(L: Landmarks, level: ExperienceLevel | null | undefined): Landmarks {
-  if (!level) return L
-  const m = EXPERIENCE_MULTIPLIER[level]
-  const mev = Math.min(Math.max(Math.round(L.mev * m), L.mv), L.mav - 1)
-  const mrv = Math.max(Math.round(L.mrv * m), L.mav + 1)
-  return { ...L, mev, mrv }
-}

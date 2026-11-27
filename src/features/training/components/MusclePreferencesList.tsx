@@ -8,7 +8,7 @@ import type { AthleteMusclePreference, MusclePreference } from '../types.athlete
 // The muscle-preferences half of AthleteProfileSheet, mirroring
 // LimitationsList's own shape exactly (every row visible, delete is a
 // separate confirmed action). Two real states only — `priority` (elevated
-// urgency below MEV) and `exclude_direct` (suppresses ONLY the "no direct
+// urgency below 10 sets a week) and `exclude_direct` (suppresses ONLY the "no direct
 // work for this muscle" warning; every indirect/secondary credited set
 // still counts normally in every aggregate, nothing is zeroed). A muscle
 // with no row here is the normal, unmarked default — there is no third

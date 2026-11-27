@@ -22,7 +22,7 @@ export const PRESETS: { id: Exclude<Period, 'custom'>; label: string; days: numb
 ]
 
 /** The last `days` days ending tonight — the Muscles tab's preset window.
- *  Anything else reading "done in the last 30 days" (the Program tab's
+ *  Anything else reading "done in the last 30 days" (the Plan tab's
  *  balance card) uses this too, so both share one query and one number. */
 export function presetWindowIso(anchorDay: string, days: number): { fromIso: string; toIso: string } {
   const end = new Date(`${anchorDay}T23:59:59`)

@@ -1764,7 +1764,7 @@ const everything = (r) => JSON.stringify([r.text, r.world.calls, r.world.logs])
   check('the phone job is told to write dates as DD.MM.YYYY and times as HH:MM', /DD\.MM\.YYYY/.test(PHONE_ASK_JOB.instructions) && /HH:MM/.test(PHONE_ASK_JOB.instructions))
 
   // The pinned versions of the new jobs.
-  const PIN_2B = { coach_assessment: ['2026-11-27.3', 'e29128d53d07ee5e'], kobo_ask: ['2026-11-23.1', '758e0d989a1a890f'], phone_ask: ['2026-11-24.1', '8ca5b822337c9cf4'], test_bench: ['2026-11-23.1', 'f216fdf752d03e55'] }
+  const PIN_2B = { coach_assessment: ['2026-11-27.4', '64d57da37ed6e1a5'], kobo_ask: ['2026-11-23.1', '758e0d989a1a890f'], phone_ask: ['2026-11-24.1', '8ca5b822337c9cf4'], test_bench: ['2026-11-23.1', 'f216fdf752d03e55'] }
   for (const [name, job] of [['coach_assessment', COACH_ASSESSMENT_JOB], ['kobo_ask', KOBO_ASK_JOB], ['phone_ask', PHONE_ASK_JOB], ['test_bench', TEST_BENCH_JOB]]) {
     const h = crypto.createHash('sha256').update(`${job.instructions}\n${JSON.stringify(job.answerSchema)}`).digest('hex').slice(0, 16)
     check(`${name}: the version names the instructions it was made with (a change needs a new version, then a new pin here)`, PIN_2B[name][0] === job.version && PIN_2B[name][1] === h, `version ${job.version}, hash ${h}`)

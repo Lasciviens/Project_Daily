@@ -13,7 +13,7 @@ import { shiftDateStr } from '../../../shared/utils/dateUtils'
 //  The training part is the shared coach context (training/coach/), the same
 //  one the PT Coach tab reads: current program, the progress engine's
 //  decisions and the athlete's limitations, so chat and assessment agree
-//  with the Progress tab. Nutrition and past assessments are added here.
+//  with the Results tab. Nutrition and past assessments are added here.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const WINDOW_DAYS = 30

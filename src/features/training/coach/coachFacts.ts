@@ -1,5 +1,6 @@
 import { actionLabel, workloadLabel } from '../progress-engine'
 import { labelForSlug } from '../muscleMap'
+import { VOLUME_MIN_SETS, volumeBandOf } from '../plan/volumeBands'
 import { leanLabel, PAIR_META, ratioText, type BalancePair } from '../plan/muscleBalance'
 import { nextTargetText, type CoachData } from './coachFormat'
 import { mondayOfStr, shiftDateStr } from '../../../shared/utils/dateUtils'
@@ -120,8 +121,8 @@ export interface PtVerdicts {
   deloadCue: boolean
   /** Why the cue is on, in short clauses; empty when it is off. */
   deloadReasons: string[]
-  /** Muscles under their minimum effective volume that no limitation restricts, worst first. */
-  belowMinimum: { muscle: string; sets: number; mev: number }[]
+  /** Muscles under S18's minimum of 4 hard sets a week (plan/volumeBands.ts) that no limitation restricts, fewest first. */
+  belowMinimum: { muscle: string; sets: number; min: number }[]
   /** The one lift for the next session: the first to add weight (or Almost), else a step back, else a watch flag. */
   priority: { exercise: string; action: string; actionTitle: string; next: string | null } | null
   /** Push:pull and quad:hamstring ratios where a side is heavy. */
@@ -161,9 +162,9 @@ export function ptVerdicts(d: CoachData, feeling: PtFeeling): PtVerdicts {
 
   const deloadReasons = easyWeekReasons({ weeksSinceEasy, stalled: stalledLifts.length, regression: regressionLifts.length, feeling, workloadReview })
   const belowMinimum = d.weeklyMuscleSets
-    .filter(m => m.landmarks && !m.restriction && m.sets < m.landmarks.mev)
-    .map(m => ({ muscle: labelForSlug(m.slug), sets: round1(m.sets), mev: m.landmarks!.mev }))
-    .sort((a, b) => (b.mev - b.sets) - (a.mev - a.sets))
+    .filter(m => !m.restriction && volumeBandOf(m.sets).id === 'below')
+    .map(m => ({ muscle: labelForSlug(m.slug), sets: round1(m.sets), min: VOLUME_MIN_SETS }))
+    .sort((a, b) => a.sets - b.sets)
 
   const pick = d.progress.decisions.find(r => READY_ACTIONS.includes(r.currentAction)) ?? d.progress.decisions.find(r => WATCH_ACTIONS.includes(r.currentAction))
   const priority = pick
@@ -201,7 +202,7 @@ export function formatPtVerdicts(v: PtVerdicts): string {
   lines.push(`RECOVERY: ${r.gate}${r.reason ? ` (${r.reason})` : ''}${night}`)
   lines.push(`OVERREACH: ${v.deloadCue ? `deload cue (${v.deloadReasons.join('; ')})` : 'none'}${v.stalledLifts.length ? ` · stalled: ${v.stalledLifts.join(', ')}` : ''}${v.regressionLifts.length ? ` · down: ${v.regressionLifts.join(', ')}` : ''}`)
   lines.push(`PRIORITY: ${v.priority ? `${v.priority.exercise} — ${v.priority.action} "${v.priority.actionTitle}"${v.priority.next ? ` · next: ${v.priority.next}` : ''}` : 'none (no decision to act on)'}`)
-  lines.push(`BELOW MINIMUM VOLUME: ${v.belowMinimum.length ? v.belowMinimum.slice(0, 4).map(b => `${b.muscle} ${b.sets}/${b.mev}`).join(', ') : 'none'}`)
+  lines.push(`BELOW MINIMUM VOLUME: ${v.belowMinimum.length ? v.belowMinimum.slice(0, 4).map(b => `${b.muscle} ${b.sets}/${b.min}`).join(', ') : 'none'}`)
   lines.push(`IMBALANCE: ${v.balanceFlags.length ? v.balanceFlags.join('; ') : 'none'}`)
   lines.push(`MISSED: ${v.missed.length ? v.missed.join(', ') : 'none'}`)
   return lines.join('\n')

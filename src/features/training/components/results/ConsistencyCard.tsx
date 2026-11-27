@@ -11,7 +11,8 @@ import { useAthleteProfile } from '../../hooks/useAthleteProfile'
 import { useProgressDataContext } from '../../progress/progressDataContext'
 import { sessionsFromSets } from '../../progressAggregate'
 import { weekCount } from '../../plan/sessionState'
-import { breakNote, longestBreak, previousMondays, tallyWeeks } from '../../plan/results'
+import { breakNote, longestBreak, previousMondays, showBreakNote, tallyWeeks } from '../../plan/results'
+import { FailedRead } from './FailedRead'
 import { easyWeekReasons, stalledAndDown, weeksSinceEasyWeek } from '../../coach/coachFacts'
 
 function Fact({ label, info, value, children }: { label: string; info: ReactNode; value: ReactNode; children?: ReactNode }) {
@@ -31,7 +32,7 @@ export function ConsistencyCard() {
   const mondays = useMemo(() => previousMondays(today), [today])
   const thisWeek = useTrainingWeek()
   const past = useTrainingWeeks(mondays)
-  const { data: history } = useTrainingHistory()
+  const { data: history, isError: historyError } = useTrainingHistory()
   const { data: profile } = useAthleteProfile()
   const progress = useProgressDataContext()
 
@@ -47,25 +48,36 @@ export function ConsistencyCard() {
     })
   }, [progress.decisions, progress.program, days, today, profile?.training_days_per_week])
 
-  if (thisWeek.isLoading || past.isLoading) return <Skeleton rounded="rounded-card" className="h-56" />
-  const note = gap ? breakNote(gap.days) : null
+  const failed = thisWeek.isError || past.isError || historyError
+  if (!failed && (thisWeek.isLoading || past.isLoading)) return <Skeleton rounded="rounded-card" className="h-56" />
+  if (failed) {
+    return (
+      <Card className="flex flex-col gap-2">
+        <CardHeader icon={<CalendarCheck />} title="Consistency" className="!mb-0" />
+        <FailedRead what="your planned sessions and workouts" />
+      </Card>
+    )
+  }
+  // S27's note only while a break of 7+ days is still running (a finished one needs no word).
+  const note = showBreakNote(gap) && gap ? breakNote(gap.days) : null
   return (
     <Card className="@container flex flex-col gap-3">
       <CardHeader icon={<CalendarCheck />} title="Consistency" subtitle="Planned sessions, on their planned days" wrap className="!mb-0" />
       <div className="grid grid-cols-2 gap-3 @[32rem]:grid-cols-3">
         <Fact label="This week" value={now.planned > 0 ? `${now.done} of ${now.planned}` : '—'}
           info={<>Sessions done of the ones planned this week — the same count as the This week strip on Today and the Training
-            box on Daily. A session you skipped leaves the count.</>}>
+            box on Daily. A session you skipped leaves the count (it isn&apos;t planned any more).</>}>
           <p className="text-meta text-fg-muted">{now.planned > 0 ? 'done of planned' : 'nothing planned'}</p>
         </Fact>
-        <Fact label="Last 4 weeks" value={tally.pct != null ? `${tally.done} of ${tally.planned} (${tally.pct}%)` : '—'}
+        <Fact label="Last 4 weeks" value={tally.planned > 0 && tally.pct != null ? `${tally.done} of ${tally.planned} (${tally.pct}%)` : '—'}
           info={<>The 4 full weeks before this one ({formatDate(mondays[0])} to {formatDate(past.weeks[past.weeks.length - 1]?.sunday ?? mondays[3])}).
-            Every session planned in them, on the day it was planned. <b>On its day</b>: done that day (or ticked by hand).
-            <b> Late</b>: done up to 6 days after. <b>Early</b>: done up to 2 days before. <b>Dropped</b>: skipped, or not
-            done within its week. A dropped session never lowers anything else on this page.</>}>
+            Each week counted as the This week strip counts it: done of planned, on the day it was planned, a skipped session left
+            out. <b>On its day</b>: done that day (or ticked by hand). <b>Late</b>: done up to 6 days after. <b>Early</b>: done up
+            to 2 days before. <b>Skipped</b>: skipped by you, or not done within its week. <b>Dropped</b>: planned, its week
+            passed, not done. Neither lowers anything else on this page.</>}>
           {tally.planned > 0 && (
             <MetaLine className="text-meta text-fg-muted" items={[
-              `on its day ${tally.onDay}`, `late ${tally.late}`, tally.early > 0 && `early ${tally.early}`, `dropped ${tally.dropped}`,
+              `on its day ${tally.onDay}`, `late ${tally.late}`, tally.early > 0 && `early ${tally.early}`, `skipped ${tally.skipped}`, `dropped ${tally.dropped}`,
             ]} />
           )}
         </Fact>

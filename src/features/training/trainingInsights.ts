@@ -1,4 +1,4 @@
-// Pure logic for the Progress tab's "Training Analysis" panel — a written,
+// Pure logic for the Results tab's "Training Analysis" panel — a written,
 // deterministic answer to "what am I doing well/poorly, what could I do
 // better", added from a sports-scientist agent review (2026-09-01).
 //
@@ -17,7 +17,7 @@ import { lastCompleteWeek, shiftWeek } from './progressAggregate'
 import type {
   ConsistencyWeek, WeeklyVolumePoint, RepBucketCount, RelativeStrengthPoint,
 } from './progressAggregate'
-import type { Landmarks } from './muscleMap'
+import { VOLUME_HIGH_MAX, VOLUME_MIN_SETS, volumeBandOf } from './plan/volumeBands'
 import type { ExerciseProgressResult } from './progress-engine/types'
 import { formatDate } from '../../shared/utils/dateFormat'
 
@@ -32,7 +32,7 @@ export type FindingClause = 'consistency' | 'volume' | 'muscle' | 'repRange'
 export const FINDING_CLAUSES: Record<FindingClause, string> = {
   consistency: 'Only logged workouts count — a session you did but didn\'t log looks the same as one you skipped.',
   volume: 'Tonnage is a training input, not a stimulus or an outcome: 100 kg × 5 and 50 kg × 10 count the same, and it moves whenever your exercise mix changes.',
-  muscle: 'MEV/MAV/MRV are a practitioner framework (Renaissance Periodization), not measured thresholds. What is well supported is the shape — more weekly sets, more growth, with diminishing returns (Schoenfeld 2017; Pelland 2025) — not the exact numbers.',
+  muscle: 'The weekly ranges (under 4 below minimum · 4–9 low, still works · 10–20 target · 21–30 high · over 30 very high) come from a large dose-response meta-regression (Pelland 2025): more weekly sets, more growth, with diminishing returns is well supported; the exact edges less so. None of them is an error.',
   repRange: 'Muscle growth is roughly equivalent across about 5–30 reps when sets are taken close to failure (Schoenfeld 2017; Morton 2016), so no rep bucket is wrong on its own. This log has no effort data, so it can\'t tell how close to failure your sets were.',
 }
 
@@ -65,7 +65,7 @@ export function sortFindings(findings: Finding[]): Finding[] {
 // One documented simplification: the underlying `positive` field is
 // three-valued (true/false/null-as-neutral-fact), but real precedent groups
 // in TWO actionable buckets, not three — so neutral facts (a flat trend, an
-// over-MRV note that explicitly says "nothing to fix if you're recovering
+// very-high-volume note that explicitly says "nothing to fix if you're recovering
 // fine") are folded into "What to look at" alongside genuine regressions,
 // rather than getting their own ignored-in-practice third bucket. The one
 // group that DOES get pulled out on its own is "Can't assess yet" — an
@@ -196,10 +196,10 @@ export function computeVolumeFindings(weekly: WeeklyVolumePoint[], anchorDate: s
   return []
 }
 
-// ── C. Weekly sets per muscle vs landmarks ──────────────────────────────────
+// ── C. Weekly sets per muscle in S18's ranges (plan/volumeBands.ts) ───────────────────────────────────
 
 export interface MuscleFindingInput {
-  slug: string; label: string; weekly: { weekStart: string; sets: number }[]; landmarks: Landmarks | undefined
+  slug: string; label: string; weekly: { weekStart: string; sets: number }[]
   /** From muscleMap.ts's `limitedSlugsFromLimitations` — an active
    *  restriction on this muscle. When set, a "you're under-dosing this"
    *  finding is REFRAMED to acknowledge it rather than silently issuing
@@ -212,7 +212,7 @@ export interface MuscleFindingInput {
 export function computeMuscleFindings(inputs: MuscleFindingInput[], anchorDate: string): Finding[] {
   const last = lastCompleteWeek(anchorDate)
   const out: Finding[] = []
-  for (const { label, weekly, landmarks, restriction } of inputs) {
+  for (const { label, weekly, restriction } of inputs) {
     const byWeek = new Map(weekly.map(w => [w.weekStart, w.sets]))
     const last8 = Array.from({ length: 8 }, (_, i) => byWeek.get(shiftWeek(last, -i)) ?? 0)
     const meanSets = mean(last8)
@@ -224,15 +224,14 @@ export function computeMuscleFindings(inputs: MuscleFindingInput[], anchorDate: 
       out.push({ id: `muscle-zero-${label}`, tier: 'measured', positive: false, text: `${label} received zero credited working sets in the last 8 weeks. No threshold is involved in that observation — you haven't trained it.${restriction ? restrictionClause : ' If that\'s deliberate, ignore this.'}` })
       continue
     }
-    if (!landmarks) continue
-
-    const underCount = last8.filter(v => v < landmarks.mev).length
-    if (underCount >= 6 && meanSets < landmarks.mev) {
-      out.push({ id: `muscle-under-${label}`, tier: 'heuristic', positive: false, clause: 'muscle', text: `${label} averaged ${round1(meanSets)} sets/week over the last 8 weeks and was below ${landmarks.mev} (this app's MEV convention) in ${underCount} of those weeks. At this dose you're most likely maintaining rather than building.${restrictionClause}` })
+    const below = (v: number) => volumeBandOf(v).idx <= 1
+    const underCount = last8.filter(below).length
+    if (underCount >= 6 && below(meanSets)) {
+      out.push({ id: `muscle-under-${label}`, tier: 'evidence', positive: false, clause: 'muscle', text: `${label} averaged ${round1(meanSets)} sets/week over the last 8 weeks and was below the minimum of ${VOLUME_MIN_SETS} in ${underCount} of those weeks. Under ${VOLUME_MIN_SETS} hard sets a week is below the smallest dose that reliably builds muscle.${restrictionClause}` })
     }
-    const overCount = last8.filter(v => v > landmarks.mrv).length
+    const overCount = last8.filter(v => v > VOLUME_HIGH_MAX).length
     if (overCount >= 4) {
-      out.push({ id: `muscle-over-${label}`, tier: 'heuristic', positive: null, clause: 'muscle', text: `${label} exceeded ${landmarks.mrv} sets/week (this app's MRV convention) in ${overCount} of the last 8 weeks (peak ${Math.max(...last8)}). Whether that's "too much" depends on effort per set, sleep and recovery — none of which this measures. If you're recovering and still progressing, there's nothing to fix here.` })
+      out.push({ id: `muscle-over-${label}`, tier: 'evidence', positive: null, clause: 'muscle', text: `${label} was over ${VOLUME_HIGH_MAX} sets/week in ${overCount} of the last 8 weeks (peak ${Math.max(...last8)}) — very high: little extra is expected from more sets. Not an error; if you're recovering and still progressing, there's nothing to fix here.` })
     }
   }
   return out
@@ -302,7 +301,7 @@ export interface ExerciseTrendFindingInput { title: string; result: ExerciseProg
 
 export function computeExerciseTrendFindings(inputs: readonly ExerciseTrendFindingInput[], hasCurrentProgram: boolean): Finding[] {
   if (!hasCurrentProgram) {
-    return [{ id: 'exercise-no-program', tier: 'measured', positive: null, text: 'Per-exercise trends need your current program — pick it on the Progress card above and each lift in it gets a read here.' }]
+    return [{ id: 'exercise-no-program', tier: 'measured', positive: null, text: 'Per-exercise trends need your current program — pick it on the Plan tab and each lift in it gets a read here.' }]
   }
   const out: Finding[] = []
   for (const { title, result } of inputs) {

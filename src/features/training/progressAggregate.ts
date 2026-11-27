@@ -93,7 +93,7 @@ function ymd(d: Date): string {
 }
 
 /** Monday date ('yyyy-MM-dd') of the LOCAL week a local date falls in — the
- *  one definition of "a week" for the whole Progress tab (recoveryAggregate.ts
+ *  one definition of "a week" for the whole Results tab (recoveryAggregate.ts
  *  keys its sleep/resting-HR weeks the same way via shared mondayOfStr). */
 export function mondayOf(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00')

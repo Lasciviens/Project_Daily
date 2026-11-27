@@ -6,6 +6,7 @@ import { formatDate } from '../../../../shared/utils/dateFormat'
 import { useTrainingHistory } from '../../hooks/useTrainingProgress'
 import { useProgressDataContext } from '../../progress/progressDataContext'
 import { ExerciseTrendChart } from '../../progress/ExerciseTrendChart'
+import { FailedRead } from './FailedRead'
 import { MAIN_LIFT_WEEKS, mainLiftIds, mainLifts, type Arrow, type E1rmTrend, type MainLift, type RepsTrend } from '../../plan/results'
 
 const ARROW: Record<Arrow, { icon: typeof ArrowUpRight; word: string; tone: Tone }> = {
@@ -33,7 +34,7 @@ function E1rmLine({ t }: { t: E1rmTrend }) {
       <span className="block text-meta tabular-nums text-fg-2">
         Estimated 1RM {t.start != null ? <>{t.start} → <b className="font-semibold text-fg">{t.end} kg</b></> : <b className="font-semibold text-fg">{t.end} kg</b>}
       </span>
-      {!t.arrow && <span className="block text-meta text-fg-muted">{t.sessions} {t.sessions === 1 ? 'session' : 'sessions'} so far — the arrow shows after 3 weeks</span>}
+      {!t.arrow && <span className="block text-meta text-fg-muted">{t.sessions} {t.sessions === 1 ? 'session' : 'sessions'} in {MAIN_LIFT_WEEKS} weeks — the arrow needs 4 over 3+ weeks</span>}
     </>
   )
 }
@@ -46,7 +47,7 @@ function RepsLine({ t }: { t: RepsTrend }) {
         {load}{t.earlier ? <>{reps(t.earlier)} → </> : null}<b className="font-semibold text-fg">{reps(t.latest)}</b> reps
       </span>
       <span className="block text-meta text-fg-muted">
-        {t.earlierDate ? `${formatDate(t.earlierDate)} → ${formatDate(t.latestDate)}` : `Last ${formatDate(t.latestDate)}`} · reps at the same load (no e1RM above 10 reps)
+        {t.earlierDate ? `${formatDate(t.earlierDate)} → ${formatDate(t.latestDate)}` : formatDate(t.latestDate)} · reps at one load (no e1RM above 10 reps){!t.arrow ? ` · the arrow needs 4 sessions over 3+ weeks` : ''}
       </span>
     </>
   )
@@ -86,13 +87,13 @@ function LiftRow({ lift }: { lift: MainLift }) {
  *  A tap opens the lift's chart. */
 export function MainLiftsCard() {
   const { activeRoutines, titleById, today, isLoading: loadingProgress } = useProgressDataContext()
-  const { data: history, isLoading } = useTrainingHistory()
+  const { data: history, isLoading, isError } = useTrainingHistory()
   const lifts = useMemo(() => {
     if (!history) return []
     return mainLifts(history.sets, history.templates, mainLiftIds(activeRoutines), today, id => titleById.get(id))
   }, [history, activeRoutines, titleById, today])
 
-  if (isLoading || loadingProgress) return <Skeleton rounded="rounded-card" className="h-48" />
+  if ((isLoading && !isError) || loadingProgress) return <Skeleton rounded="rounded-card" className="h-48" />
   return (
     <Card className="flex flex-col">
       <CardHeader
@@ -101,16 +102,17 @@ export function MainLiftsCard() {
           {/* Says what est1RM (progressAggregate), liftChange (plan/improvement) and plan/results do: change them together. */}
           <InfoBubble label="What the main lifts show">
             <b>Estimated 1RM (e1RM)</b>: the most you could lift once, worked out from your sets — weight × (1 + reps ÷ 30), only
-            from sets of 10 reps or fewer. It is an estimate, not a test. Changes under about 3–6 % are day-to-day noise (sleep,
-            food, the day), so a lift gets an arrow only once it has 3 weeks of data, and within ±3 % it reads flat. Start and
-            end are the better of the first two and the last two sessions in the last {MAIN_LIFT_WEEKS} weeks.
-            <span className="mt-1.5 block">A lift trained above 10 reps shows its <b>reps at one load</b> instead — more reps at
-            the same weight is progress too. The main lifts are the first exercise of each routine in your current program.</span>
+            from sets of 10 reps or fewer. It is an estimate, not a test. Single sessions vary 3–6 % (sleep, food, the day), so
+            the trend compares the best of the first two and the last two sessions in the last {MAIN_LIFT_WEEKS} weeks, over 3+
+            weeks and 4+ sessions; within ±3 % reads flat.
+            <span className="mt-1.5 block">A lift trained above 10 reps shows its <b>reps at one load</b> instead, by the same
+            rule (the better of the first two and the last two sessions at that weight; a change under 1 rep a set reads flat) —
+            more reps at the same weight is progress too. A timed move (a plank) has no reps or load to compare and is left out. The main lifts are the first exercise of each routine in your current program.</span>
           </InfoBubble>
         </span>}
         subtitle={`Last ${MAIN_LIFT_WEEKS} weeks · tap a lift for its chart`}
       />
-      {lifts.length === 0
+      {isError ? <FailedRead what="your workouts" /> : lifts.length === 0
         ? <p className="text-body text-fg-muted">No current-program routine with exercises yet — pick your program on the Plan tab.</p>
         : <ul className="flex flex-col">{lifts.map(l => <LiftRow key={l.templateId} lift={l} />)}</ul>}
     </Card>

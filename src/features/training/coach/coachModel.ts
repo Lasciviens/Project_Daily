@@ -1,8 +1,8 @@
-import { MUSCLE_LANDMARKS, buildTemplateMuscleMap, creditedMuscles, limitedSlugsFromLimitations, scaleLandmarksForExperience } from '../muscleMap'
+import { buildTemplateMuscleMap, creditedMuscles, limitedSlugsFromLimitations } from '../muscleMap'
 import type { ProgressSetRow } from '../progressAggregate'
 import { rpeSuffix } from '../setFormat'
 import type { TrainingHistory } from '../api/hevyApi'
-import type { AthleteLimitation, AthleteProfile } from '../types.athlete'
+import type { AthleteLimitation } from '../types.athlete'
 import type { CoachMuscleDose, CoachSession } from './coachFormat'
 import { buildPlannedProgram, type RoutineLike } from '../plan/programBalance'
 import { comparePlannedDone, type BalanceComparison, type BalancePair, type MuscleBalance } from '../plan/muscleBalance'
@@ -56,10 +56,10 @@ export function sessionsFromHistory(history: TrainingHistory): CoachSession[] {
 }
 
 /** Credited hard sets per muscle over [from, today] (primary 1, secondary
- *  0.5 — the Muscles tab's convention), with experience-scaled landmarks and
- *  the shared limitation cross-check. */
+ *  0.5 — the convention every volume screen shares) and the shared limitation
+ *  cross-check; the coach reads them in S18's words (plan/volumeBands.ts). */
 export function weeklyMuscleDose(
-  history: TrainingHistory, from: string, profile: AthleteProfile | null, limitations: readonly AthleteLimitation[],
+  history: TrainingHistory, from: string, limitations: readonly AthleteLimitation[],
 ): CoachMuscleDose[] {
   const credit = buildTemplateMuscleMap(history.templates)
   const perSlug = new Map<string, number>()
@@ -72,14 +72,7 @@ export function weeklyMuscleDose(
   const restricted = limitedSlugsFromLimitations(limitations)
   return [...perSlug.entries()]
     .sort((a, b) => b[1] - a[1])
-    .map(([slug, sets]) => {
-      const L0 = MUSCLE_LANDMARKS[slug]
-      return {
-        slug, sets,
-        landmarks: L0 ? scaleLandmarksForExperience(L0, profile?.experience_level) : null,
-        restriction: restricted.get(slug as Parameters<typeof restricted.get>[0]) ?? null,
-      }
-    })
+    .map(([slug, sets]) => ({ slug, sets, restriction: restricted.get(slug as Parameters<typeof restricted.get>[0]) ?? null }))
 }
 
 export interface CoachBalance {
@@ -91,7 +84,7 @@ export interface CoachBalance {
 }
 
 /** Push:pull and quad:hamstring for the coach — the same pipeline as the
- *  Program tab (planned) and the Muscles body map (done in the last 30
+ *  Plan tab (planned) and the body map (done in the last 30
  *  days), so the coach quotes the numbers the user sees. */
 export function coachBalance(args: {
   history: TrainingHistory

@@ -20,7 +20,7 @@ function Row({ label, value }: { label: string; value: string | null }) {
   )
 }
 
-/** What the coach and the Program tab know about you: goal, experience,
+/** What the coach and the Plan tab know about you: goal, experience,
  *  schedule, limitations and muscle preferences — edited in one sheet. */
 export function ProfileSummaryCard() {
   const [open, setOpen] = useState(false)

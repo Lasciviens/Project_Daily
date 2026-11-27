@@ -90,14 +90,25 @@ console.log('\nMain lifts (plan/results.ts)')
   // Older than 8 weeks is outside the window.
   const old = [set('w0', '2026-09-01', 'bench', 80, 5), ...two]
   check('a session older than 8 weeks is not in the trend', R.mainLiftTrend(old, bench, TODAY).arrow === null)
-  // Every set above 10 reps: no e1RM — reps at a load instead.
+  // 3 sessions over 4 weeks: still no arrow (S13: ≥ 4 sessions as well as ≥ 3 weeks).
+  const t4 = R.mainLiftTrend([four[0], four[2], four[3]], bench, TODAY)
+  check('3 sessions over 4 weeks: no arrow yet (S13: 4 sessions and 3 weeks)', t4.arrow === null && t4.end === 122.5, J(t4))
+  check('the change is a whole percent', Number.isInteger(t.changePct) && t.changePct === 5, J(t))
+  // Every set above 10 reps: no e1RM — reps at a load instead, the better of the first two against the last two.
+  const reps3 = (w, d, r) => r.map((n, i) => set(w, d, 'bench', 16, n, 'normal', i))
   const high = [
-    set('w1', '2026-10-30', 'bench', 16, 10, 'normal', 0), set('w1', '2026-10-30', 'bench', 16, 10, 'normal', 1), set('w1', '2026-10-30', 'bench', 16, 9, 'normal', 2),
-    set('w2', '2026-11-27', 'bench', 16, 12, 'normal', 0), set('w2', '2026-11-27', 'bench', 16, 12, 'normal', 1), set('w2', '2026-11-27', 'bench', 16, 11, 'normal', 2),
+    ...reps3('w1', '2026-10-30', [11, 11, 10]), ...reps3('w2', '2026-11-06', [11, 11, 11]),
+    ...reps3('w3', '2026-11-20', [12, 12, 11]), ...reps3('w4', '2026-11-27', [12, 11, 11]),
   ]
-  const th = R.mainLiftTrend(high.map(s => s.reps <= 10 ? { ...s, reps: s.reps + 1 } : s), bench, TODAY)
-  check('sets above 10 reps give no e1RM: reps at one load instead', th.kind === 'reps' && th.loadKg === 16 && J(th.latest) === J([12, 12, 11]) && J(th.earlier) === J([11, 11, 10]), J(th))
-  check('…an up arrow when the mean reps per set rose by 1+ over 3+ weeks (S12)', th.arrow === 'up', J(th))
+  const th = R.mainLiftTrend(high, bench, TODAY)
+  check('sets above 10 reps give no e1RM: reps at one load, the better of the first two → the better of the last two', th.kind === 'reps' && th.loadKg === 16 && J(th.earlier) === J([11, 11, 11]) && J(th.latest) === J([12, 12, 11]) && th.sessions === 4, J(th))
+  check('…+0.67 reps a set over 4 sessions and 3+ weeks is within ±1 rep: flat (S16)', th.arrow === 'flat', J(th))
+  const up = [...reps3('w1', '2026-10-30', [10, 10, 9]), ...reps3('w2', '2026-11-06', [10, 10, 10]), ...reps3('w3', '2026-11-20', [12, 12, 11]), ...reps3('w4', '2026-11-27', [12, 11, 11])]
+  check('…+1.67 reps a set: up (S12: more reps at the same load is progress)', R.mainLiftTrend(up, bench, TODAY).arrow === 'up', J(R.mainLiftTrend(up, bench, TODAY)))
+  const twoAt = R.mainLiftTrend(high.filter(x => x.workout_id === 'w3' || x.workout_id === 'w4'), bench, TODAY)
+  check('…two sessions at the load: the better one, no "from", no arrow', twoAt.earlier === null && twoAt.arrow === null && J(twoAt.latest) === J([12, 12, 11]), J(twoAt))
+  const plank = { id: 'plank', title: 'Plank', type: 'duration' }
+  check('a timed move is not a main lift (no reps or load to compare)', R.mainLifts([], [plank, bench], ['plank', 'bench'], TODAY).map(l => l.templateId).join() === 'bench')
   const recentHigh = [...four.slice(0, 3), set('w5', '2026-11-27', 'bench', 80, 12)]
   check('the latest session above 10 reps: reps at its load, never an older e1RM read as the trend', R.mainLiftTrend(recentHigh, bench, TODAY).kind === 'reps')
   const bw = { id: 'pull', title: 'Pull Up', type: 'reps_only' }
@@ -157,10 +168,10 @@ console.log('\nConsistency (plan/results.ts, sessionState.weekCount)')
     week('2026-11-16', [ses('2026-11-16', 'done', 'done'), ses('2026-11-18', 'open', 'pending')]),
   ]
   const t = R.tallyWeeks(weeks)
-  check('last 4 weeks: X of Y — each week\'s own sessions once (a carried-in one is not counted twice)', t.done === 7 && t.planned === 10, J(t))
-  check('…Z % rounded', t.pct === 70)
+  check('last 4 weeks: X of Y by the strip\'s own rule (weekCount each week: a skipped one is not planned, a carried-in one not counted twice)', t.done === 7 && t.planned === 9 && t.done === weeks.reduce((n, w) => n + SS.weekCount(w).done, 0) && t.planned === weeks.reduce((n, w) => n + SS.weekCount(w).planned, 0), J(t))
+  check('…Z % rounded', t.pct === 78)
   check('on its day · late · early', t.onDay === 5 && t.late === 1 && t.early === 1, J(t))
-  check('dropped: skipped, or missed', t.dropped === 2, J(t))
+  check('skipped is its own word; dropped = planned, its week passed, not done', t.skipped === 1 && t.dropped === 1, J(t))
   check('nothing planned: no percent', R.tallyWeeks([]).pct === null)
 
   const lb = R.longestBreak(['2026-10-20', '2026-11-02', '2026-11-05', '2026-11-20', '2026-11-25'], TODAY)
@@ -171,6 +182,7 @@ console.log('\nConsistency (plan/results.ts, sessionState.weekCount)')
   check('…a break still going counts up to today', lb3.days === 57 && lb3.to === null, J(lb3))
   check('no training at all: null', R.longestBreak([], TODAY) === null)
   check('S27: 14 days or less gets the plain note', R.breakNote(14) !== null && R.breakNote(15) === null)
+  check('the note shows only while a break of 7+ days is still running', R.showBreakNote({ days: 8, from: 'x', to: null }) && !R.showBreakNote({ days: 8, from: 'x', to: 'y' }) && !R.showBreakNote({ days: 6, from: 'x', to: null }) && !R.showBreakNote({ days: 15, from: 'x', to: null }) && !R.showBreakNote(null))
 
   const none = CF.easyWeekReasons({ weeksSinceEasy: 3, stalled: 1, regression: 0, feeling: null, workloadReview: false })
   check('easy week: not offered without an S31 reason', none.length === 0)
@@ -196,6 +208,8 @@ console.log('\nThe exercise list (progress/decisionTabs.ts)')
   check('a first session is Add reps', DT.nextActionGroup(d('i', 'INSUFFICIENT_DATA')) === 'add_reps')
   check('the control opens on the first group with an exercise', DT.firstGroup({ add_weight: 0, almost: 0, add_reps: 2, check: 1 }) === 'add_reps')
   check('the four groups are short (1–2 words)', DT.NEXT_ACTION_GROUPS.every(g => g.label.split(' ').length <= 2))
+  check('a row\'s pill never repeats the open group\'s name (Add reps in Add reps)', DT.rowPill('BUILD_AT_CURRENT_LOAD', 'est1rm', 'Add reps') === null && DT.rowPill('READY_TO_INCREASE', 'est1rm', 'Add weight') === null)
+  check('…a new weight reads "Just moved up" in the list; other pills stay', DT.rowPill('NEW_WEIGHT', 'est1rm', 'Add reps') === 'Just moved up' && DT.rowPill('REPEAT_AT_TOP', 'est1rm', 'Add reps') === 'Repeat' && DT.rowPill('STEP_BACK', 'est1rm', 'Check') === 'Step back')
 
   const week = { sessions: [{ routineId: 'rA', mark: 'done' }, { routineId: 'rB', mark: 'next' }, { routineId: 'rC', mark: 'open' }] }
   const order = DT.routinesInNextOrder(week, ['rA', 'rB', 'rC', 'rD'])

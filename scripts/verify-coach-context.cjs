@@ -9,7 +9,7 @@
  *      never render 'undefined' or a blank name.
  *   2. restrictionsBySlug — active only, monitor excluded, free text resolved,
  *      worst case wins, every limitation reaching a muscle listed.
- *   3. weeklySetGap — add/cut/none against landmarks.
+ *   3. S18's weekly ranges (plan/volumeBands.ts) — the coach's words for weekly sets.
  *   4. computeProgressModel — the current-program gate, incl. saved routines
  *      that no longer exist (stale program).
  *   5. formatPtSnapshot / buildCoachJson — program, decisions, limitation
@@ -23,7 +23,7 @@
  */
 require('sucrase/register')
 const {
-  resolveMovementPattern, movementPatternLabel, restrictionsBySlug, limitedSlugsFromLimitations, weeklySetGap, MUSCLE_LANDMARKS,
+  resolveMovementPattern, movementPatternLabel, restrictionsBySlug, limitedSlugsFromLimitations,
 } = require('../src/features/training/muscleMap')
 const { computeProgressModel } = require('../src/features/training/progressModel')
 const { formatPtSnapshot, buildCoachJson, limitationName } = require('../src/features/training/coach/coachFormat')
@@ -67,15 +67,11 @@ console.log('\n2 · restrictionsBySlug')
   check('limitedSlugsFromLimitations agrees', flat.get('quadriceps') === 'avoid' && flat.get('hamstring') === 'limit' && flat.size === r.size)
 }
 
-console.log('\n3 · weeklySetGap')
+console.log('\n3 · S18 weekly ranges (one source: plan/volumeBands.ts)')
 {
-  const L = MUSCLE_LANDMARKS.chest // mev 8, mav 20, mrv 22
-  const add = weeklySetGap(3, L)
-  check('below MEV → add', add?.kind === 'add' && add.sets === 5 && add.sessions === 2, add)
-  check('inside range → null', weeklySetGap(12, L) === null)
-  const cut = weeklySetGap(26, L)
-  check('above MRV → cut', cut?.kind === 'cut' && cut.sets === 4, cut)
-  check('no landmarks → null', weeklySetGap(5, undefined) === null)
+  const VB = require('../src/features/training/plan/volumeBands')
+  check('3 sets: Below minimum · 12: Target · 26: High — extra sets add less', VB.volumeBandOf(3).label === 'Below minimum' && VB.volumeBandOf(12).label === 'Target' && VB.volumeBandOf(26).label === 'High — extra sets add less')
+  check('the minimum is 4 sets a week', VB.VOLUME_MIN_SETS === 4)
 }
 
 // ── A small history: two Push sessions of bench under routine r1 ──
@@ -127,12 +123,13 @@ console.log('\n5 · Coach snapshot + JSON')
     profile: { goal: 'hypertrophy', experience_level: 'intermediate', equipment_access: 'gym', training_days_per_week: 3, notes: null },
     limitations: [{ id: 'l1', movement_pattern: 'heavy_hip_hinge', severity: 'limit', note: 'lower back', active: true }],
     progress, routines: base.routines, sessions, sessionsThisWeek: 1,
-    weeklyMuscleSets: [{ slug: 'chest', sets: 3, landmarks: MUSCLE_LANDMARKS.chest, restriction: null }],
+    weeklyMuscleSets: [{ slug: 'chest', sets: 3, restriction: null }],
     sleep: [{ date: '2026-09-23', total: 7.2, deep: 1, rem: 1.5 }],
     steps: [{ date: '2026-09-23', value: 8000 }], activeKcal: [], bodyweight: [{ date: '2026-09-20', kg: 80, fatPct: 18 }, { date: '2026-09-23', kg: 79.5, fatPct: null }],
   }
   const text = formatPtSnapshot(data)
   if (process.env.SHOW) console.log(text, JSON.stringify(buildCoachJson(data, 30)))
+  check('weekly volume reads S18\'s words (plan/volumeBands), never MEV/MAV/MRV — the snapshot and the Coach JSON', text.includes('Chest: 3 sets/wk [Below minimum]') && !/MEV|MAV|MRV/.test(text) && JSON.stringify(buildCoachJson(data, 30).weekly_sets) === JSON.stringify([{ m: 'chest', s: 3, band: 'below' }]), text)
   check('PROGRAM line names the real routines', /PROGRAM: Push · this week 1 workouts \(target 3\)/.test(text), text.split('\n').find(l => l.startsWith('PROGRAM')))
   check('a Decision line per current-program exercise', /Decision: Bench Press: [A-Z_]+ "/.test(text), text)
   check('limitation name resolved, never undefined', text.includes('Limitation: Heavy hip hinge [= Hinge (deadlift pattern)] (limit) — lower back') && !/undefined/.test(text))
@@ -271,17 +268,17 @@ console.log('\n9 · The PT assessment\'s verdicts (coachFacts.ts: code decides, 
     check('a legacy "çok yorgunum" is the same gate input as "very tired"', gate([night('2026-09-20', 8), night('2026-09-22', 8), night('2026-09-23', 6.5)], feelingOf('çok yorgunum')).gate === 'technique_day') }
   check('last night from another day is named', gate([night('2026-09-21', 7)]).lastNightDate === '2026-09-21')
   const heavy = ptVerdicts(mk({ weeklyMuscleSets: [
-    { slug: 'chest', sets: 24, landmarks: { mev: 8, mav: 16, mrv: 22 }, restriction: null },
-    { slug: 'hamstring', sets: 2, landmarks: { mev: 6, mav: 12, mrv: 16 }, restriction: null },
-    { slug: 'quadriceps', sets: 1, landmarks: { mev: 6, mav: 12, mrv: 16 }, restriction: 'limit' },
-    { slug: 'biceps', sets: 9, landmarks: { mev: 6, mav: 14, mrv: 20 }, restriction: null },
+    { slug: 'chest', sets: 24, restriction: null },
+    { slug: 'hamstring', sets: 2, restriction: null },
+    { slug: 'quadriceps', sets: 1, restriction: 'limit' },
+    { slug: 'biceps', sets: 9, restriction: null },
   ] }), 'normal')
   check('S18/S31: a muscle over its weekly ceiling is no longer a deload cue on its own', !heavy.deloadCue && !('overreach' in heavy), heavy.deloadReasons)
   check('below the minimum: only an unrestricted muscle is listed', heavy.belowMinimum.length === 1 && heavy.belowMinimum[0].sets === 2, heavy.belowMinimum)
   check('nothing over, nothing under: no cue, none listed', !ptVerdicts(mk({}), 'normal').deloadCue && ptVerdicts(mk({}), 'normal').belowMinimum.length === 0)
   const text = formatPtVerdicts(heavy)
   check('the text has one labelled line per verdict, in a fixed order', ['RECOVERY:', 'OVERREACH:', 'PRIORITY:', 'BELOW MINIMUM VOLUME:', 'IMBALANCE:', 'MISSED:'].every((l, i) => text.split('\n')[i].startsWith(l)), text)
-  check('OVERREACH says none for high volume alone; BELOW MINIMUM names the gap', /OVERREACH: none/.test(text) && /BELOW MINIMUM VOLUME: .* 2\/6/.test(text), text)
+  check('OVERREACH says none for high volume alone; BELOW MINIMUM names the gap', /OVERREACH: none/.test(text) && /BELOW MINIMUM VOLUME: Hamstrings 2\/4$/m.test(text) && !/MEV|MAV|MRV/.test(text), text)
 
   // S31 triggers (offer, never force).
   { const { weeksSinceEasyWeek, DELOAD_AFTER_WEEKS } = require('../src/features/training/coach/coachFacts')

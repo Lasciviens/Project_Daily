@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { PageBoard, Skeleton } from '../../../../shared/ui'
 import { PROGRAM_BOARD } from '../../trainingBoards'
 import {
-  useAthleteProfile, useAthleteLimitations, useExerciseTargetOverrides, useMusclePreferences,
+  useAthleteLimitations, useExerciseTargetOverrides, useMusclePreferences,
 } from '../../hooks/useAthleteProfile'
 import { useTrainingHistory } from '../../hooks/useTrainingProgress'
 import { useTodayStr } from '../../hooks/useTrainingSessions'
@@ -31,7 +31,6 @@ function lastDone(last: string | undefined, today: string): string {
 export function ProgramTab() {
   const today = useTodayStr()
   const plan = usePlannedProgram()
-  const { data: profile } = useAthleteProfile()
   const { data: limitations = [] } = useAthleteLimitations(true)
   const { data: prefs = [] } = useMusclePreferences()
   const { data: overrides = [] } = useExerciseTargetOverrides()
@@ -43,14 +42,14 @@ export function ProgramTab() {
     const { current, trainingTemplates, targetDays, passes, input, planned } = plan
     const restrictions = limitedSlugsFromLimitations(limitations)
     const preferences = new Map<string, MusclePreference>(prefs.map(p => [p.muscle_slug, p.preference]))
-    const muscles = readProgramMuscles(planned, { preferences, restrictions, experience: profile?.experience_level ?? null })
+    const muscles = readProgramMuscles(planned, { preferences, restrictions })
     const balance = readBalance(planned, input.flatMap(r => r.exercises.map(e => e.title)), restrictions)
     return {
       current, trainingTemplates, targetDays, passes, muscles, balance,
       lastTrained: lastTrainedByRoutine(history?.sets ?? []),
       overrides: new Map(overrides.map(o => [o.exercise_template_id, o])),
     }
-  }, [plan, profile, limitations, prefs, overrides, history])
+  }, [plan, limitations, prefs, overrides, history])
   // Not before the done volume is in: an empty window reads "— · no sets".
   const comparison = useMemo(() => (done.isLoading ? null : comparePlannedDone(plan, done)), [plan, done])
 

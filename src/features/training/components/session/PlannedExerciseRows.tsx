@@ -24,7 +24,7 @@ function targetLine(r: PlanRow): string {
 
 /**
  * A planned session's exercises with the progress engine's targets — the
- * same rows as Training → Next (useRoutineSessionPlan). One line each; a tap
+ * same rows as Training → Today (useRoutineSessionPlan). One line each; a tap
  * shows the prescription, rest, the engine's call and last time.
  */
 export function PlannedExerciseRows({ rows, targetsLoading }: { rows: readonly PlanRow[]; targetsLoading: boolean }) {

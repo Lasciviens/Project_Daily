@@ -70,7 +70,8 @@ console.log('\nnextSession')
   check('alerts: regression line, not also a plateau line', alerts.some(a => a.id === 'down:e') && !alerts.some(a => a.id === 'flat:e'))
   check('alerts: load reduction asks, info tone', alerts.find(a => a.id === 'lower:f')?.tone === 'info')
   check('alerts: workload review included', alerts.some(a => a.id === 'workload' && a.text.includes('sleep down')))
-  check('alerts: danger first, info last', alerts[0].tone === 'danger' && alerts[alerts.length - 1].tone === 'info', J(alerts.map(a => a.tone)))
+  check('alerts: never danger — a lift going down is neutral, the workload review info (S14)', alerts.every(a => a.tone !== 'danger') && alerts.find(a => a.id === 'down:e')?.tone === 'neutral' && alerts.find(a => a.id === 'workload')?.tone === 'info', J(alerts.map(a => a.tone)))
+  check('alerts: a flat lift (warn) first, good news last', alerts[0].tone === 'warn' && alerts[alerts.length - 1].tone === 'success', J(alerts.map(a => a.tone)))
   check('alerts: HOLD_STEADY adds nothing', !alerts.some(a => a.exerciseIds.includes('g')))
   const broke = N.buildTrainingAlerts([d('x', 'BUILD_AT_CURRENT_LOAD', 'POSSIBLE_PLATEAU', 13)], id => id)
   check('alerts: a trend plateau never adds a "flat" line under an "Add reps" card — only the card\'s own Check (WATCH_FOR_PLATEAU)', broke.length === 0, J(broke))
@@ -85,8 +86,8 @@ console.log('\nnextSession')
   const split = N.splitTodayAlerts(alerts, ['c', 'f', 'a'])
   check('today: a session exercise\'s alert goes on its card, without its name', split.byExercise.get('c')?.short === 'Flat for 5 sessions at this load' && split.byExercise.get('f')?.short === 'Lighter than last time — build reps there', J([...split.byExercise]))
   check('today: "ready" is not repeated on a card (its pill says Add weight)', !split.byExercise.has('a'))
-  check('today: a lift not in this session is not on Today (Results lists it)', !split.byExercise.has('e'))
-  check('today: the program-level workload line stays in Heads-up, alone', split.program.length === 1 && split.program[0].id === 'workload')
+  check('today: a lift not in this session stays on Today, in Heads-up (nothing leaves Today)', !split.byExercise.has('e') && split.program.some(a => a.id === 'down:e'))
+  check('today: Heads-up holds the workload line and the lifts outside the session, never "ready"', J(split.program.map(a => a.id).sort()) === J(['down:e', 'workload']))
 }
 
 // ─── sessionPlan.ts ─────────────────────────────────────────────────────────
@@ -196,13 +197,7 @@ console.log('\nprogramBalance')
   const doubled = P.plannedWeeklySets(routines, tm, 2)
   check('passes scale sets', doubled.find(p => p.slug === 'chest').weeklySets === 6)
 
-  check('tier <4 below MED', P.tierFor(3.5) === 'below_med')
-  check('tier 4 MED', P.tierFor(4) === 'med')
-  check('tier 10.5 most efficient range', P.tierFor(10.5) === 'high_eff')
-  check('tier 11 intermediate', P.tierFor(11) === 'intermediate')
-  check('tier 19 lower, 30 lowest, 43 no data', P.tierFor(19) === 'lower_eff' && P.tierFor(30) === 'lowest_eff' && P.tierFor(43) === 'no_data')
-
-  const ctx = { preference: null, restriction: null, experience: null }
+  const ctx = { preference: null, restriction: null }
   const m = (slug, s, d = s) => ({ slug, label: slug, weeklySets: s, directSets: d })
   check('below MED advises the gap to 4', P.readMuscle(m('chest', 2.5), ctx).setsToAdd === 1.5)
   check('priority under 10 → sets to 10', P.readMuscle(m('chest', 6), { ...ctx, preference: 'priority' }).setsToAdd === 4)
@@ -213,10 +208,9 @@ console.log('\nprogramBalance')
   check('restricted muscle is never told to add', restricted.status === 'restricted' && restricted.setsToAdd === null)
   check('10–20 in range', P.readMuscle(m('chest', 14), ctx).status === 'in_range')
   check('high and very high', P.readMuscle(m('chest', 25), ctx).status === 'high' && P.readMuscle(m('chest', 31), ctx).status === 'very_high')
-  check('RP band label carried (heuristic)', P.readMuscle(m('chest', 14), ctx).rpBandLabel === 'Optimal growth')
-  check('experience scales landmarks (novice MEV lower)', P.readMuscle(m('chest', 14), { ...ctx, experience: 'novice' }).landmarks.mev === 7)
+  check('the planned card\'s word is S18\'s (plan/volumeBands.ts), never an RP landmark', P.readMuscle(m('chest', 14), ctx).band.label === 'Target' && P.readMuscle(m('chest', 3), ctx).band.label === 'Below minimum' && !('landmarks' in P.readMuscle(m('chest', 14), ctx)))
 
-  const reads = P.readProgramMuscles(planned, { preferences: new Map([['calves', 'priority']]), restrictions: new Map(), experience: null })
+  const reads = P.readProgramMuscles(planned, { preferences: new Map([['calves', 'priority']]), restrictions: new Map() })
   check('all major muscles listed even at 0', ['hamstring', 'abs', 'biceps'].every(s => reads.some(r => r.slug === s)))
   check('priority muscle listed first even at 0', reads[0].slug === 'calves' && reads[0].status === 'untrained' && reads[0].setsToAdd === 4, J(reads[0]))
 

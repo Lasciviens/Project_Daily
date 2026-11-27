@@ -29,7 +29,7 @@ function RatioRow({ read, comparison }: { read: RatioRead; comparison: BalanceCo
 }
 
 /** Push:pull and quad:hamstring of what was DONE in the window — the same
- *  ratio and verdict (muscleBalance.ts) as the Program tab's planned card,
+ *  ratio and verdict (muscleBalance.ts) as the Plan tab's planned card,
  *  with the planned number beside it and a line on why they differ. */
 export function MuscleBalanceCard({ balance, windowLabel, comparison }: {
   balance: Balance

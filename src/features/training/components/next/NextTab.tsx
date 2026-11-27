@@ -17,6 +17,7 @@ import { sessionStatus } from '../../plan/sessionState'
 import type { TrainingPlanRef } from '../../api/trainingPlanApi'
 import { NEXT_BOARD } from '../../trainingBoards'
 import { NextReadsAhead } from './NextReadsAhead'
+import { MuscleWatchLine } from '../../../health/goal/MuscleWatchCard'
 
 function whenText(date: string, startTime: string | null, today: string): string {
   const d = daysBetween(today, date)
@@ -126,7 +127,8 @@ function RecoveryNotes({ notes, inRail }: { notes: RecoveryNote[]; inRail: boole
   )
 }
 
-/** Program-level heads-up (several lifts declining at once). An exercise's own alert sits on its card. */
+/** Heads-up: the program-level alert (several lifts declining at once) and the alerts about lifts that are not in
+ *  this session. An exercise of this session has its alert on its own card. */
 function Alerts({ plan }: { plan: NextPlan }) {
   if (plan.alerts.length === 0) return null
   return (
@@ -134,8 +136,9 @@ function Alerts({ plan }: { plan: NextPlan }) {
       <p className="section-label flex items-center gap-1.5">
         Heads-up
         <InfoBubble>
-          Straight from the progress engine, about the program as a whole. A note about one exercise is on its own card
-          below; every exercise, grouped by what to do next, is on the Results tab.
+          Straight from the progress engine: the program as a whole, and lifts that are not in this session. A note about
+          an exercise of this session is on its own card; every exercise, grouped by what to do next, is on the Results
+          tab.
         </InfoBubble>
       </p>
       <ul className="flex flex-col gap-1.5">
@@ -163,8 +166,9 @@ function ExerciseGrid({ children }: { children: ReactNode }) {
 }
 
 /** The default Training tab (Today): what to do next, set by set. The session and its exercises show once the plan
- *  is in; the lines above the exercises (this week, recovery) come in on their own reads, each keeping its room until
- *  then (KeepRoom), so they never push the exercises down nor hold them back. The muscle watch lives on Results. */
+ *  is in; the lines above the exercises (this week, recovery, the muscle watch) come in on their own reads, each keeping its room until
+ *  then (KeepRoom), so they never push the exercises down nor hold them back; the muscle watch is here and on
+ *  Results (every way in). */
 export function TodayTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
   const plan = useNextPlan()
 
@@ -200,7 +204,7 @@ export function TodayTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
       session: <div className="max-w-2xl"><SessionHeader plan={plan} /></div>,
       week: <ThisWeekStrip where="next" className="max-w-2xl" />,
       recovery: <RecoveryLine />,
-      alerts: <Alerts plan={plan} />,
+      alerts: <><MuscleWatchLine /><Alerts plan={plan} /></>,
       exercises: plan.rows.length > 0 && (
         <ExerciseGrid>
           {plan.rows.map(r => <NextExerciseCard key={`${r.templateId}-${r.order}`} row={r} alert={plan.alertByExercise.get(r.templateId) ?? null} />)}

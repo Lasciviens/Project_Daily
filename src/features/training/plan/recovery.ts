@@ -1,4 +1,4 @@
-// Recovery context for the Next and Progress tabs — pure (runtime import only
+// Recovery context for the Today and Results tabs — pure (runtime import only
 // from muscleMap, itself pure), tested by scripts/verify-training-plan.cjs.
 //
 // Deliberately NO readiness score (house rule: no synthetic composite

@@ -18,7 +18,7 @@ import { FLAT_BAND_PCT, exerciseSeries, liftChange, shiftDays, windowStart, type
 import { MAJOR_MUSCLES, labelForSlug } from '../muscleMap'
 import { aggregateVolume, buildTplById, volumeRowsFromSets } from '../components/muscles/muscleVolumeModel'
 import { volumeBandOf, type VolumeBand } from './volumeBands'
-import type { TrainingWeek, WeekSession } from './sessionState'
+import { weekCount, type TrainingWeek, type WeekSession } from './sessionState'
 
 const dayDiff = (from: string, to: string): number =>
   Math.round((new Date(`${to}T12:00:00`).getTime() - new Date(`${from}T12:00:00`).getTime()) / 86_400_000)
@@ -27,8 +27,10 @@ const dayDiff = (from: string, to: string): number =>
 
 /** The trend window of the Main lifts card. */
 export const MAIN_LIFT_WEEKS = 8
-/** An arrow (up / flat / down) only once a lift's sessions in the window span this many days (S13: ≥ 3 weeks). */
+/** An arrow (up / flat / down) only once a lift's sessions in the window span this many days (S13: ≥ 3 weeks)… */
 export const ARROW_MIN_DAYS = 21
+/** …and number at least this many (S13: ≥ 4 sessions). */
+export const ARROW_MIN_SESSIONS = 4
 
 /** By default the main lifts are each current-program routine's first exercise, in routine order, each once. */
 export function mainLiftIds(routines: readonly { exercises?: readonly { exercise_template_id: string; index: number }[] }[]): string[] {
@@ -49,7 +51,7 @@ export interface E1rmTrend {
   /** kg, the better of the last two sessions (or the only one). */
   end: number
   changePct: number | null
-  /** null until the sessions span ARROW_MIN_DAYS (S13). */
+  /** null until ARROW_MIN_SESSIONS sessions span ARROW_MIN_DAYS (S13). */
   arrow: Arrow | null
   sessions: number
   /** Days from the first to the last session in the window. */
@@ -60,14 +62,16 @@ export interface RepsTrend {
   kind: 'reps'
   /** The load of the latest session's heaviest working sets (kg), null for a bodyweight move. */
   loadKg: number | null
-  /** The reps at that load in the latest session, in set order. */
+  /** The reps at that load in the better of the last two sessions at it (the latest alone when there is one), in set order. */
   latest: number[]
   latestDate: string
-  /** The reps at the same load in the earliest session of the window that had it, when it is not the latest. */
+  /** The reps at that load in the better of the first two sessions at it, when there are at least 3 such sessions. */
   earlier: number[] | null
   earlierDate: string | null
-  /** More reps at the same load is progress (S12): the mean reps per set moved by 1 or more; null until the two
-   *  sessions are ARROW_MIN_DAYS apart. */
+  /** Sessions in the window with sets at that load. */
+  sessions: number
+  /** More reps at the same load is progress (S12): the mean reps per set moved by 1 or more (S16: ±1 rep is noise);
+   *  null until ARROW_MIN_SESSIONS sessions at the load span ARROW_MIN_DAYS (S13). */
   arrow: Arrow | null
 }
 
@@ -83,8 +87,8 @@ function arrowOf(changePct: number): Arrow {
   return changePct >= FLAT_BAND_PCT ? 'up' : changePct <= -FLAT_BAND_PCT ? 'down' : 'flat'
 }
 
-/** Reps at one load: the latest session's heaviest working sets against the earliest session in the window that
- *  used the same load. */
+/** Reps at one load: the latest session's heaviest working sets; the better of the first two sessions at that load
+ *  against the better of the last two (the same rule as the e1RM trend, plan/improvement.liftChange). */
 export function repsAtLoad(sets: readonly ProgressSetRow[], templateId: string): RepsTrend | null {
   const byWorkout = new Map<string, { date: string; sets: ProgressSetRow[] }>()
   for (const s of sets) {
@@ -104,16 +108,17 @@ export function repsAtLoad(sets: readonly ProgressSetRow[], templateId: string):
   }
   const load = loadOf(last.sets)
   const at = (xs: readonly ProgressSetRow[]) => xs.filter(s => (load == null ? !(s.weight_kg && s.weight_kg > 0) : s.weight_kg === load)).map(s => s.reps as number)
-  const latest = at(last.sets)
-  const first = sessions.find(s => s !== last && at(s.sets).length > 0)
-  const earlier = first ? at(first.sets) : null
+  const atLoad = sessions.map(s => ({ date: s.date, reps: at(s.sets) })).filter(s => s.reps.length > 0)
+  const mean = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0) / xs.length
+  const better = (a: { date: string; reps: number[] }, b: { date: string; reps: number[] } | undefined) => (!b || mean(a.reps) >= mean(b.reps) ? a : b)
+  const end = atLoad.length >= 2 ? better(atLoad[atLoad.length - 1], atLoad[atLoad.length - 2]) : atLoad[atLoad.length - 1]
+  const start = atLoad.length >= 3 ? better(atLoad[0], atLoad[1]) : null
   let arrow: Arrow | null = null
-  if (first && earlier && dayDiff(first.date, last.date) >= ARROW_MIN_DAYS) {
-    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length
-    const d = mean(latest) - mean(earlier)
+  if (start && atLoad.length >= ARROW_MIN_SESSIONS && dayDiff(atLoad[0].date, atLoad[atLoad.length - 1].date) >= ARROW_MIN_DAYS) {
+    const d = mean(end.reps) - mean(start.reps)
     arrow = d >= 1 ? 'up' : d <= -1 ? 'down' : 'flat'
   }
-  return { kind: 'reps', loadKg: load, latest, latestDate: last.date, earlier, earlierDate: first?.date ?? null, arrow }
+  return { kind: 'reps', loadKg: load, latest: end.reps, latestDate: end.date, earlier: start?.reps ?? null, earlierDate: start?.date ?? null, sessions: atLoad.length, arrow }
 }
 
 /** One main lift over the last `weeks` weeks: e1RM when its sets give one (≤ 10 reps), else reps at a load. */
@@ -129,9 +134,11 @@ export function mainLiftTrend(sets: readonly ProgressSetRow[], template: Templat
       const spanDays = dayDiff(series[0].date, series[series.length - 1].date)
       const change = liftChange(series, 'est1rm', { templateId: template.id, title: template.title })
       const last2 = series.slice(-2).map(s => s.value)
+      // Whole percent, and the arrow reads the number shown (S16: no false precision).
+      const pct = change.changePct == null ? null : Math.round(change.changePct)
       return {
-        kind: 'e1rm', start: change.start, end: change.end ?? Math.max(...last2), changePct: change.changePct,
-        arrow: change.changePct != null && spanDays >= ARROW_MIN_DAYS ? arrowOf(change.changePct) : null,
+        kind: 'e1rm', start: change.start, end: change.end ?? Math.max(...last2), changePct: pct,
+        arrow: pct != null && series.length >= ARROW_MIN_SESSIONS && spanDays >= ARROW_MIN_DAYS ? arrowOf(pct) : null,
         sessions: series.length, spanDays,
       }
     }
@@ -142,7 +149,9 @@ export function mainLiftTrend(sets: readonly ProgressSetRow[], template: Templat
 /** The Main lifts card's rows, in routine order. */
 export function mainLifts(sets: readonly ProgressSetRow[], templates: readonly TemplateInfo[], ids: readonly string[], today: string, titleOf?: (id: string) => string | undefined): MainLift[] {
   const byId = new Map(templates.map(t => [t.id, t]))
-  return ids.map(id => {
+  // A timed or distance move (a plank, a carry) has no reps or load to compare: it is not a main lift.
+  const timed = (id: string) => { const k = metricKindForExerciseType(byId.get(id)?.type ?? 'weight_reps'); return k === 'duration' || k === 'distance' }
+  return ids.filter(id => !timed(id)).map(id => {
     const t = byId.get(id)
     const title = t?.title ?? titleOf?.(id) ?? 'Exercise'
     return { templateId: id, title, trend: t ? mainLiftTrend(sets, t, today) : null }
@@ -198,7 +207,7 @@ export function limitationNote(m: Pick<MuscleSets, 'restriction' | 'band'>): str
 // ── Consistency ─────────────────────────────────────────────────────────────
 
 export interface WeeksTally {
-  /** Sessions planned in those weeks (each on its stored day), skipped ones included. */
+  /** Sessions planned in those weeks, each week counted as the strip counts it (`weekCount`: a skipped one left out). */
   planned: number
   done: number
   /** done ÷ planned, whole percent; null with nothing planned. */
@@ -209,21 +218,25 @@ export interface WeeksTally {
   late: number
   /** Done 1–2 days before its day. */
   early: number
-  /** Skipped (by you, or not done within its week). */
+  /** Skipped (by you, or not done within its week) — not in planned, like the strip. */
+  skipped: number
+  /** Planned, not done and not skipped: its day and its week passed (missed). */
   dropped: number
 }
 
-/** The weeks' own sessions (Monday–Sunday of each), counted once each. */
+/** The weeks' own sessions (Monday–Sunday of each), counted once each, by the strip's own rule (`weekCount`). */
 export function tallyWeeks(weeks: readonly TrainingWeek[]): WeeksTally {
+  let planned = 0, doneCount = 0
+  for (const w of weeks) { const c = weekCount(w); planned += c.planned; doneCount += c.done }
   const own: WeekSession[] = weeks.flatMap(w => w.sessions.filter(s => s.date >= w.monday && s.date <= w.sunday))
   const done = own.filter(s => s.mark === 'done')
   const late = done.filter(s => (s.shift ?? 0) > 0).length
   const early = done.filter(s => (s.shift ?? 0) < 0).length
-  const planned = own.length
   return {
-    planned, done: done.length, pct: planned > 0 ? Math.round((done.length / planned) * 100) : null,
+    planned, done: doneCount, pct: planned > 0 ? Math.round((doneCount / planned) * 100) : null,
     onDay: done.length - late - early, late, early,
-    dropped: own.filter(s => s.mark === 'skipped' || s.status.state === 'missed').length,
+    skipped: own.filter(s => s.mark === 'skipped').length,
+    dropped: own.filter(s => s.mark !== 'skipped' && s.status.state === 'missed').length,
   }
 }
 
@@ -259,6 +272,12 @@ export function longestBreak(trainingDays: readonly string[], today: string, day
   const tail = dayDiff(points[points.length - 1], today)
   if (!best || tail > best.days) best = { days: tail, from: points[points.length - 1], to: null }
   return best
+}
+
+/** S27's note is shown only while a break is still running and has lasted 7+ days (a finished break needs no
+ *  word), and only up to 14 days — a longer one gets Today's comeback note (sessionState.gapNote). */
+export function showBreakNote(gap: LongestBreak | null): boolean {
+  return !!gap && gap.to === null && gap.days >= 7 && breakNote(gap.days) != null
 }
 
 /** S27's plain note: a break of 14 days or less costs nothing. Null for a longer one. */

@@ -1,4 +1,4 @@
-// Which routine the Next tab shows, and the alerts above it — pure and
+// Which routine the Today tab shows, and the alerts above it — pure and
 // import-free apart from type-only imports (scripts/verify-training-plan.cjs).
 //
 // Order of preference: the next PLANNED training session (a one-off block
@@ -97,7 +97,8 @@ export function daysBetween(from: string, to: string): number {
 
 // ── Alerts ──────────────────────────────────────────────────────────────────
 
-export type AlertTone = 'success' | 'warn' | 'danger' | 'info'
+/** Never danger: a lift going down or the workload review is information, not an alarm (S14). */
+export type AlertTone = 'success' | 'warn' | 'info' | 'neutral'
 
 export interface TrainingAlert {
   id: string
@@ -117,7 +118,7 @@ function atWhat(d: AlertDecision): string {
   return ' at this load'
 }
 
-const TONE_ORDER: Record<AlertTone, number> = { danger: 0, warn: 1, success: 2, info: 3 }
+const TONE_ORDER: Record<AlertTone, number> = { warn: 0, info: 1, neutral: 2, success: 3 }
 
 function listNames(names: string[], max = 3): string {
   if (names.length <= max) return names.join(', ')
@@ -149,7 +150,8 @@ export function buildTrainingAlerts(
       out.push({ id: `flat:${d.exerciseTemplateId}`, tone: 'warn', exerciseIds: [d.exerciseTemplateId], text: `${titleOf(d.exerciseTemplateId)} ${flat}`, short: `F${flat.slice(1)}` })
     }
     if (d.currentAction === 'WATCH_FOR_REGRESSION') {
-      out.push({ id: `down:${d.exerciseTemplateId}`, tone: 'danger', exerciseIds: [d.exerciseTemplateId], text: `${titleOf(d.exerciseTemplateId)} dropping at its current load`, short: 'Dropping at its current load' })
+      // Down is information, never a warning (S14): the same calm tone as the card's own pill.
+      out.push({ id: `down:${d.exerciseTemplateId}`, tone: 'neutral', exerciseIds: [d.exerciseTemplateId], text: `${titleOf(d.exerciseTemplateId)} dropping at its current load`, short: 'Dropping at its current load' })
     }
     if (d.currentAction === 'REVIEW_LOAD_REDUCTION') {
       out.push({ id: `lower:${d.exerciseTemplateId}`, tone: 'info', exerciseIds: [d.exerciseTemplateId], text: `${titleOf(d.exerciseTemplateId)}: lighter than last time — build reps there`, short: 'Lighter than last time — build reps there' })
@@ -157,7 +159,7 @@ export function buildTrainingAlerts(
   }
   if (program?.workload === 'review_workload') {
     out.push({
-      id: 'workload', tone: 'danger', exerciseIds: [],
+      id: 'workload', tone: 'info', exerciseIds: [],
       text: `Review your workload: ${program.affectedCount} lifts declining${program.corroboratingSignal ? `, and ${program.corroboratingSignal}` : ''}`,
     })
   }
@@ -165,9 +167,9 @@ export function buildTrainingAlerts(
 }
 
 /** Today's alerts split by where they show: an exercise of the session gets its own alert on its card (one line
- *  under its target), the program-level ones stay in the Heads-up box. "Ready" (a list of lifts) is not repeated:
- *  each card's pill already says Add weight, and Results groups every lift by its next action. An alert about a lift
- *  that is not in this session lives on Results (its Check group), not on Today. */
+ *  under its target); everything else stays in the Heads-up box — the program-level one and an alert about a lift
+ *  that is not in this session (nothing leaves Today). "Ready" (a list of lifts) is not repeated: each card's pill
+ *  already says Add weight, and Results groups every lift by its next action. */
 export function splitTodayAlerts(alerts: readonly TrainingAlert[], sessionTemplateIds: Iterable<string>): { byExercise: Map<string, TrainingAlert>; program: TrainingAlert[] } {
   const inSession = new Set(sessionTemplateIds)
   const byExercise = new Map<string, TrainingAlert>()
@@ -177,6 +179,7 @@ export function splitTodayAlerts(alerts: readonly TrainingAlert[], sessionTempla
     if (a.id === 'ready') continue
     const id = a.exerciseIds[0]
     if (a.exerciseIds.length === 1 && inSession.has(id) && !byExercise.has(id)) byExercise.set(id, a)
+    else program.push(a)
   }
   return { byExercise, program }
 }

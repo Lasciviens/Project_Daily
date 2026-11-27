@@ -13,7 +13,7 @@ import type { MuscleBalance } from '../plan/muscleBalance'
 import { aggregateVolume, buildTplById, computeBalance, presetWindowIso, type Tpl, type VolumeRow } from '../components/muscles/muscleVolumeModel'
 
 // The planned week of the current program and the done volume of a window,
-// each computed ONCE here so the Program tab and the Muscles body map read
+// each computed ONCE here so the Plan tab and the body map read
 // the same numbers (and the same muscleBalance.ts verdict) for both.
 
 export interface PlannedProgram extends PlannedProgramData<HevyRoutine> {
@@ -22,7 +22,7 @@ export interface PlannedProgram extends PlannedProgramData<HevyRoutine> {
   isLoading: boolean
 }
 
-/** The current program's planned weekly sets per muscle (Program tab). */
+/** The current program's planned weekly sets per muscle (Plan tab). */
 export function usePlannedProgram(): PlannedProgram {
   const { data: routines = [], isLoading: loadingRoutines } = useHevyRoutines()
   const { data: program = [], isLoading: loadingProgram } = useCurrentProgramRoutines()
