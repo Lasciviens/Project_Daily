@@ -29,6 +29,7 @@ import {
   BALANCE_LIMIT, PULL_SLUGS, PUSH_SLUGS, balanceTotals, readMuscleBalance,
   type MuscleBalance, type PlannedRoutineBalance,
 } from './muscleBalance'
+import { VOLUME_HIGH_MAX, VOLUME_MIN_SETS, VOLUME_TARGET } from './volumeBands'
 import type { ExperienceLevel, MusclePreference } from '../types.athlete'
 import type { Tone } from '../../../shared/ui/Tone'
 
@@ -173,7 +174,8 @@ export function tierFor(weeklySets: number): VolumeTier {
   return 'no_data'
 }
 
-export const RECOMMENDED_RANGE = { min: 10, max: 20 } as const
+/** The 10–20 sets a week target — S18's, from the one source of the ranges (plan/volumeBands.ts). */
+export const RECOMMENDED_RANGE = VOLUME_TARGET
 
 export type MuscleStatus = 'excluded' | 'restricted' | 'below_med' | 'under' | 'in_range' | 'high' | 'very_high' | 'untrained'
 
@@ -228,9 +230,9 @@ export function readMuscle(
     advice = priority
       ? 'Priority muscle with no planned sets — add at least 4 a week (the minimum effective dose).'
       : 'No planned sets.'
-  } else if (s < 4) {
+  } else if (s < VOLUME_MIN_SETS) {
     status = 'below_med'
-    setsToAdd = round1(4 - s)
+    setsToAdd = round1(VOLUME_MIN_SETS - s)
     advice = `Below the minimum effective dose of 4 sets/week — about ${setsToAdd} more would reach it.`
   } else if (s < RECOMMENDED_RANGE.min) {
     status = 'under'
@@ -243,7 +245,7 @@ export function readMuscle(
   } else if (s <= RECOMMENDED_RANGE.max) {
     status = 'in_range'
     advice = 'Inside the 10–20 sets/week most recreational lifters target.'
-  } else if (s < 30) {
+  } else if (s <= VOLUME_HIGH_MAX) {
     status = 'high'
     advice = 'Above 20 — more can still help a little, at a rising cost in fatigue and time.'
   } else {

@@ -75,6 +75,29 @@ export function weeksSinceEasyWeek(sessionDates: readonly string[], today: strin
   return weeks
 }
 
+/** The engine's decisions S31(b) reads: lifts not rising at their load, and lifts down. */
+export function stalledAndDown(decisions: readonly { currentAction: string }[]): { stalled: number; regression: number } {
+  return {
+    stalled: decisions.filter(r => STALLED_ACTIONS.includes(r.currentAction)).length,
+    regression: decisions.filter(r => REGRESSION_ACTIONS.includes(r.currentAction)).length,
+  }
+}
+
+/**
+ * S31 — when to offer an easy week (offered, never forced), any one of: a long run without an easy week (S31(a), with
+ * S32's easy weeks), lifts stalled at their load (S31(b)), or very tired while a lift is stalled or down; plus the
+ * program-level workload review (several lifts declining). High volume alone is never a cue (S18). The ONE rule: the
+ * coach's verdict and the Results tab's Consistency card both call it (`feeling` null where none was given).
+ */
+export function easyWeekReasons(i: { weeksSinceEasy: number | null; stalled: number; regression: number; feeling: PtFeeling | null; workloadReview: boolean }): string[] {
+  const out: string[] = []
+  if (i.weeksSinceEasy != null && i.weeksSinceEasy >= DELOAD_AFTER_WEEKS) out.push(`${i.weeksSinceEasy} weeks without an easy week`)
+  if (i.stalled >= DELOAD_STALLED_LIFTS) out.push(`${i.stalled} lifts not rising at their load`)
+  if (i.feeling === 'very tired' && (i.stalled > 0 || i.regression > 0)) out.push('very tired, with a lift stalled or down')
+  if (i.workloadReview) out.push(`program workload: ${workloadLabel('review_workload')}`)
+  return out
+}
+
 export type RecoveryGate = 'rest_day' | 'technique_day' | 'normal' | 'no_sleep_data'
 
 export interface PtVerdicts {
@@ -136,14 +159,7 @@ export function ptVerdicts(d: CoachData, feeling: PtFeeling): PtVerdicts {
   const stalledLifts = d.progress.decisions.filter(r => STALLED_ACTIONS.includes(r.currentAction)).map(r => titleOf(r.exerciseTemplateId))
   const weeksSinceEasy = weeksSinceEasyWeek(d.sessions.map(s => s.date), d.today, d.profile?.training_days_per_week)
 
-  // S31 — any one of: a long run without an easy week, lifts stalled at their load, or the owner very tired while a
-  // lift is stalled or down; plus the program-level workload review (several lifts declining). High volume alone is
-  // never a cue (S18).
-  const deloadReasons: string[] = []
-  if (weeksSinceEasy != null && weeksSinceEasy >= DELOAD_AFTER_WEEKS) deloadReasons.push(`${weeksSinceEasy} weeks without an easy week`)
-  if (stalledLifts.length >= DELOAD_STALLED_LIFTS) deloadReasons.push(`${stalledLifts.length} lifts not rising at their load`)
-  if (feeling === 'very tired' && (stalledLifts.length > 0 || regressionLifts.length > 0)) deloadReasons.push('very tired, with a lift stalled or down')
-  if (workloadReview) deloadReasons.push(`program workload: ${workloadLabel('review_workload')}`)
+  const deloadReasons = easyWeekReasons({ weeksSinceEasy, stalled: stalledLifts.length, regression: regressionLifts.length, feeling, workloadReview })
   const belowMinimum = d.weeklyMuscleSets
     .filter(m => m.landmarks && !m.restriction && m.sets < m.landmarks.mev)
     .map(m => ({ muscle: labelForSlug(m.slug), sets: round1(m.sets), mev: m.landmarks!.mev }))

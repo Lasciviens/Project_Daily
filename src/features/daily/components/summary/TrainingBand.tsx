@@ -20,7 +20,7 @@ import { usePlanThis } from '../../../items/usePlanThis'
 import { matchDaySessions, planStartHHMM } from '../../../training/components/calendar/calendarSessions'
 import { getWorkoutDuration } from '../../../training/components/calendar/calendarModel'
 import { planRefOf, planStateWord, plannedOnNote, plansClosedBy } from '../../../training/sessionRef'
-import { SESSION_TONE } from '../../../training/plan/sessionState'
+import { SESSION_TONE, weekCount } from '../../../training/plan/sessionState'
 import { computeLiftChanges, summarizeImprovement } from '../../../training/plan/improvement'
 import { localDayBoundsIso, workoutLocalDay } from '../../../training/workoutDates'
 import { mondayOf } from '../../../training/progressAggregate'
@@ -81,9 +81,8 @@ export function TrainingBand({ date }: { date: string }) {
 
   // The week as the strip reads it (sessionState.planWeek): the box counts the same chips.
   const weekView = useTrainingWeek(date)
-  const ownChips = weekView.week.sessions.filter(x => x.date >= monday && x.mark !== 'skipped')
-  const planned = ownChips.length
-  const doneCount = ownChips.filter(x => x.mark === 'done').length
+  // weekCount: the one count — Training → Results' Consistency card reads the same.
+  const { done: doneCount, planned } = weekCount(weekView.week)
   const stravaCount = sessions.filter(x => x.id.startsWith('s:') && x.date >= monday && x.date <= sunday && x.date <= date).length
   const week = useMemo(() => trainingWeekGlance({
     day: date, today, sessions, plannedDays: dayView.planned, target: profile?.training_days_per_week ?? null,
