@@ -153,6 +153,12 @@ eq(R.onDay(task({ status: 'done', due_date: TODAY, completed_at: at('2026-10-11'
 {
   const list = [task({ due_date: '2026-10-14' }), task({ due_date: '2026-10-14', status: 'done', completed_at: at(TODAY) }), task({ due_date: '2026-10-14', status: 'waiting' })]
   eq(R.openOnDay(list, '2026-10-14', TODAY), 2, 'open + waiting due that day')
+  // Owner, 27.11.2026: a past day's open tasks are carried to today (overdue) — they count there, not on their old day.
+  const past = list.map(t => ({ ...t, due_date: '2026-10-11' }))
+  eq(R.openOnDay(past, '2026-10-11', TODAY), 0, 'a past day: its open tasks count on today (carried), not here')
+  eq([R.carriedToToday(task({ due_date: '2026-10-11' }), '2026-10-11', TODAY), R.carriedToToday(task({ due_date: '2026-10-11', status: 'done' }), '2026-10-11', TODAY),
+    R.carriedToToday(task({ due_date: TODAY }), TODAY, TODAY), R.carriedToToday(task({ due_date: '2026-10-20' }), '2026-10-11', TODAY)], [true, false, false, false],
+    'carriedToToday: open and due before today, seen on a past day — never a closed one, never on today, never one due later')
 }
 
 // ── Daily's Tasks tab ──

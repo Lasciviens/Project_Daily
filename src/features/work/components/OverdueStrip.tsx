@@ -11,12 +11,13 @@ interface Props {
   onDelete: (id: string) => void
   onEdit: (task: Task, row?: 'waiting') => void
   onFocus: (task: Task) => void
+  onMoveToToday: (task: Task) => void
 }
 
 // Overdue is a property, not a board column: these tasks surface here above
 // the board (in-progress ones stay on the board — see WorkBoard). The strip
 // is sized to its cards, never a full-width band round a single card.
-export default function OverdueStrip({ tasks, onStatusChange, onDelete, onEdit, onFocus }: Props) {
+export default function OverdueStrip({ tasks, onStatusChange, onDelete, onEdit, onFocus, onMoveToToday }: Props) {
   const [open, setOpen] = useState(true)
   if (tasks.length === 0) return null
 
@@ -43,6 +44,7 @@ export default function OverdueStrip({ tasks, onStatusChange, onDelete, onEdit, 
               onDelete={onDelete}
               onEdit={onEdit}
               onFocus={onFocus}
+              onMoveToToday={onMoveToToday}
               isFocused={task.is_focused}
             />
             </div>

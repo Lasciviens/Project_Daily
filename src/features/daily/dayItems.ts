@@ -22,7 +22,7 @@
 import { projectRecurringBlocksForDay, type RecurringBlockLike } from './components/dayAgendaProjection'
 import { addDaysIso, dayNumber } from './recurrence'
 import type { DayItem } from './daySchedule'
-import { isOverdueOn } from '../todo/taskRules'
+import { carriedToToday as carriedRule } from '../todo/taskRules'
 import type { Task, TaskStatus } from '../todo/types'
 
 /** What a row can still become. null = nothing to tick (a slot with no task). */
@@ -170,11 +170,10 @@ export function continuationTakesTask(task: Pick<RowTask, 'status' | 'due_date'>
  * schedule and again on today's list read as a duplicate — "One truth! … if its
  * moved it is moved!"). It stays on its day as a record (NEVER_HIDES), as "On
  * today" with no tick of its own; Move to today moves the item itself
- * (items/useMoveItemToDay). A task due today or later is not carried.
+ * (items/useMoveItemToDay). A task due today or later is not carried. The rule is taskRules' (the week strip and
+ * the header count with it).
  */
-export function carriedToToday(task: Pick<RowTask, 'status' | 'due_date'> | null, day: string, today: string): boolean {
-  return !!task && day < today && isOverdueOn(task, today)
-}
+export const carriedToToday = carriedRule
 
 /**
  * The day's rows. `tasks`: the day list (useDayTasks — open, done, cancelled);
@@ -293,9 +292,11 @@ function markOverlaps(rows: DayRow<RowTask>[]) {
 }
 
 /** The day's numbers for its header: open = the day list's open tasks plus the
- *  repeat days still to do on it (repeatsToDoOn); done = the day list's. */
-export function dayRowCounts(taskCounts: { open: number; done: number }, repeatsToDo: number): { open: number; done: number } {
-  return { open: taskCounts.open + repeatsToDo, done: taskCounts.done }
+ *  repeat days still to do on it (repeatsToDoOn), less the ones today's list
+ *  carries (`carried`: a past day's open tasks due before today count on today,
+ *  carriedToToday — the rows stay); done = the day list's. */
+export function dayRowCounts(taskCounts: { open: number; done: number }, repeatsToDo: number, carried = 0): { open: number; done: number } {
+  return { open: Math.max(0, taskCounts.open - carried) + repeatsToDo, done: taskCounts.done }
 }
 
 // ── Repeats in the week strip and the month ─────────────────────────────────

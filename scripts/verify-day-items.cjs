@@ -178,7 +178,15 @@ console.log('\n== 6b. An overdue task is today\'s: its old day shows "On today" 
   eq([D.carriedToToday({ status: 'waiting', due_date: '2026-11-25' }, '2026-11-25', NOW), D.carriedToToday({ status: 'open', due_date: '2026-11-25' }, NOW, NOW)], [true, false],
     'carriedToToday: any open status on a past day; never on today itself')
   const agenda = require('fs').readFileSync(require('path').join(__dirname, '../src/features/daily/components/DayAgenda.tsx'), 'utf8')
-  eq(/if \(r\.carried && r\.task\) return <CarriedRow/.test(agenda), true, 'Daily draws a carried row as its old place ("On today", Move to today)')
+  eq(/<ToDoItem task=\{r\.task\} isNew=\{fresh\.has\(r\.task\.id\)\} carried=\{r\.carried\} \/>/.test(agenda), true,
+    'Daily draws a carried row as the one task row in its carried mode (dimmed, "On today", no tick, its whole menu)')
+  const item = require('fs').readFileSync(require('path').join(__dirname, '../src/features/todo/components/ToDoItem.tsx'), 'utf8')
+  eq([/carried \? <TonePill tone="warn">On today<\/TonePill>/.test(item), /onMarkDone: carried && !isDone \? handleToggle/.test(item)], [true, true],
+    'ToDoItem\'s carried mode: "On today" for the due, Mark done in the menu instead of the tick')
+  // Counts: the rows stay, the number doesn't (a past day's carried open tasks count on today).
+  eq(D.dayRowCounts({ open: 2, done: 1 }, 0, 2), { open: 0, done: 1 }, 'a past day\'s header: its carried open tasks are not "open" there')
+  eq(D.dayRowCounts({ open: 2, done: 1 }, 1), { open: 3, done: 1 }, '…other days count as before')
+  eq(/list\.open\.filter\(t => carriedToToday\(t, day, today\)\)\.length/.test(agenda), true, 'Daily\'s header passes the carried count')
 }
 
 console.log('\n== 7. Time with no length (155): a moment, never planned, never overlapping ==')

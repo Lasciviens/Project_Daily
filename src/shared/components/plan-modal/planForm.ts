@@ -447,6 +447,18 @@ export function withTime(time: string | null): Partial<PlanForm> {
 }
 
 /** "No date" takes the time and length with it: a slot needs a day. */
+/**
+ * Move to today on the item screen (owner, 27.11.2026: "if its moved it is moved!"): the form's own day becomes
+ * today — the screen's one save moves the slot and its due, as itemRules.movedToDay does for a row — and a deadline
+ * already past is dropped so the due follows the slot. Time and length stay.
+ */
+export function movedFormToDay(f: Pick<PlanForm, 'date' | 'deadlineDate'>, day: string): Partial<PlanForm> {
+  return {
+    ...(!f.date || f.date < day ? { date: day } : {}),
+    ...(f.deadlineDate && f.deadlineDate < day ? { deadlineDate: '', deadlineTime: '' } : {}),
+  }
+}
+
 export function withDate(date: string | null): Partial<PlanForm> {
   return date ? { date } : { date: null, time: null, duration: null }
 }

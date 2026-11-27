@@ -109,7 +109,16 @@ check('a slot with no length → no length shown', R.itemFromRows(task(), blk({ 
   check('…fields an edit keeps when absent are never sent (labels, place, alerts, zone, link…)',
     ['labels', 'place', 'alerts', 'showAs', 'url', 'travelMinutes', 'timeZone', 'repeatEnd', 'link'].every(k => !(k in m)) && 'labels' in x2 && 'timeZone' in x2)
   const dl = R.movedToDay(R.itemFromRows(task({ due_date: '2026-11-30', due_time: '12:00:00' }), blk({ date: '2026-11-25' }), null), '2026-11-27')
-  check('…a deadline elsewhere stays the deadline', dl.date === '2026-11-27' && dl.deadline?.date === '2026-11-30' && dl.deadline?.time === '12:00')
+  check('…a deadline on a later day stays the deadline', dl.date === '2026-11-27' && dl.deadline?.date === '2026-11-30' && dl.deadline?.time === '12:00')
+  const past = R.movedToDay(R.itemFromRows(task({ due_date: '2026-11-24', due_time: '12:00:00' }), blk({ date: '2026-11-25', start_time: '22:15:00' }), null), '2026-11-27')
+  check('…a deadline before the new day is dropped: the due follows the slot, never left overdue', past.date === '2026-11-27' && past.deadline === null)
+  const sameDay = R.itemFromRows(task({ due_date: '2026-11-25', due_time: '22:00:00' }), blk({ date: '2026-11-25', start_time: '22:15:00', duration_minutes: 5 }), null)
+  const sd = R.movedToDay(sameDay, '2026-11-27')
+  check('…due 25.11 22:00 with its slot 25.11 22:15 (a deadline by its time) → moved: no deadline, the slot at 22:15 on 27.11',
+    sameDay.deadline?.date === '2026-11-25' && sameDay.deadline?.time === '22:00' && sd.deadline === null && sd.date === '2026-11-27' && sd.time === '22:15')
+  const back = R.itemAsMove(sameDay)
+  check('itemAsMove (the Undo): the item as read — its day and its deadline kept, the kept-when-absent fields left out',
+    back.date === '2026-11-25' && back.deadline?.time === '22:00' && back.scope === 'item' && !('labels' in back) && !('timeZone' in back))
   check('…no slot: the task\'s own day moves, its time kept', (() => { const n = R.movedToDay(R.itemFromRows(task(), null, null), '2026-11-27'); return n.blockId === null && n.date === '2026-11-27' && n.time === '09:00' })())
 }
 const pres = R.itemFromRows(task({ due_time: null }), blk({ start_time: null, busy: false }), null)
@@ -228,6 +237,7 @@ check('Home\'s quick add tells its builder whether the item\'s area is on Apple 
 check('Move to today is the one save over the item read again by id (task + slot), with Undo',
   /export function useMoveItemToDay/.test(hooks) && /fetchTaskById\(task\.id\), qc\.fetchQuery\(linkedTimeBlockQuery\(task\.id\)\)/.test(hooks)
   && /send\(movedToDay\(was, day\)\)/.test(hooks) && /toast\.undo\(`Moved to/.test(hooks))
+check('…its Undo saves the item as read, in its own section (a dated one too)', /before: \{ \.\.\.itemAsMove\(was\), section: liveSection\(row\.section\) \}/.test(hooks))
 check('components never get supabase from here (no supabase import in the hooks)', !/integrations\/supabase/.test(hooks))
 
 console.log(`\n${passed} passed, ${failed} failed`)

@@ -27,7 +27,7 @@ import {
   type RepeatDayAnswer, type SaveItemAnswer, type SaveItemContext,
 } from './itemApi'
 import {
-  describeConverted, describeConvertUndone, describeRepeatDay, describeSaved, itemFromRows, itemInputProblem, movedToDay,
+  describeConverted, describeConvertUndone, describeRepeatDay, describeSaved, itemAsMove, itemFromRows, itemInputProblem, movedToDay,
 } from './itemRules'
 import type {
   ConvertPreview, ConvertResult, DeleteItemScope, DeleteItemTarget, ItemInput, RepeatDayInput, SavedItem,
@@ -121,8 +121,8 @@ export type MovableTask = Pick<Task, 'id' | 'title'>
  * Moves a one-off item to another day — Move to today on an overdue row and Needs a decision's day (owner, 27.11.2026:
  * "One truth! … if its moved it is moved!"; one action, task and slot together, never a due-only write). The item is read again (its task and its slot, by id) and saved through the one save with
  * only its day changed (itemRules.movedToDay): the slot moves, the database moves the due along, Apple Calendar and
- * Google Tasks follow. Says "Moved to today · <title>" with Undo (the item saved back to the day it was read on —
- * no day and its own section for an undated one).
+ * Google Tasks follow. Says "Moved to today · <title>" with Undo (the item saved back as it was read: its day or
+ * none, its deadline, its own section).
  */
 export function useMoveItemToDay() {
   const qc = useQueryClient()
@@ -140,9 +140,8 @@ export function useMoveItemToDay() {
       if (!row) throw new Error(`“${task.title}” is no longer there`)
       const was = itemFromRows(row, slot ?? null, null)
       await send(movedToDay(was, day))
-      // Undo is the same move back to the day it was on (an undated one: no day, back in its own section).
-      const before = movedToDay(was, was.date)
-      return { before: was.date ? before : { ...before, section: liveSection(row.section) } }
+      // Undo saves the item back as it was read: its day (or none), its deadline, its own section.
+      return { before: { ...itemAsMove(was), section: liveSection(row.section) } }
     },
     silent: 'its onSuccess says "Moved to today · <title>" with Undo',
     onSuccess: ({ before }, { task, day }) => {

@@ -1,9 +1,9 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { Check, MoreHorizontal, RotateCcw, Trash2, Zap } from 'lucide-react'
+import { CalendarArrowUp, Check, MoreHorizontal, RotateCcw, Trash2, Zap } from 'lucide-react'
 import type { Task, TaskStatus } from '../../todo/types'
 import { EmptyState, TonePill, cx, Truncate } from '../../../shared/ui'
 import { STATUS_CYCLE, isOverdue, taskStatusMeta } from './workMeta'
-import { closedOn, isOpenTask } from '../../todo/taskRules'
+import { closedOn, isOpenTask, movesToToday } from '../../todo/taskRules'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { DueChip, PriorityMark, WaitingChip } from './WorkTaskBits'
 import { TaskLabelPills } from '../../todo/components/TaskLabelPills'
@@ -15,6 +15,7 @@ interface Props {
   onDelete: (id: string) => void
   onEdit: (task: Task) => void
   onFocus: (task: Task) => void
+  onMoveToToday: (task: Task) => void
 }
 
 const STATUS_RANK: Record<string, number> = { in_progress: 1, waiting: 2, open: 3, done: 4 }
@@ -25,7 +26,7 @@ const ACTION = 'grid place-items-center rounded-control min-h-[44px] min-w-[44px
 // Dense triage view: one row per task, overdue first, then by activity/priority.
 // Click the status dot to cycle status; click the row to edit.
 export default function WorkListView({
-  tasks, focusedTaskIds, onStatusChange, onDelete, onEdit, onFocus,
+  tasks, focusedTaskIds, onStatusChange, onDelete, onEdit, onFocus, onMoveToToday,
 }: Props) {
   const today = todayStr()
   const rows = tasks
@@ -96,7 +97,7 @@ export default function WorkListView({
 
             <DueChip task={task} />
 
-            <WorkRowActions task={task} focused={focused} onStatusChange={onStatusChange} onFocus={onFocus} onDelete={onDelete} />
+            <WorkRowActions task={task} focused={focused} onStatusChange={onStatusChange} onFocus={onFocus} onDelete={onDelete} onMoveToToday={onMoveToToday} />
           </li>
         )
       })}
@@ -109,13 +110,14 @@ interface RowActionProps {
   focused: boolean
   onStatusChange: (id: string, status: TaskStatus) => void
   onFocus: (task: Task) => void
+  onMoveToToday: (task: Task) => void
   onDelete: (id: string) => void
 }
 
 // Done, Focus and Delete. On a phone, and on any touch screen, they sit in one
 // ⋯ menu so the title keeps the row's width; from `md` with a mouse they are a
 // button row, revealed on hover.
-function WorkRowActions({ task, focused, onStatusChange, onFocus, onDelete }: RowActionProps) {
+function WorkRowActions({ task, focused, onStatusChange, onFocus, onDelete, onMoveToToday }: RowActionProps) {
   const isDone = task.status === 'done'
   const toggleDone = () => onStatusChange(task.id, isDone ? 'open' : 'done')
   return (
@@ -138,6 +140,13 @@ function WorkRowActions({ task, focused, onStatusChange, onFocus, onDelete }: Ro
               {isDone ? 'Reopen' : 'Mark done'}
             </button>
           </MenuItem>
+          {movesToToday(task, todayStr()) && (
+            <MenuItem>
+              <button type="button" onClick={() => onMoveToToday(task)} title="To today: moves its day and its slot" className="menu-item">
+                <CalendarArrowUp aria-hidden className="h-4 w-4" /> To today
+              </button>
+            </MenuItem>
+          )}
           {isOpenTask(task) && (
             <MenuItem>
               <button type="button" onClick={() => onFocus(task)} className="menu-item">
@@ -174,6 +183,15 @@ function WorkRowActions({ task, focused, onStatusChange, onFocus, onDelete }: Ro
           className={cx(ACTION, focused ? 'bg-accent-50 text-accent-600' : 'text-fg-faint [@media(hover:hover)]:hover:bg-surface-hover')}
         >
           <Zap />
+        </button>}
+        {movesToToday(task, todayStr()) && <button
+          type="button"
+          onClick={() => onMoveToToday(task)}
+          aria-label="To today"
+          title="To today: moves its day and its slot"
+          className={cx(ACTION, 'text-fg-faint [@media(hover:hover)]:hover:bg-surface-hover')}
+        >
+          <CalendarArrowUp />
         </button>}
         <button
           type="button"

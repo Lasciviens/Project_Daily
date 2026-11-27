@@ -213,9 +213,18 @@ export function liveSection(section: TaskSection): LiveTaskSection {
   return section === 'tomorrow' || section === 'this_week' ? 'backlog' : section
 }
 
-/** Open tasks on `day` — the number the week strips put under a day. */
+/**
+ * A task on a past day that today's list carries (owner, 27.11.2026: "One truth! … if its moved it is moved!"): still
+ * open and due before today, so its live row and its count are today's. Its old day still lists it (NEVER_HIDES is
+ * about rows) as "On today", and never counts it as open there.
+ */
+export function carriedToToday(task: Pick<Task, 'status' | 'due_date'> | null | undefined, day: string, today: string): boolean {
+  return !!task && day < today && isOverdueOn(task, today)
+}
+
+/** Open tasks on `day` — the number the week strips put under a day (a past day's carried ones count on today). */
 export function openOnDay(tasks: readonly DayFields[], day: string, today: string): number {
-  return tasks.filter(t => isOpenTask(t) && onDay(t, day, today)).length
+  return tasks.filter(t => isOpenTask(t) && onDay(t, day, today) && !carriedToToday(t, day, today)).length
 }
 
 /** Focus (Work's strip) is for work still to do; a closed task leaves it. */

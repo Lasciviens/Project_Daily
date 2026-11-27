@@ -86,7 +86,7 @@ console.log('answers and Undo')
     /pickDay: \(task: Task, day: string\) => actions\.moveToDay\(task, day\)/.test(hook) && !/pickDayPatch|due_date/.test(hook))
   check('…which is useMoveItemToDay, the path Move to today takes', /moveItem\.mutateAsync\(\{ task, day \}\)/.test(actions)
     && /movesToToday\(task, today\) \? moveToDay\(task, today\)/.test(actions))
-  const { movedToDay, itemFromRows } = require('../src/features/items/itemRules')
+  const { movedToDay, itemAsMove, itemFromRows } = require('../src/features/items/itemRules')
   const t = { id: 't1', title: 'Fix the bike light', domain: 'personal', priority: 'medium', section: 'backlog', status: 'open', due_date: '2026-11-01', due_time: '18:00:00', source_type: 'manual' }
   const slot = { id: 'b1', date: '2026-11-01', title: 'Fix the bike light', start_time: '18:00:00', duration_minutes: 30, category: 'daily' }
   const m = movedToDay(itemFromRows(t, slot, null), '2026-11-25')
@@ -94,7 +94,7 @@ console.log('answers and Undo')
     m.taskId === 't1' && m.blockId === 'b1' && m.date === '2026-11-25' && m.time === '18:00' && m.durationMinutes === 30 && m.deadline === null)
   const u = movedToDay(itemFromRows({ ...t, due_date: null, due_time: null }, null, null), '2026-11-25')
   check('an undated task gets the day (no slot to move)', u.blockId === null && u.date === '2026-11-25' && u.time === null)
-  check('…and its Undo can say no day again', movedToDay(itemFromRows({ ...t, due_date: null, due_time: null }, null, null), null).date === null)
+  check('…and its Undo (the item as read) says no day again', itemAsMove(itemFromRows({ ...t, due_date: null, due_time: null }, null, null)).date === null)
 }
 const lab = task({ labels: ['Errands'] })
 check('Someday keeps the other labels', JSON.stringify(somedayPatch(lab).labels) === JSON.stringify(['Errands', 'Someday']))

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
 import {
-  ArrowDown, ArrowUp, Ban, CalendarArrowUp, CalendarClock, CornerDownRight, ListTree, MoreHorizontal, Pencil, RotateCcw,
+  ArrowDown, ArrowUp, Ban, CalendarArrowUp, CalendarClock, Check, CornerDownRight, ListTree, MoreHorizontal, Pencil, RotateCcw,
   SkipForward, Trash2, Undo2,
 } from 'lucide-react'
 import { cx } from '../../../shared/ui'
@@ -17,6 +17,8 @@ export interface ToDoItemActionHandlers {
   onDelete:      () => void
   /** An overdue item (taskRules.movesToToday): moves its slot and its due to today. */
   onMoveToToday?: () => void
+  /** A row with no tick of its own (a carried row on its old day): Mark done in the menu. */
+  onMarkDone?:  () => void
   onMoveUp?:     () => void
   onMoveDown?:   () => void
   canMoveUp?:    boolean
@@ -52,8 +54,9 @@ export function ToDoItemMenu({ task, ...h }: Props) {
         transition
         className="menu w-52 [--anchor-gap:4px] transition duration-150 data-[closed]:scale-95 data-[closed]:opacity-0"
       >
+        {h.onMarkDone && <Item icon={<Check />} onClick={h.onMarkDone} disabled={h.busy}>Mark done</Item>}
         <Item icon={<Pencil />} onClick={h.onEdit}>Edit</Item>
-        {h.onMoveToToday && <Item icon={<CalendarArrowUp />} onClick={h.onMoveToToday} disabled={h.busy}>Move to today</Item>}
+        {h.onMoveToToday && <Item icon={<CalendarArrowUp />} onClick={h.onMoveToToday} disabled={h.busy}>To today</Item>}
         {h.training && !isCancelled && task.status !== 'done' && <Item icon={<CalendarClock />} onClick={h.training.onMove}>Move…</Item>}
         {h.onMoveUp && <Item icon={<ArrowUp />} onClick={h.onMoveUp} disabled={!h.canMoveUp}>Move up</Item>}
         {h.onMoveDown && <Item icon={<ArrowDown />} onClick={h.onMoveDown} disabled={!h.canMoveDown}>Move down</Item>}
@@ -104,8 +107,9 @@ export function ToDoItemHoverActions({ task, ...h }: Props) {
     <div className="hidden shrink-0 items-center gap-0.5 lg:flex">
       {h.onMoveUp && <HoverBtn label="Move up" onClick={h.onMoveUp} disabled={!h.canMoveUp}><ArrowUp /></HoverBtn>}
       {h.onMoveDown && <HoverBtn label="Move down" onClick={h.onMoveDown} disabled={!h.canMoveDown}><ArrowDown /></HoverBtn>}
+      {h.onMarkDone && <HoverBtn label="Mark done" onClick={h.onMarkDone} disabled={h.busy}><Check /></HoverBtn>}
       <HoverBtn label="Edit" onClick={h.onEdit}><Pencil /></HoverBtn>
-      {h.onMoveToToday && <HoverBtn label="Move to today (its day and its slot)" onClick={h.onMoveToToday} disabled={h.busy}><CalendarArrowUp /></HoverBtn>}
+      {h.onMoveToToday && <HoverBtn label="To today: moves its day and its slot" onClick={h.onMoveToToday} disabled={h.busy}><CalendarArrowUp /></HoverBtn>}
       {h.training && !isCancelled && task.status !== 'done' && <HoverBtn label="Move to another day" onClick={h.training.onMove}><CalendarClock /></HoverBtn>}
       <HoverBtn label="Set parent task" onClick={h.onSetParent}><CornerDownRight /></HoverBtn>
       <HoverBtn label="Move to list" onClick={h.onMoveToList}><ListTree /></HoverBtn>

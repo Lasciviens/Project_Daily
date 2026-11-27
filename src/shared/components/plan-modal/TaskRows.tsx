@@ -14,8 +14,9 @@ import { Truncate } from '../../ui'
 import { useSubtasks, useTaskById } from '../../../features/todo/hooks/useTodos'
 import { useTaskActions } from '../../../features/todo/hooks/useTaskActions'
 import { ParentPicker } from '../../../features/todo/components/ParentPicker'
-import { isOpenTask, isTrainingTask } from '../../../features/todo/taskRules'
-import { Panel, TapRow } from './ItemRows'
+import { isOpenTask, isTrainingTask, movesToToday } from '../../../features/todo/taskRules'
+import { movedFormToDay, type PlanForm } from './planForm'
+import { Panel, Row, TapRow } from './ItemRows'
 import { chipClass } from './fieldStyles'
 import type { PanelKey } from './TimeSection'
 
@@ -61,6 +62,27 @@ export function WaitingRow({ taskId, open, toggle, mark }: Opened & { taskId: st
         </Panel>
       )}
     </>
+  )
+}
+
+/**
+ * Overdue → Move to today (owner, 27.11.2026: every way in). Here it changes the form — the screen's own save moves
+ * the item (its slot, the due following) — never a second save beside it: the screen's copy is frozen when it opens,
+ * so a move written past it would be put back by the next autosave. Shown on an overdue one-off item
+ * (taskRules.movesToToday) while the form still has its old day.
+ */
+export function MoveToTodayRow({ taskId, form, patch, today, mark }: {
+  taskId: string; form: Pick<PlanForm, 'date' | 'deadlineDate'>; patch: (p: Partial<PlanForm>) => void; today: string; mark?: ReactNode
+}) {
+  const { data: task } = useTaskById(taskId)
+  const moved = movedFormToDay(form, today)
+  if (!task || !movesToToday(task, today) || Object.keys(moved).length === 0) return null
+  return (
+    <Row label="Overdue" mark={mark}>
+      <button type="button" onClick={() => patch(moved)} title="To today: moves its day and its slot" className={chipClass('set')}>
+        To today
+      </button>
+    </Row>
   )
 }
 
