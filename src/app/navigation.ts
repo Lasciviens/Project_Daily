@@ -56,7 +56,7 @@ export const NAV: NavEntry[] = [
   { id: 'food', label: 'Food', path: '/recipes', icon: UtensilsCrossed, group: 'life', tab: 2, keywords: ['recipes', 'nutrition', 'meals', 'diary'] },
   // Its own page since 06.10.2026 (was a Food sub-page behind a Food | Shop switch).
   { id: 'shop', label: 'Shop', path: '/shop', icon: ShoppingBag, group: 'life', more: true, keywords: ['wishlist', 'buy', 'shopping', 'quick list', 'groceries', 'errands'] },
-  { id: 'training', label: 'Training', path: '/training', icon: Dumbbell, group: 'life', tab: 4, keywords: ['hevy', 'workouts', 'program', 'progress', 'strava'] },
+  { id: 'training', label: 'Training', path: '/training', icon: Dumbbell, group: 'life', tab: 4, keywords: ['hevy', 'workouts', 'today', 'plan', 'program', 'results', 'progress', 'strava'] },
   { id: 'health', label: 'Health', path: '/health', icon: HeartPulse, group: 'life', more: true, keywords: ['apple health', 'sleep', 'steps', 'heart', 'vo2', 'weight'] },
   // Wishes leads the More sheet on purpose: a wish list that has to be hunted
   // for is dead in three weeks, and the 5 primary slots are taken.

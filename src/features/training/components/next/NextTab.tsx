@@ -16,7 +16,6 @@ import { TrainingPlanMenu } from '../session/TrainingPlanActions'
 import { sessionStatus } from '../../plan/sessionState'
 import type { TrainingPlanRef } from '../../api/trainingPlanApi'
 import { NEXT_BOARD } from '../../trainingBoards'
-import { MuscleWatchLine } from '../../../health/goal/MuscleWatchCard'
 import { NextReadsAhead } from './NextReadsAhead'
 
 function whenText(date: string, startTime: string | null, today: string): string {
@@ -127,6 +126,7 @@ function RecoveryNotes({ notes, inRail }: { notes: RecoveryNote[]; inRail: boole
   )
 }
 
+/** Program-level heads-up (several lifts declining at once). An exercise's own alert sits on its card. */
 function Alerts({ plan }: { plan: NextPlan }) {
   if (plan.alerts.length === 0) return null
   return (
@@ -134,9 +134,8 @@ function Alerts({ plan }: { plan: NextPlan }) {
       <p className="section-label flex items-center gap-1.5">
         Heads-up
         <InfoBubble>
-          Straight from the progress engine: a lift is <b>ready to increase</b> when every prescribed set reached the top of its
-          rep range; <b>flat</b> means no rep or load gain across several comparable sessions at the same load; <b>dropping</b>
-          means a repeated decline beyond normal noise. Details per exercise are on the Progress tab.
+          Straight from the progress engine, about the program as a whole. A note about one exercise is on its own card
+          below; every exercise, grouped by what to do next, is on the Results tab.
         </InfoBubble>
       </p>
       <ul className="flex flex-col gap-1.5">
@@ -163,10 +162,10 @@ function ExerciseGrid({ children }: { children: ReactNode }) {
   )
 }
 
-/** The default Training tab: what to do next, set by set. The session and its exercises show once the plan is in;
- *  the lines above the exercises (this week, recovery, the muscle watch) come in on their own reads, each
- *  keeping its room until then (KeepRoom), so they never push the exercises down nor hold them back. */
-export function NextTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
+/** The default Training tab (Today): what to do next, set by set. The session and its exercises show once the plan
+ *  is in; the lines above the exercises (this week, recovery) come in on their own reads, each keeping its room until
+ *  then (KeepRoom), so they never push the exercises down nor hold them back. The muscle watch lives on Results. */
+export function TodayTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
   const plan = useNextPlan()
 
   if (plan.isLoading) {
@@ -187,29 +186,29 @@ export function NextTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
         icon={<Dumbbell />}
         title={plan.needsCurrentProgram ? 'Pick your current program' : 'Nothing to show yet'}
         description={plan.needsCurrentProgram
-          ? 'Choose which Hevy routines you are running now. Next then shows the routine you trained longest ago, with a target for every set.'
+          ? 'Choose which Hevy routines you are running now. Today then shows the routine you trained longest ago, with a target for every set.'
           : 'Plan a training session, or add routines to your current program.'}
-        action={<Button variant="primary" onClick={() => onGoTo('program')}>Open Program</Button>}
+        action={<Button variant="primary" onClick={() => onGoTo('plan')} tip="Open the Plan tab">Open Plan</Button>}
       />
     )
   }
 
   // Placed by PageBoard (trainingBoards.ts → NEXT_BOARD): the session and its
-  // context (this week, recovery, heads-up) in a rail, the exercise cards beside it.
+  // context (this week, recovery, the program's heads-up) in a rail, the exercise cards beside it.
   return (
     <PageBoard layout={NEXT_BOARD} stackGap="gap-3" sections={{
       session: <div className="max-w-2xl"><SessionHeader plan={plan} /></div>,
       week: <ThisWeekStrip where="next" className="max-w-2xl" />,
       recovery: <RecoveryLine />,
-      alerts: <><MuscleWatchLine /><Alerts plan={plan} /></>,
+      alerts: <Alerts plan={plan} />,
       exercises: plan.rows.length > 0 && (
         <ExerciseGrid>
-          {plan.rows.map(r => <NextExerciseCard key={`${r.templateId}-${r.order}`} row={r} />)}
+          {plan.rows.map(r => <NextExerciseCard key={`${r.templateId}-${r.order}`} row={r} alert={plan.alertByExercise.get(r.templateId) ?? null} />)}
         </ExerciseGrid>
       ),
       note: plan.needsCurrentProgram && (
         <p className="max-w-2xl text-meta text-fg-muted">
-          Targets need a current program — pick it on the <button type="button" className="font-semibold text-accent-600" onClick={() => onGoTo('program')}>Program tab</button>.
+          Targets need a current program — pick it on the <button type="button" className="font-semibold text-accent-600" onClick={() => onGoTo('plan')}>Plan tab</button>.
         </p>
       ),
     }} />

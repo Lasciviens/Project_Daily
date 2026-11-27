@@ -103,6 +103,8 @@ export interface TrainingAlert {
   id: string
   tone: AlertTone
   text: string
+  /** The same words without the exercise's name, for its own card. */
+  short?: string
   exerciseIds: string[]
 }
 
@@ -143,13 +145,14 @@ export function buildTrainingAlerts(
     // Only the card's own call: a trend read alone (a plateau the latest session just broke) would contradict it.
     if (d.currentAction === 'WATCH_FOR_PLATEAU') {
       const n = d.trend.currentLoadCycleSessions
-      out.push({ id: `flat:${d.exerciseTemplateId}`, tone: 'warn', exerciseIds: [d.exerciseTemplateId], text: `${titleOf(d.exerciseTemplateId)} flat for ${n} ${n === 1 ? 'session' : 'sessions'}${atWhat(d)}` })
+      const flat = `flat for ${n} ${n === 1 ? 'session' : 'sessions'}${atWhat(d)}`
+      out.push({ id: `flat:${d.exerciseTemplateId}`, tone: 'warn', exerciseIds: [d.exerciseTemplateId], text: `${titleOf(d.exerciseTemplateId)} ${flat}`, short: `F${flat.slice(1)}` })
     }
     if (d.currentAction === 'WATCH_FOR_REGRESSION') {
-      out.push({ id: `down:${d.exerciseTemplateId}`, tone: 'danger', exerciseIds: [d.exerciseTemplateId], text: `${titleOf(d.exerciseTemplateId)} dropping at its current load` })
+      out.push({ id: `down:${d.exerciseTemplateId}`, tone: 'danger', exerciseIds: [d.exerciseTemplateId], text: `${titleOf(d.exerciseTemplateId)} dropping at its current load`, short: 'Dropping at its current load' })
     }
     if (d.currentAction === 'REVIEW_LOAD_REDUCTION') {
-      out.push({ id: `lower:${d.exerciseTemplateId}`, tone: 'info', exerciseIds: [d.exerciseTemplateId], text: `${titleOf(d.exerciseTemplateId)}: lighter than last time — build reps there` })
+      out.push({ id: `lower:${d.exerciseTemplateId}`, tone: 'info', exerciseIds: [d.exerciseTemplateId], text: `${titleOf(d.exerciseTemplateId)}: lighter than last time — build reps there`, short: 'Lighter than last time — build reps there' })
     }
   }
   if (program?.workload === 'review_workload') {
@@ -159,4 +162,21 @@ export function buildTrainingAlerts(
     })
   }
   return out.sort((a, b) => TONE_ORDER[a.tone] - TONE_ORDER[b.tone])
+}
+
+/** Today's alerts split by where they show: an exercise of the session gets its own alert on its card (one line
+ *  under its target), the program-level ones stay in the Heads-up box. "Ready" (a list of lifts) is not repeated:
+ *  each card's pill already says Add weight, and Results groups every lift by its next action. An alert about a lift
+ *  that is not in this session lives on Results (its Check group), not on Today. */
+export function splitTodayAlerts(alerts: readonly TrainingAlert[], sessionTemplateIds: Iterable<string>): { byExercise: Map<string, TrainingAlert>; program: TrainingAlert[] } {
+  const inSession = new Set(sessionTemplateIds)
+  const byExercise = new Map<string, TrainingAlert>()
+  const program: TrainingAlert[] = []
+  for (const a of alerts) {
+    if (a.exerciseIds.length === 0) { program.push(a); continue }
+    if (a.id === 'ready') continue
+    const id = a.exerciseIds[0]
+    if (a.exerciseIds.length === 1 && inSession.has(id) && !byExercise.has(id)) byExercise.set(id, a)
+  }
+  return { byExercise, program }
 }

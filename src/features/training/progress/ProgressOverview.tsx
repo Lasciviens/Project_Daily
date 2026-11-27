@@ -31,7 +31,7 @@ const WORKLOAD_TONE: Record<ProgramDecision['workload'], Tone> = {
 function ProgramSettingsButton({ label }: { label: string }) {
   const navigate = useNavigate()
   return (
-    <Button variant="ghost" size="sm" className="gap-1.5 !px-2" onClick={() => navigate('/training?tab=program')}>
+    <Button variant="ghost" size="sm" className="gap-1.5 !px-2" onClick={() => navigate('/training?tab=plan')}>
       <Settings2 aria-hidden className="h-4 w-4" /> {label}
     </Button>
   )

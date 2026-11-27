@@ -6,25 +6,25 @@ import { ErrorBoundary } from '../../../shared/components/ErrorBoundary'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
 import { lazyPart } from '../../../shared/utils/lazyPage'
 import { HevySyncButton } from '../components/HevySyncButton'
-import { NextTab } from '../components/next/NextTab'
+import { TodayTab } from '../components/next/NextTab'
 import { TrainingProgressProvider } from '../components/next/TrainingProgressProvider'
 import {
-  LIBRARY_VIEWS, LOG_VIEWS, TRAINING_TABS, movedLogView, parseLibraryView, parseLogView, parseTrainingTab, viewSlotOf,
+  LIBRARY_VIEWS, LOG_VIEWS, TRAINING_TABS, legacyTrainingTab, movedLogView, parseLibraryView, parseLogView, parseTrainingTab, viewSlotOf,
   type LibraryView, type LogView, type TrainingTabId,
 } from './trainingTabs'
 
-// Next is in the page's own code; the other tabs load when opened, and in
+// Today is in the page's own code; the other tabs load when opened, and in
 // idle time once the page shows (their charts and the body map were most of
 // the page's first download).
 const ProgramTab = lazyPart('training-program', () => import('../components/program/ProgramTab').then(m => m.ProgramTab))
-const ProgressTab = lazyPart('training-progress', () => import('../components/ProgressTab').then(m => m.ProgressTab))
+const ResultsTab = lazyPart('training-progress', () => import('../components/ProgressTab').then(m => m.ResultsTab))
 const LogTab = lazyPart('training-log', () => import('../components/log/LogTab').then(m => m.LogTab))
 const LibraryTab = lazyPart('training-library', () => import('../components/HevyTab').then(m => m.LibraryTab))
 const PTCoachTab = lazyPart('training-coach', () => import('../components/PTCoachTab').then(m => m.PTCoachTab))
-const OTHER_TABS = [ProgramTab, ProgressTab, LogTab, LibraryTab, PTCoachTab]
+const OTHER_TABS = [ProgramTab, ResultsTab, LogTab, LibraryTab, PTCoachTab]
 
-// Training: Next (what to do today, set by set) · Program (the plan and what
-// it adds up to) · Progress (what changed) · Log (what you did: Hevy with the
+// Training: Today (what to do today, set by set) · Plan (the program and what
+// it adds up to) · Results (what changed, in three cards) · Log (what you did: Hevy with the
 // calendar, or Strava) · Library (routines, exercises) · Coach. The tab lives
 // in `?tab=` and a tab's own view (Log: Hevy | Strava, Library: Routines |
 // Exercises) in `?view=`, switched right after the tabs in the same row, so
@@ -48,6 +48,13 @@ export function TrainingPage() {
     activePillRef.current?.scrollIntoView({ inline: 'nearest', block: 'nearest' })
   }, [tab])
 
+  // An old tab name (Next, Program, Progress) lands on the tab under its new name, and the URL says the new one.
+  const renamed = legacyTrainingTab(params.get('tab'))
+  if (renamed) {
+    const n = new URLSearchParams(params)
+    n.set('tab', renamed)
+    return <Navigate to={`/training?${n.toString()}`} replace />
+  }
   // Body measurements moved to Health → Body; an old link still lands there.
   const moved = movedLogView(tab, rawView)
   if (moved) return <Navigate to={moved} replace />
@@ -91,12 +98,12 @@ export function TrainingPage() {
       <div className="w-full min-w-0">
         <ErrorBoundary key={tab} label="Training">
           <Suspense fallback={<SkeletonTab />}>
-            {(tab === 'next' || tab === 'progress') && (
+            {(tab === 'today' || tab === 'results') && (
               <TrainingProgressProvider>
-                {tab === 'next' ? <NextTab onGoTo={goTo} /> : <ProgressTab />}
+                {tab === 'today' ? <TodayTab onGoTo={goTo} /> : <ResultsTab />}
               </TrainingProgressProvider>
             )}
-            {tab === 'program' && <ProgramTab />}
+            {tab === 'plan' && <ProgramTab />}
             {tab === 'log' && <LogTab view={logView} />}
             {tab === 'library' && <LibraryTab view={libraryView} />}
             {tab === 'coach' && <PTCoachTab />}

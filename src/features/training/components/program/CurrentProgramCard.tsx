@@ -13,7 +13,7 @@ function lastDone(last: string | undefined, today: string): string {
 }
 
 /** Which routines are the current program, and when each was last done.
- *  Missed sessions (plan it / skip it) live on the Next tab only (owner's
+ *  Missed sessions (plan it / skip it) live on the Today tab only (owner's
  *  call). The picker opens by itself while nothing is chosen. */
 export function CurrentProgramCard({ routines, lastTrained, today }: {
   routines: HevyRoutine[]
@@ -27,7 +27,7 @@ export function CurrentProgramCard({ routines, lastTrained, today }: {
       <CardHeader
         wrap
         icon={<ListChecks />}
-        title={<span className="inline-flex items-center gap-1.5">Current program <InfoBubble>Everything on Next, Program and Progress is scoped to these routines. Old routines stay in your history but no longer decide targets or verdicts.</InfoBubble></span>}
+        title={<span className="inline-flex items-center gap-1.5">Current program <InfoBubble>Everything on Today, Plan and Results is scoped to these routines. Old routines stay in your history but no longer decide targets or verdicts.</InfoBubble></span>}
         subtitle={routines.length > 0 ? `${routines.length} ${routines.length === 1 ? 'routine' : 'routines'}` : 'Not chosen yet'}
         action={routines.length > 0 && <Button size="sm" variant="ghost" onClick={() => setEditing(v => !v)}>{editing ? 'Done' : 'Change'}</Button>}
       />

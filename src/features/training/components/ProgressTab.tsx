@@ -45,7 +45,7 @@ function Disclosure({ label, openLabel, children }: { label: string; openLabel: 
   )
 }
 
-export function ProgressTab() {
+export function ResultsTab() {
   const { routineIdsByTemplateId } = useProgressDataContext()
   const preferIds = useMemo(() => new Set(routineIdsByTemplateId.keys()), [routineIdsByTemplateId])
   // Placed by PageBoard (trainingBoards.ts → PROGRESS_BOARD): decisions and

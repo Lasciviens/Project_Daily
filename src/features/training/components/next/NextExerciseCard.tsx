@@ -6,6 +6,7 @@ import { actionLabel, nextTargetUnavailableText } from '../../progress-engine/co
 import { fmtTrainingDate } from '../../dateFormat'
 import { ACTION_TONE } from '../../plan/actionTone'
 import type { PlanRow } from '../../plan/sessionPlan'
+import type { TrainingAlert } from '../../plan/nextSession'
 import { SourceNote } from '../program/SourceNote'
 
 function fmtRest(seconds: number): string {
@@ -19,8 +20,9 @@ function fmtRest(seconds: number): string {
  *  owner, 27.11.2026: "dont show RPE here" — and a note when that effort was
  *  near the limit or easy — informational, the target never changes for it).
  *  The routine's own exercise notes live in Library → Routines (collapsed
- *  there), not here. */
-export function NextExerciseCard({ row }: { row: PlanRow }) {
+ *  there), not here. `alert`: the engine's note about this exercise (flat,
+ *  dropping, lighter) — on its own card, never in a list above the cards. */
+export function NextExerciseCard({ row, alert = null }: { row: PlanRow; alert?: TrainingAlert | null }) {
   const d = row.decision
   return (
     <Card padded={false} className="flex flex-col gap-2 p-3 sm:p-4">
@@ -65,6 +67,12 @@ export function NextExerciseCard({ row }: { row: PlanRow }) {
         )}
       </div>
 
+      {alert && (
+        <p className="flex items-start gap-2 text-meta text-fg-2">
+          <ToneDot tone={alert.tone} className="mt-1 shrink-0" />
+          {alert.short ?? alert.text}
+        </p>
+      )}
       {row.lastSets && (
         <p className="text-meta text-fg-muted">
           Last time{row.lastDate ? ` (${fmtTrainingDate(row.lastDate + 'T12:00:00')})` : ''}:{' '}

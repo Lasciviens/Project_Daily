@@ -8,7 +8,7 @@ import { useCurrentProgramRoutines } from '../../hooks/useAthleteProfile'
 import { useTrainingHistory } from '../../hooks/useTrainingProgress'
 import { useProgressDataContext } from '../../progress/progressDataContext'
 import { lastTrainedByRoutine } from '../../progress-engine'
-import { resolveNextRoutine, buildTrainingAlerts, type NextRoutinePick, type PlannedRef, type TrainingAlert } from '../../plan/nextSession'
+import { resolveNextRoutine, buildTrainingAlerts, splitTodayAlerts, type NextRoutinePick, type PlannedRef, type TrainingAlert } from '../../plan/nextSession'
 import type { PlanRow } from '../../plan/sessionPlan'
 import { routinePlanRows } from '../../hooks/useRoutineSessionPlan'
 import type { HevyRoutine } from '../../types.hevy'
@@ -21,15 +21,19 @@ export interface NextPlan {
   routine: HevyRoutine | null
   session: NextTrainingSession | null
   rows: PlanRow[]
+  /** Program-level alerts (the Heads-up box). */
   alerts: TrainingAlert[]
+  /** An exercise of this session's own alert, shown on its card. */
+  alertByExercise: ReadonlyMap<string, TrainingAlert>
   today: string
   /** The last day any routine was trained (6 months of history), for the break note (S27–S29). */
   lastTrained: string | null
 }
 
-/** Everything the Next tab renders: which routine is next (the planned
+/** Everything the Today tab renders: which routine is next (the planned
  *  session, else the least recently trained current-program routine), each
- *  exercise's engine target lined up with the routine, and the alerts. The
+ *  exercise's engine target lined up with the routine, and the alerts (an
+ *  exercise's own on its card, the program's in Heads-up). The
  *  engine result comes from the page's ONE progress-data run (context). */
 export function useNextPlan(): NextPlan {
   const progress = useProgressDataContext()
@@ -45,7 +49,7 @@ export function useNextPlan(): NextPlan {
   const isLoading = progress.isLoading || loadingSession || loadingRoutines || loadingProgram || loadingHistory
 
   return useMemo<NextPlan>(() => {
-    const empty: NextPlan = { isLoading, needsCurrentProgram: progress.needsCurrentProgram, pick: null, routine: null, session: session ?? null, rows: [], alerts: [], today, lastTrained: null }
+    const empty: NextPlan = { isLoading, needsCurrentProgram: progress.needsCurrentProgram, pick: null, routine: null, session: session ?? null, rows: [], alerts: [], alertByExercise: new Map(), today, lastTrained: null }
     if (isLoading || !routines || !history) return empty
 
     const block = session?.kind === 'block' ? blocks?.find(b => b.id === session.id) : undefined
@@ -61,11 +65,12 @@ export function useNextPlan(): NextPlan {
     const routine = pick?.routineId ? routines.find(r => r.id === pick.routineId) ?? null : null
 
     const rows = routine ? routinePlanRows(routine, progress, history) : []
-    const alerts = buildTrainingAlerts(
+    const all = buildTrainingAlerts(
       progress.decisions,
       id => progress.titleById.get(id) ?? 'Exercise',
       progress.program ? { workload: progress.program.workload, corroboratingSignal: progress.program.corroboratingSignal, affectedCount: progress.program.affectedExerciseIds.length } : null,
     )
-    return { ...empty, pick, routine, rows, alerts, lastTrained: lastAny }
+    const { byExercise, program: alerts } = splitTodayAlerts(all, rows.map(r => r.templateId))
+    return { ...empty, pick, routine, rows, alerts, alertByExercise: byExercise, lastTrained: lastAny }
   }, [isLoading, progress, session, blocks, routines, program, history, today])
 }

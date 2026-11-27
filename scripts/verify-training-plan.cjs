@@ -80,6 +80,13 @@ console.log('\nnextSession')
   check('alerts: none for nothing', N.buildTrainingAlerts([], () => '').length === 0)
   const many = N.buildTrainingAlerts(['a', 'b', 'c', 'e', 'f'].map(id => d(id, 'READY_TO_INCREASE')), id => titles[id])
   check('alerts: long list folds to "+N more"', many[0].text.endsWith('+2 more'), many[0].text)
+
+  // PR 3 (27.11.2026): Today puts an exercise's own alert on its card; only the program's stay in Heads-up.
+  const split = N.splitTodayAlerts(alerts, ['c', 'f', 'a'])
+  check('today: a session exercise\'s alert goes on its card, without its name', split.byExercise.get('c')?.short === 'Flat for 5 sessions at this load' && split.byExercise.get('f')?.short === 'Lighter than last time — build reps there', J([...split.byExercise]))
+  check('today: "ready" is not repeated on a card (its pill says Add weight)', !split.byExercise.has('a'))
+  check('today: a lift not in this session is not on Today (Results lists it)', !split.byExercise.has('e'))
+  check('today: the program-level workload line stays in Heads-up, alone', split.program.length === 1 && split.program[0].id === 'workload')
 }
 
 // ─── sessionPlan.ts ─────────────────────────────────────────────────────────
