@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  The item screen's Planning group — the app's own fields, under Apple's
-//  headers: Priority, Area, Category (a timed or repeating item's), Labels (a
-//  task's), and the Deadline (owner's point 9): a date, then optionally a time
+//  headers: Priority, Area, Labels (a task's) — the Category is the title
+//  card's since 27.11.2026 (DetailsSection.tsx) — and the Deadline (owner's point 9): a date, then optionally a time
 //  and "Do it between" (the window that opens on its first day and closes on
 //  the deadline — tasks.start_date, 069; a season sets both ends). An edit of
 //  a task adds Waiting for and Parent (TaskRows.tsx: each its own action).
@@ -12,16 +12,15 @@ import { SegmentedControl, Switch } from '../../ui'
 import { formatDate } from '../../utils/dateFormat'
 import { seasonWindows } from '../windowChips'
 import { FieldMark } from './FieldMark'
-import { ChoiceRow, Panel, Pill, Row, TapRow } from './ItemRows'
+import { Panel, Pill, Row, TapRow } from './ItemRows'
 import { LabelsRow } from './LabelsRow'
 import { ParentRow, WaitingRow } from './TaskRows'
 import { TimeWheel } from './TimeWheel'
 import { chipClass, choiceClass } from './fieldStyles'
-import { CATEGORY_LABELS, displayDate, isScheduleFieldHidden, isTaskFieldHidden } from './planModal.config'
+import { displayDate, isTaskFieldHidden } from './planModal.config'
 import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
 import { PRIORITY_LABEL } from '../../../features/todo/taskTones'
 import type { TaskDomain, TaskPriority } from '../../../features/todo/types'
-import type { TimeBlockCategory } from '../../../features/daily/types'
 import type { PlanForm } from './planForm'
 import type { PanelKey } from './TimeSection'
 import type { FieldGoes, ScreenField } from './itemScreenRules'
@@ -30,14 +29,13 @@ import type { PlanModalConfig } from './planModal.types'
 const PRIORITIES = (['low', 'medium', 'high'] as const).map(value => ({ value, label: PRIORITY_LABEL[value] }))
 const DOMAINS = (['personal', 'work', 'media'] as const).map(value => ({ value, label: DOMAIN_LABEL[value] }))
 
-export function PlanningSection({ form, patch, open, toggle, config, today, showCategory, showLabels, goes, taskId }: {
+export function PlanningSection({ form, patch, open, toggle, config, today, showLabels, goes, taskId }: {
   form: PlanForm
   patch: (p: Partial<PlanForm>) => void
   open: PanelKey | null
   toggle: (k: PanelKey | null) => void
   config?: PlanModalConfig
   today: string
-  showCategory: boolean
   showLabels: boolean
   goes: (f: ScreenField) => FieldGoes
   /** An edit of a task (not a repeat's rule): its Waiting for and Parent rows (step 3). */
@@ -56,18 +54,6 @@ export function PlanningSection({ form, patch, open, toggle, config, today, show
         <Row label="Area" mark={own}>
           <SegmentedControl<TaskDomain> size="xs" options={DOMAINS} value={form.domain} onChange={domain => patch({ domain })} />
         </Row>
-      )}
-      {showCategory && !isScheduleFieldHidden('category', config) && (
-        <>
-          <TapRow label="Category" mark={own} value={CATEGORY_LABELS[form.category]} open={open === 'category'} onClick={() => toggle('category')} />
-          {open === 'category' && (
-            <Panel label="Category">
-              {(Object.keys(CATEGORY_LABELS) as TimeBlockCategory[]).map(c => (
-                <ChoiceRow key={c} label={CATEGORY_LABELS[c]} chosen={c === form.category} onClick={() => { patch({ category: c }); toggle(null) }} />
-              ))}
-            </Panel>
-          )}
-        </>
       )}
       {showLabels && <LabelsRow value={form.labels} onChange={labels => patch({ labels, labelsTouched: true })} mark={own} />}
       {!hide('dueDate') && <DeadlineRows form={form} patch={patch} open={open} toggle={toggle} config={config} today={today} goes={goes} />}

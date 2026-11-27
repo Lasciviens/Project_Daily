@@ -21,6 +21,21 @@
 //  └─────────────────────────────────────────────────────────────────────────────┘
 //
 //  CHANGELOG
+//  2026-11-27 · v32 · Category add-on fields (owner, 27.11.2026: "Category
+//                    decides how the task's add-on fields would show up";
+//                    "bring category to top on the task screen"; migration
+//                    215): the Category row sits in the title card for every
+//                    item (it was Planning's, only with a time or a repeat);
+//                    under it the category's own section from the registry
+//                    items/categoryDetails (Media: Movie / TV / Cinema, the
+//                    movie or show, with who, a cinema trip's cost, seats and
+//                    booking — its place is the Location row, named Cinema;
+//                    Games: the game, On, with who). The thing picked is the
+//                    task's link (210, form.link → p_link); the rest goes as
+//                    p_details with the one save (app_save_item's third
+//                    argument). An edit sends the details only when changed
+//                    here or when the task had some; a repeat's rule has
+//                    none. A cost that isn't an amount stops the save.
 //  2026-11-26 · v31 · Linked plans (Phase 3 A2–A5, migration 211): the
 //                    header shows a "Linked" chip for what the item plans
 //                    (its task's link column, or a new plan's source.link) —
@@ -707,7 +722,8 @@ import { effectiveGoogleTarget, hasGoogleCalendar, hasGoogleTasks, itemFromRows,
 import type { ItemInput, SavedItem } from '../../../features/items/itemTypes'
 import { ModalShell } from '../../modals/ModalShell'
 import { LinkedChip } from '../../../features/items/components/LinkedPlanChips'
-import { screenLinkOf } from '../../../features/items/linkKinds'
+import { screenLinkOf, taskLinkOf } from '../../../features/items/linkKinds'
+import { cleanDetails } from '../../../features/items/categoryDetails'
 import { entityModal } from '../../modals/useEntityModal'
 import { Button, SegmentedControl, Skeleton } from '../../ui'
 import { todayStr } from '../../utils/dateUtils'
@@ -719,7 +735,7 @@ import { useItemAutosave, type AutosaveLine, type PersistResult } from './useIte
 import { useItemFill } from './useItemFill'
 import { ItemScreenEmbedContext } from './itemScreenEmbed'
 import {
-  applyQuickAdd, buildInitialForm, formContentKey, formValuesKey, inputFromForm, keepQuickText, repeatEndIssue, repeatOfForm, revertedForm,
+  applyQuickAdd, buildInitialForm, detailsProblem, formContentKey, formValuesKey, inputFromForm, keepQuickText, repeatEndIssue, repeatOfForm, revertedForm,
   shapeOf, switchScope, urlProblem, type PlanForm, type QuickBase, type SheetItemInput,
 } from './planForm'
 import { nextPlanTime, recurrenceProblem, repeatAnchorOfRow } from './planModal.config'
@@ -782,10 +798,12 @@ export function UnifiedPlanModal({
   const { data: googleTaskLists = [] } = useGoogleTaskLists()
 
   // The saved rows as one item (null for a new one).
-  const item = useMemo(
-    () => (task || timeBlock || scheduleBlock ? itemFromRows(task, timeBlock, scheduleBlock) : null),
-    [task, timeBlock, scheduleBlock],
-  )
+  const item = useMemo(() => {
+    if (!task && !timeBlock && !scheduleBlock) return null
+    const read = itemFromRows(task, timeBlock, scheduleBlock)
+    // The task's category add-on fields (215): read as input; undefined on a database without 215 (never sent then).
+    return task && task.details !== undefined ? { ...read, details: cleanDetails(task.details) } : read
+  }, [task, timeBlock, scheduleBlock])
   // What each save after the first names: the slot (and task) an earlier save of this edit made or kept.
   const liveIds = useRef<Pick<ItemInput, 'taskId' | 'blockId'> | null>(null)
   // …and the slot itself for what the screen draws (the timeline leaves it out of the day's other things).
@@ -796,6 +814,7 @@ export function UnifiedPlanModal({
       storedGoogle: storedGoogleTarget(task, timeBlock, scheduleBlock),
       category: timeBlock?.category ?? scheduleBlock?.category ?? null,
       startDate: task?.start_date ?? null,
+      link: task ? taskLinkOf(task) : null,
       occurrenceDate, today, nextTime: nextPlanTime(),
     })
     return startScope === 'day' ? switchScope(seeded, 'day') : seeded
@@ -861,7 +880,7 @@ export function UnifiedPlanModal({
   const problemOf = (f: PlanForm) => (!f.title.trim() ? 'a title is needed'
     : (repeatOfForm(f) ? recurrenceProblem(f) : null)
       ?? (f.badEnd ? END_PROBLEM_TEXT[f.badEnd.problem] : null)
-      ?? urlProblem(f) ?? repeatEndIssue(f, { item, today }))
+      ?? urlProblem(f) ?? repeatEndIssue(f, { item, today }) ?? detailsProblem(f))
   const problem = problemOf(form)
   // A row still loading by id (or failed to) is an edit, not a create.
   const blocked = loading || !!loadError
@@ -1134,8 +1153,8 @@ export function UnifiedPlanModal({
   const scopeSwitch = scheduleBlock && occurrenceDate && !blocked
     ? <SegmentedControl size="xs" options={SCOPES} value={form.scope} onChange={switchTo} />
     : undefined
-  // What this item plans (210/211): the Linked chip opens the thing.
-  const linked = screenLinkOf(task, source?.link)
+  // What this item plans (210/211): the Linked chip opens the thing — one picked in the details (215) once picked.
+  const linked = form.linkTouched && form.link ? screenLinkOf(null, form.link) : screenLinkOf(task, source?.link)
   const headerActions = (
     <>
       {linked && <LinkedChip link={linked} />}
@@ -1189,6 +1208,7 @@ export function UnifiedPlanModal({
           own={{ blockId: madeBlockId ?? item?.blockId, scheduleBlockId: item?.scheduleBlockId }}
           onDelete={editMode ? () => { void handleDelete() } : undefined} deleting={working}
           urlIssue={urlIssue} endIssue={endIssue} savedSection={task?.section} taskId={scheduleBlock ? null : task?.id}
+          savedLink={!!(task && taskLinkOf(task))}
           fill={{ button: <FillButton fill={fill} />, panel: <FillPanel fill={fill} />, rows: fill.rows }}
         />
         </div>

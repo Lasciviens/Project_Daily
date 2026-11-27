@@ -9,7 +9,10 @@
 
 import type { TimeBlockCategory } from '../../../features/daily/types'
 import type { TaskPriority, TaskDomain } from '../../../features/todo/types'
-import type { GoogleTarget, ItemInput, RepeatEnd, RepeatInput } from '../../../features/items/itemTypes'
+import type { GoogleTarget, ItemInput, ItemLink, RepeatEnd, RepeatInput } from '../../../features/items/itemTypes'
+import {
+  cleanDetails, defaultType, detailFields, readAmount, type DetailCurrency, type ItemDetails, type MediaType,
+} from '../../../features/items/categoryDetails'
 import type { QuickAddResult } from '../../../features/items/quickAdd'
 import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
 import { cleanLabels } from '../../../features/todo/taskLabels'
@@ -33,14 +36,36 @@ import {
 /** The rows behind "+ Notes / + Priority / + Deadline / + Area / + Google list". */
 export type SheetRow = 'notes' | 'priority' | 'deadline' | 'area' | 'list'
 
+/** The category's add-on fields as the screen holds them (215; items/categoryDetails): the cost as typed. */
+export interface DetailsForm {
+  /** Media's type (Movie / TV / Cinema); null for a category without types. */
+  type: MediaType | null
+  with: string[]
+  /** The cost as typed ('' = none); read at save (categoryDetails.readAmount). */
+  cost: string
+  currency: DetailCurrency
+  seats: string
+  booking: string
+  on: string
+}
+
 export interface PlanForm extends RepeatFormFields {
   /** What is saved as the title (quick add's words taken out; the field shows what was typed). */
   title: string
   notes: string
   priority: TaskPriority
   domain: TaskDomain
-  /** The slot's colour group — never picked here; it follows the caller or the domain. */
+  /** The item's category (the screen's top row): the slot's and a repeat's colour group, and what decides its
+   *  add-on fields (215). An item with no slot keeps it in its details. */
   category: TimeBlockCategory
+  /** The category's add-on fields (items/categoryDetails). */
+  details: DetailsForm
+  /** The owner changed the category or a detail here: an edit sends the details only then, or when the task had some. */
+  detailsTouched: boolean
+  /** The thing it plans (210): the caller's (a Plan button), the task's own, or one picked in the details. */
+  link: ItemLink | null
+  /** The owner picked (or took off, on a new item) the thing here: only then is `link` sent instead of the caller's. */
+  linkTouched: boolean
   /** YYYY-MM-DD; null = no date (Inbox). A repeat's start; "This day": that day. */
   date: string | null
   /** HH:MM; null = anytime. */
@@ -109,10 +134,29 @@ export interface FormSeed {
   startDate?: string | null
   /** A repeating item opened on this day. */
   occurrenceDate?: string | null
+  /** The saved task's link (210; linkKinds.taskLinkOf). */
+  link?: ItemLink | null
   today: string
   /** The next half hour (planModal.config's nextPlanTime). */
   nextTime: string
 }
+
+/** The details the screen starts with: the saved ones, else the category's first type and nothing filled. */
+export function detailsForm(category: TimeBlockCategory, saved: ItemDetails | null | undefined, type?: MediaType | null): DetailsForm {
+  const d = saved && saved.category === category ? saved : null
+  return {
+    type: d?.type ?? (type && defaultType(category) ? type : defaultType(category) ?? null),
+    with: d?.with ?? [],
+    cost: d?.cost ? String(d.cost.amount) : '',
+    currency: d?.cost?.currency ?? 'NOK',
+    seats: d?.seats ?? '',
+    booking: d?.booking ?? '',
+    on: d?.on ?? '',
+  }
+}
+
+/** A media type that fits a link: a show plans TV. */
+const typeOfLink = (link: ItemLink | null | undefined): MediaType | null => (link && link.kind === 'tv' ? 'tv' : null)
 
 const NO_REPEAT: RepeatFormFields = {
   recurrence: 'none', weeklyDays: WEEKDAYS, monthWeekday: null, customKind: 'every', repeatEvery: '2', repeatUnit: 'week', repeatDates: [],
@@ -134,6 +178,7 @@ export function buildInitialForm(seed: FormSeed): PlanForm {
 
 function formFromDefaults({ mode, defaults: d = {}, source, today, nextTime }: FormSeed): PlanForm {
   const domain = d.domain ?? 'personal'
+  const category = d.category ?? defaultScheduleCategory(domain, source?.taskSourceType ?? taskSourceTypeForBlock(source?.sourceType))
   const slot = mode !== 'task' || !!d.scheduled
   const date = d.date ?? d.dueDate ?? (d.section === 'inbox' ? null : today)
   const time = mode === 'task' && !d.scheduled ? (d.dueTime ?? null) : (d.startTime ?? nextTime)
@@ -149,7 +194,11 @@ function formFromDefaults({ mode, defaults: d = {}, source, today, nextTime }: F
     notes: d.notes ?? '',
     priority: d.priority ?? 'medium',
     domain,
-    category: d.category ?? defaultScheduleCategory(domain, source?.taskSourceType ?? taskSourceTypeForBlock(source?.sourceType)),
+    category,
+    details: detailsForm(category, null, d.mediaType ?? typeOfLink(source?.link)),
+    detailsTouched: false,
+    link: source?.link ?? null,
+    linkTouched: false,
     date: date ?? (repeat.recurrence ? today : null),
     time,
     duration: time && slot ? (d.duration ?? 60) : null,
@@ -176,7 +225,10 @@ function formFromDefaults({ mode, defaults: d = {}, source, today, nextTime }: F
   return { ...base, shown: shownRows(base) }
 }
 
-function formFromItem({ storedGoogle, category, startDate, occurrenceDate }: FormSeed, item: ItemInput): PlanForm {
+function formFromItem({ storedGoogle, category: slotCategory, startDate, occurrenceDate, link }: FormSeed, item: ItemInput): PlanForm {
+  // The slot's or repeat's category; an item with no slot keeps it in its details (215).
+  const saved = item.details ? cleanDetails(item.details) : null
+  const category = slotCategory ?? saved?.category ?? defaultScheduleCategory(item.domain, item.source?.type)
   const repeat = item.repeat ? repeatFormFromRow(columnsFromRepeatInput(item.repeat)) : {}
   // An older row (no saved choice) that sits where the default would put it
   // keeps following the default; one that doesn't keeps where it is.
@@ -188,7 +240,11 @@ function formFromItem({ storedGoogle, category, startDate, occurrenceDate }: For
     notes: item.notes ?? '',
     priority: item.priority,
     domain: item.domain,
-    category: category ?? defaultScheduleCategory(item.domain, item.source?.type),
+    category,
+    details: detailsForm(category, saved, typeOfLink(link)),
+    detailsTouched: false,
+    link: link ?? null,
+    linkTouched: false,
     date: item.date,
     time: item.time,
     duration: item.durationMinutes,
@@ -310,8 +366,44 @@ export function inputFromForm(f: PlanForm, ctx: SaveContext): SheetItemInput {
     blockSource: src?.sourceType
       ? { type: src.sourceType, id: src.sourceId ?? null, seasonNumber: src.episodeInfo?.seasonNumber, episodeNumber: src.episodeInfo?.episodeNumber }
       : null,
-    ...(src?.link ? { link: src.link } : {}),
+    // The thing it plans: one picked here, else the caller's (a Plan button) — never a second write (210).
+    ...(f.linkTouched ? (f.link ? { link: f.link } : {}) : src?.link ? { link: src.link } : {}),
+    ...(repeat ? {} : detailsInput(f, ctx)),
   }
+}
+
+/** The details a save sends (215): a new item's; an edit's when the owner changed the category or a detail, or when
+ *  the task had some — never details over an older item the screen didn't change. A repeat's rule has none. */
+function detailsInput(f: PlanForm, ctx: SaveContext): Pick<ItemInput, 'details'> {
+  if (ctx.item && !f.detailsTouched && !ctx.item.details) return {}
+  return { details: detailsOf(f) }
+}
+
+/** The form's details as 215 keeps them (cleaned: only the category's fields for its type). */
+export function detailsOf(f: Pick<PlanForm, 'category' | 'details'>): ItemDetails {
+  const d = f.details
+  const amount = readAmount(d.cost)
+  return cleanDetails({
+    category: f.category, type: d.type ?? undefined, with: d.with, seats: d.seats, booking: d.booking, on: d.on,
+    cost: 'amount' in amount && amount.amount != null ? { amount: amount.amount, currency: d.currency } : undefined,
+  }) ?? { category: f.category }
+}
+
+/** Why the details can't be saved as typed (a cost that isn't an amount), or null. */
+export function detailsProblem(f: Pick<PlanForm, 'category' | 'details'>): string | null {
+  if (!detailFields(f.category, f.details.type ?? undefined).includes('cost')) return null
+  const amount = readAmount(f.details.cost)
+  return 'problem' in amount ? amount.problem : null
+}
+
+/**
+ * A change of the category or a detail (the top row, the Details section): marked touched, so an edit sends it. A new
+ * category starts its own fields (its first type).
+ */
+export function withDetails(f: Pick<PlanForm, 'category' | 'details'>, p: { category?: TimeBlockCategory; details?: Partial<DetailsForm> }): Partial<PlanForm> {
+  const category = p.category ?? f.category
+  const details = p.category && p.category !== f.category ? detailsForm(category, null) : { ...f.details, ...p.details }
+  return { category, details, detailsTouched: true }
 }
 
 /**
@@ -489,13 +581,18 @@ export function revertedForm(opened: PlanForm, now: PlanForm): PlanForm {
     labelsTouched: opened.labelsTouched || now.labelsTouched,
     placeTouched: opened.placeTouched || now.placeTouched,
     calendarTouched: [...new Set([...opened.calendarTouched, ...now.calendarTouched])],
+    detailsTouched: opened.detailsTouched || now.detailsTouched,
+    // A link can't be taken off an edit (210: absent = keep): the opened one is sent back when another was picked.
+    linkTouched: opened.linkTouched || (now.linkTouched && !!opened.link),
     shown: now.shown.filter(r => r !== 'list'),
   }
 }
 
 /** The form's values alone — without which rows are open and what was touched (they only steer the save). */
 export function formValuesKey(f: PlanForm): string {
-  return JSON.stringify({ ...f, shown: undefined, labelsTouched: undefined, placeTouched: undefined, calendarTouched: undefined })
+  return JSON.stringify({
+    ...f, shown: undefined, labelsTouched: undefined, placeTouched: undefined, calendarTouched: undefined, detailsTouched: undefined, linkTouched: undefined,
+  })
 }
 
 /** What the item screen saves when this form changes — everything but which optional rows are open. */

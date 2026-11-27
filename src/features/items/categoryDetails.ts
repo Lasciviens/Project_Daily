@@ -137,7 +137,7 @@ export function cleanDetails(raw: unknown): ItemDetails | null {
     if (!key) continue
     if (key === 'with') { const v = cleanNames(r.with); if (v) out.with = v }
     else if (key === 'cost') { const v = cleanCost(r.cost); if (v) out.cost = v }
-    else { const v = cleanText(r[key], key === 'on' ? DETAIL_LIMITS.on : DETAIL_LIMITS.text); if (v) out[key] = v }
+    else { const k = key as 'seats' | 'booking' | 'on'; const v = cleanText(r[k], k === 'on' ? DETAIL_LIMITS.on : DETAIL_LIMITS.text); if (v) out[k] = v }
   }
   return out
 }

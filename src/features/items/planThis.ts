@@ -48,7 +48,7 @@ export function planRequest(thing: PlanThing, today: string): PlanRequest {
       const link: ItemLink | undefined = thing.id ? { kind: 'movie', id: thing.id } : undefined
       return {
         kind: 'time-block',
-        defaults: { title: `${thing.cinema ? 'Cinema' : 'Watch'}: ${thing.title}`, duration: ceilToQuarter(thing.runtimeMinutes || 120), category: 'media', color: 'purple' },
+        defaults: { title: `${thing.cinema ? 'Cinema' : 'Watch'}: ${thing.title}`, duration: ceilToQuarter(thing.runtimeMinutes || 120), category: 'media', color: 'purple', ...(thing.cinema ? { mediaType: 'cinema' as const } : {}) },
         ...(link ? { source: { sourceType: 'movie', sourceId: thing.id ?? undefined, taskSourceType: 'movie', link } } : {}),
       }
     }

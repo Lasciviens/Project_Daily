@@ -5,13 +5,16 @@
 //  UnifiedPlanModal. Grouped rows under Apple's headers:
 //
 //    [Title                                    ]         (quick add: Read as …)
-//    LOCATION   ⌖ Location · Travel Time                 (a slot: a time, a repeat or all day)
+//               Category                                 (every item; owner, 27.11.2026: "bring category to top")
+//    MEDIA      Type · Movie / Show · With · Cost · Seats · Booking   (the category's add-on fields, 215 —
+//    GAMES      Game · On · With                          DetailsSection.tsx; not a repeat's rule)
+//    LOCATION   ⌖ Location (Cinema for a cinema trip) · Travel Time   (a slot: a time, a repeat or all day)
 //    TIME       Date · All-day · Starts [Tue 10.11.2026] [17:30]
 //               Ends [Tue 10.11.2026] [18:30] · the day's timeline · Time Zone · Repeat · End Repeat
 //    OPTIONS    Calendar  Apple Calendar · busy  ·  List (a Google Task's)
 //               Alert · Second Alert · Show As           (a slot)
 //    DETAILS    URL (a slot) · Notes
-//    PLANNING   Priority · Area · Category · Labels · Deadline · Deadline time · Do it between
+//    PLANNING   Priority · Area · Labels · Deadline · Deadline time · Do it between
 //               Delete Item                              (an edit)
 //
 //  Step 2's rows (Travel Time, the alerts, Show As, URL, End Repeat — 193) are
@@ -34,6 +37,9 @@ import { FilledMark, FilledRows } from './FillMark'
 import { cx } from '../../ui'
 import { LINE, Section } from './ItemRows'
 import { CalendarRow, GoogleListRow } from './OptionsSection'
+import { CategoryRow, DetailsSection } from './DetailsSection'
+import { useEarlierCinemas } from '../../../features/items/useItemDetails'
+import { detailsOf } from '../../../features/items/categoryDetails'
 import { useCardMarks } from './cardMarks'
 import { PlaceRow } from './PlaceRow'
 import { PlanningSection } from './PlanningSection'
@@ -94,6 +100,8 @@ interface Props {
   savedSection?: TaskSection | null
   /** An edit of a task (not a repeat's rule): Planning's Waiting for and Parent rows. */
   taskId?: string | null
+  /** The saved task has a link (210): the details can change it, not take it off. */
+  savedLink?: boolean
 }
 
 /** What "Default" means on the Alert row where the item goes (193: null = the area's alert in Apple Calendar; nothing
@@ -105,7 +113,7 @@ const DEFAULT_ALERT_HINT: Partial<Record<ReturnType<typeof fieldGoes>, string>> 
 export function ItemForm({
   form, patch, config, typed, onTitle, parse, onKeepText, creating, today, nextTime, googleConnected, calendarApp, keptTarget,
   occurrenceDate, savedKind, savedRepeat, savedZone, exceptDates, showMarks, appleNotes, refused, own, onDelete, deleting,
-  urlIssue, endIssue, savedSection, taskId, fill,
+  urlIssue, endIssue, savedSection, taskId, fill, savedLink = false,
 }: Props) {
   const titleId = useId()
   // A menu's "Set parent…", "Move to list…" or a Waiting chip opens the screen at that row (config.openRow).
@@ -122,8 +130,12 @@ export function ItemForm({
   // Labels are a task's (180): a repeat's rule has none — its days are tasks the database makes — and a repeat's
   // day opened here ("This day") isn't loaded with its task's labels, so it doesn't show them.
   const showLabels = !repeating && !day && !hideTask('labels')
-  // A category belongs to a slot or a repeat: only an item with a time or a repeat has one.
-  const showCategory = !!form.time || repeating
+  // Every item has a category (a slot's or a repeat's; an item with no slot keeps it in its details, 215). Its add-on
+  // fields belong to a task: a repeat's rule has none (its days are tasks the database makes).
+  const showCategory = !isScheduleFieldHidden('category', config)
+  const details = showCategory && !(repeating && !day) ? detailsOf(form.category) : null
+  const cinema = !!details && form.details.type === 'cinema'
+  const earlierCinemas = useEarlierCinemas(cinema && slotFields)
   // A repeat's days go to the default list (156 stores no list per repeat).
   const showList = showGoogle && hasGoogleTasks(target) && !repeating && !hideTask('googleList')
   const marksTarget = showGoogle ? target : (keptTarget ?? 'none')
@@ -146,18 +158,26 @@ export function ItemForm({
           </div>
           {fill?.panel}
           {parse && <div className="px-3.5 pb-2"><ReadAsLine parse={parse} start={form.date ?? today} onKeepText={onKeepText} /></div>}
+          {showCategory && <CategoryRow form={form} patch={patch} open={open} toggle={toggle} mark={<FieldMark goes={goes('own')} />} />}
         </Section>
 
+        {details && (
+          <Section title={details.heading} carried={titleMarks.marks}>
+            <DetailsSection form={form} patch={patch} mark={<FieldMark goes={goes('own')} />} savedLink={savedLink} />
+          </Section>
+        )}
+
         {slotFields && (
-          <Section title="Location" carried={titleMarks.marks}>
+          <Section title="Location" carried={details ? undefined : titleMarks.marks}>
             <PlaceRow value={form.place} onChange={place => patch({ place, placeTouched: true })}
+              label={cinema ? 'Cinema' : undefined} earlier={cinema ? earlierCinemas : undefined}
               mark={<><FilledMark row="Location" /><FieldMark goes={goes('place')} row="Location" /></>} />
             <TravelRow minutes={form.travelMinutes} hasPin={hasPin} open={open} toggle={toggle} mark={<FieldMark goes={goes('travel')} />}
               onChange={travelMinutes => patch(withCalendarField(form, 'travelMinutes', travelMinutes))} />
           </Section>
         )}
 
-        <Section title="Time" carried={slotFields ? undefined : titleMarks.marks}>
+        <Section title="Time" carried={slotFields || details ? undefined : titleMarks.marks}>
           <TimeSection
             form={form} patch={patch} open={open} toggle={toggle} today={today} nextTime={nextTime} config={config}
             occurrenceDate={occurrenceDate} savedKind={savedKind} savedRepeat={savedRepeat} savedZone={savedZone}
@@ -206,7 +226,7 @@ export function ItemForm({
 
         <Section title="Planning">
           <PlanningSection form={form} patch={patch} open={open} toggle={toggle} config={config} today={today}
-            showCategory={showCategory} showLabels={showLabels} goes={goes} taskId={repeating || day ? null : taskId} />
+            showLabels={showLabels} goes={goes} taskId={repeating || day ? null : taskId} />
         </Section>
 
         {onDelete && (

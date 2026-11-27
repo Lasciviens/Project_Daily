@@ -4,6 +4,7 @@
 // don't rename. Background: docs/features/tasks.md, planning-calendar.md.
 
 import type { ItemPlace } from './itemPlace'
+import type { ItemDetails } from './categoryDetails'
 
 /** Where the item lives on Google. Old rows (null) keep today's behaviour until their next save. */
 export type GoogleTarget = 'tasks' | 'calendar' | 'both' | 'none'
@@ -91,6 +92,9 @@ export interface ItemInput {
   blockSource?: { type: string; id: string | null; seasonNumber?: number; episodeNumber?: number } | null
   /** The thing this task plans (210): saved with the item in one transaction (app_save_item's p_link). Absent = keep. */
   link?: ItemLink | null
+  /** The item's category and its add-on fields (215, items/categoryDetails.ts): saved with the item in one transaction
+   *  (app_save_item's p_details). Absent = keep; null = none. A repeat's rule has no task: it keeps none. */
+  details?: ItemDetails | null
 }
 
 export interface SavedItem {
