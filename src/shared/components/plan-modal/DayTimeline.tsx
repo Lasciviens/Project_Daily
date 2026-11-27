@@ -25,7 +25,9 @@ import {
 
 /** Pixels per minute: a day is 1440 px, so five minutes is a finger's width. */
 const PPM = 1
-const HOURS = Array.from({ length: 24 }, (_, h) => h)
+/** Room before 00:00 and after 24:00, so the first and last hour labels (centred on their lines) fit whole. */
+const INSET = 20
+const HOURS = Array.from({ length: 25 }, (_, h) => h)
 const pad = (n: number) => String(n).padStart(2, '0')
 
 /** The strip's thumb follows the scroll without a re-render. */
@@ -93,9 +95,9 @@ export function DayTimeline({ day, start, length, onChange, own, dayNote, locked
     if (!el) return
     if (centred.current !== day) {
       centred.current = day
-      el.scrollLeft = Math.max(0, timelineCentre(start, length) * PPM - el.clientWidth / 2)
+      el.scrollLeft = Math.max(0, INSET + timelineCentre(start, length) * PPM - el.clientWidth / 2)
     } else if (!drag.current) {
-      const l = start * PPM, r = Math.min(end, DAY_MINUTES) * PPM
+      const l = INSET + start * PPM, r = INSET + Math.min(end, DAY_MINUTES) * PPM
       if (l < el.scrollLeft + 8 || r > el.scrollLeft + el.clientWidth - 8) {
         el.scrollTo({ left: Math.max(0, (l + r) / 2 - el.clientWidth / 2), behavior: motion ? 'smooth' : 'auto' })
       }
@@ -117,7 +119,13 @@ export function DayTimeline({ day, start, length, onChange, own, dayNote, locked
     el.addEventListener('wheel', onWheel, { passive: false })
     const ro = new ResizeObserver(() => placeThumb(el, strip.current, thumb.current))
     ro.observe(el)
-    return () => { el.removeEventListener('wheel', onWheel); ro.disconnect() }
+    // An hour label shows only whole (owner, 27.11.2026: "9:00" missing its first digit, "15:0" at the edges): one the
+    // scroller's edge would cut is hidden until it is all in view.
+    const io = new IntersectionObserver(entries => {
+      for (const e of entries) (e.target as HTMLElement).dataset.cut = e.intersectionRatio < 0.99 ? '1' : ''
+    }, { root: el, threshold: [0, 0.99, 1] })
+    el.querySelectorAll('[data-hour]').forEach(n => io.observe(n))
+    return () => { el.removeEventListener('wheel', onWheel); ro.disconnect(); io.disconnect() }
   }, [])
 
   function startDrag(e: PointerEvent<HTMLElement>, mode: DragMode) {
@@ -165,7 +173,7 @@ export function DayTimeline({ day, start, length, onChange, own, dayNote, locked
     e.preventDefault()
     const go = (x: number) => {
       const r = s.getBoundingClientRect()
-      el.scrollLeft = ((x - r.left) / r.width) * el.scrollWidth - el.clientWidth / 2
+      el.scrollLeft = INSET + ((x - r.left) / r.width) * DAY_MINUTES * PPM - el.clientWidth / 2
     }
     go(e.clientX)
     s.setPointerCapture(e.pointerId)
@@ -198,13 +206,19 @@ export function DayTimeline({ day, start, length, onChange, own, dayNote, locked
     <div className="py-2">
       <div ref={scroller} onScroll={syncThumb} onPointerDown={panStart}
         className="cursor-grab overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="relative h-[82px] select-none" style={{ width: DAY_MINUTES * PPM }}>
+        <div className="relative h-[82px] select-none" style={{ width: DAY_MINUTES * PPM + 2 * INSET }}>
+          {/* The day itself, after the room for 00:00's label: every position below is minutes from its left edge. */}
+          <div className="absolute inset-y-0" style={{ left: INSET, width: DAY_MINUTES * PPM }}>
+          {/* The hour grid: each label centred over its line, the line under the labels' row (a ruler's ticks). */}
           {HOURS.map(h => (
             <span key={h} aria-hidden>
-              <i className="absolute inset-y-0 w-px bg-line" style={{ left: h * 60 * PPM }} />
-              <span className="absolute top-px translate-x-1 text-micro tabular-nums text-fg-faint" style={{ left: h * 60 * PPM }}>{pad(h)}:00</span>
+              <i className="absolute bottom-0 top-4 w-px bg-line" style={{ left: h * 60 * PPM }} />
+              <span data-hour="" className="absolute top-0 -translate-x-1/2 whitespace-nowrap text-micro tabular-nums text-fg-faint data-[cut='1']:invisible"
+                style={{ left: h * 60 * PPM }}>{pad(h)}:00</span>
             </span>
           ))}
+          {/* Now: under the item's bar, so the bar's times stay readable. */}
+          {day === today && <i aria-hidden className="pointer-events-none absolute bottom-0 top-4 w-0.5 -translate-x-1/2 rounded-full bg-danger" style={{ left: nowMin * PPM }} />}
           {spans.map(s => {
             const lane = lanes.get(s.id) ?? 0
             const hit = hits.some(h => h.id === s.id)
@@ -236,7 +250,7 @@ export function DayTimeline({ day, start, length, onChange, own, dayNote, locked
               )}
             </div>
           )}
-          {day === today && <i aria-hidden className="pointer-events-none absolute bottom-0 top-3.5 w-0.5 rounded-full bg-danger" style={{ left: nowMin * PPM }} />}
+          </div>
         </div>
       </div>
       <div ref={strip} role="scrollbar" tabIndex={0} aria-label="The day: drag to move along it" aria-orientation="horizontal"
