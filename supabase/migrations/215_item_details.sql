@@ -2,23 +2,29 @@
 -- up … when you choose cinema it should also show some additional fields like which movie, which cinema, with who and
 -- how much it costed"; "Cinema is media."; "Cost not toward my spending no."; "Start with games and media.").
 --
--- A. tasks.details (jsonb, null = none): the item's category and that category's add-on fields — Media: its type
---    (movie | tv | cinema), with who, and for a cinema trip the cost, seats and booking reference; Games: "On" (what it
---    is played on, the owner's own words) and with who; every other category: only the category itself (an item with
---    no slot keeps the category the item screen shows at its top). The movie, show or game is NOT here: it is the
---    task's real link (210's columns, app_save_item's p_link); the cinema is the slot's place (186).
+-- A. tasks.details (jsonb, null = none): the category's add-on fields — Media: its type (movie | tv | cinema), with
+--    who, and for a cinema trip the cost, seats and booking reference; Games: "On" (what it is played on, the owner's
+--    own words) and with who. One source for each fact: the category and a cinema trip's cinema are kept here ONLY for
+--    an item with no slot and no repeat (one with either has them on its slot or repeat: its category, its place) —
+--    the save takes them out otherwise. The movie, show or game is NOT here: it is the task's real link (210's columns,
+--    app_save_item's p_link).
 --    Why a column and not a table: the details are one small value of one task — they are deleted, restored and
 --    undone with it (trg_audit on tasks, app_delete_rows, Activity's Undo) with no foreign key, owner lock, grants or
 --    restore order of their own, and a read of the task carries them (the item screen's one load).
--- B. task_details_ok(jsonb): the allow-list, for every writer (a CHECK on the column): an object; a category from the
---    slot's list; per category only its keys; per media type only its fields; names ≤ 40 characters and ≤ 10 of them,
---    seats / booking ≤ 60, On ≤ 30 — each with a character that is not a space and no control character; a cost is
---    {amount, currency}: 0 ≤ amount ≤ 1 000 000 with at most two decimals, the currency from the list cinema visits use.
+-- B. task_details_ok(jsonb): the allow-list, for every writer (a CHECK on the column): an object; a category (when
+--    there) from the slot's list and only its keys — without one, the add-on keys of Media or of Games, never both; per
+--    media type only its fields (cost, seats, booking, cinema: a cinema trip's); names ≤ 40 characters and ≤ 10 of
+--    them, seats / booking / cinema ≤ 60, On ≤ 30 — each with a character that is not a space, no control character
+--    and no invisible format character (U+200B–U+200F, U+202A–U+202E, U+2060–U+2064, U+FEFF: a name that reads one way
+--    and is stored another); a cost is {amount, currency}: 0 ≤ amount ≤ 1 000 000 with at most two decimals, the
+--    currency from the list cinema visits use.
 --    The browser's copy of the rule is items/categoryDetails.cleanDetails (verify-item-details compares the lists).
 -- C. app_save_item(p_item, p_link, p_details): the one item save (the 2-argument function, unchanged: the save and its
 --    link) and the details in the same transaction. The details are checked before anything is written (22023); a
---    repeating item has no task of its own: it saves and answers details: null. A database without 215 has no
---    3-argument function, so the browser's save is refused before anything is written ("migration 215 not applied").
+--    repeating item has no task of its own: it saves and answers details: null. p_link {"kind":"none"} takes the
+--    movie, show or game the task plans off it (an edit; 210's p_link null keeps it) — the label (source_type) stays
+--    as it was, so no later save links it again. A database without 215 has no 3-argument function, so the browser's
+--    save is refused before anything is written ("migration 215 not applied").
 --
 -- Security (AGENTS.md → the warning): every value is input — the browser, a stolen session, a direct table write. The
 -- CHECK holds for every writer; nothing here is put into SQL, a URL, a header or an iCalendar line (Apple's event is
@@ -40,6 +46,7 @@ as $$
      and char_length(p #>> '{}') <= p_max
      and (p #>> '{}') ~ '\S'
      and (p #>> '{}') !~ '[[:cntrl:]]'
+     and (p #>> '{}') !~ '[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]'
 $$;
 revoke all on function public.task_details_text_ok(jsonb, integer) from public, anon;
 grant execute on function public.task_details_text_ok(jsonb, integer) to authenticated, service_role;
@@ -53,14 +60,17 @@ as $$
   select p is not null
      and jsonb_typeof(p) = 'object'
      and char_length(p::text) <= 2000
-     and coalesce(p ->> 'category', '') in ('daily', 'training', 'media', 'games', 'work', 'projects', 'football', 'other')
-     -- Each category's keys, and each media type's fields.
+     and (not p ? 'category' or (jsonb_typeof(p -> 'category') = 'string'
+          and p ->> 'category' in ('daily', 'training', 'media', 'games', 'work', 'projects', 'football', 'other')))
+     -- Each category's keys (without one: Media's or Games', never both), and each media type's fields.
+     and not (p ? 'on' and p ? 'type')
      and not exists (
        select 1 from jsonb_object_keys(p) k
         where k <> 'category'
-          and not case p ->> 'category'
-                    when 'media' then k in ('type', 'with') or (k in ('cost', 'seats', 'booking') and p ->> 'type' = 'cinema')
+          and not case coalesce(p ->> 'category', '')
+                    when 'media' then k in ('type', 'with') or (k in ('cost', 'seats', 'booking', 'cinema') and p ->> 'type' = 'cinema')
                     when 'games' then k in ('on', 'with')
+                    when '' then k in ('type', 'with', 'on') or (k in ('cost', 'seats', 'booking', 'cinema') and p ->> 'type' = 'cinema')
                     else false
                   end)
      and (not p ? 'type' or p -> 'type' in ('"movie"'::jsonb, '"tv"'::jsonb, '"cinema"'::jsonb))
@@ -70,6 +80,7 @@ as $$
            and not exists (select 1 from jsonb_array_elements(p -> 'with') n where not public.task_details_text_ok(n, 40))))
      and (not p ? 'seats' or public.task_details_text_ok(p -> 'seats', 60))
      and (not p ? 'booking' or public.task_details_text_ok(p -> 'booking', 60))
+     and (not p ? 'cinema' or public.task_details_text_ok(p -> 'cinema', 60))
      and (not p ? 'on' or public.task_details_text_ok(p -> 'on', 30))
      and (not p ? 'cost' or (
            jsonb_typeof(p -> 'cost') = 'object'
@@ -108,6 +119,8 @@ as $$
 declare
   v_user    uuid := auth.uid();
   v_details jsonb := case when p_details is null or jsonb_typeof(p_details) = 'null' then null else p_details end;
+  -- {"kind":"none"}: take the movie, show or game off the task (an edit's ×, or a category that can't hold it).
+  v_remove  boolean := p_link is not null and jsonb_typeof(p_link) = 'object' and p_link = '{"kind": "none"}'::jsonb;
   v_answer  jsonb;
   v_task    uuid;
 begin
@@ -119,18 +132,35 @@ begin
     raise exception 'app_save_item: those details can''t be saved' using errcode = '22023';
   end if;
 
-  v_answer := public.app_save_item(p_item, p_link);
+  v_answer := public.app_save_item(p_item, case when v_remove then null else p_link end);
   v_task := nullif(v_answer ->> 'taskId', '')::uuid;
   -- A repeating item has no task of its own (its days are tasks of the repeat).
   if v_task is null then
     return v_answer || jsonb_build_object('details', null);
   end if;
-
-  update public.tasks set details = v_details
-   where id = v_task and user_id = v_user and details is distinct from v_details;
   if not exists (select 1 from public.tasks x where x.id = v_task and x.user_id = v_user) then
     raise exception 'This item is not there any more' using errcode = 'IT004';
   end if;
+
+  if v_remove then
+    update public.tasks set movie_entry_id = null, tv_entry_id = null, link_season = null, link_episode = null, game_id = null
+     where id = v_task and user_id = v_user
+       and num_nonnulls(movie_entry_id, tv_entry_id, game_id) > 0;
+    v_answer := v_answer || jsonb_build_object('link', null);
+  end if;
+
+  -- One source: an item with a slot or a repeat keeps its category and its place there, never here too.
+  if v_details is not null and (
+       exists (select 1 from public.time_blocks b where b.task_id = v_task and b.user_id = v_user)
+       or exists (select 1 from public.tasks x where x.id = v_task and x.user_id = v_user and x.schedule_block_id is not null)) then
+    v_details := v_details - 'category' - 'cinema';
+  end if;
+  if v_details = '{}'::jsonb then
+    v_details := null;
+  end if;
+
+  update public.tasks set details = v_details
+   where id = v_task and user_id = v_user and details is distinct from v_details;
 
   return v_answer || jsonb_build_object('details', v_details);
 end

@@ -37,7 +37,7 @@ const listOf = (text, re) => [...(text.match(re)?.[1] ?? '').matchAll(/'([A-Za-z
   // The browser's copy of the rule (items/categoryDetails.ts) names the same lists and limits.
   const ts = readFileSync(join(root, 'src/features/items/categoryDetails.ts'), 'utf8')
   const pairs = [
-    ['categories', listOf(sql, /coalesce\(p ->> 'category', ''\) in \(([^)]+)\)/), listOf(readFileSync(join(root, 'src/features/daily/types.ts'), 'utf8'), /export type TimeBlockCategory = ([^\n]+)/)],
+    ['categories', listOf(sql, /p ->> 'category' in \(([^)]+)\)/), listOf(readFileSync(join(root, 'src/features/daily/types.ts'), 'utf8'), /export type TimeBlockCategory = ([^\n]+)/)],
     ['media types', [...sql.matchAll(/'"([a-z]+)"'::jsonb/g)].map(m => m[1]).filter(x => ['movie', 'tv', 'cinema'].includes(x)).sort().join(','), listOf(ts, /export const MEDIA_TYPES = \[([^\]]+)\]/)],
     ['currencies', [...sql.matchAll(/'"([A-Z]{3})"'::jsonb/g)].map(m => m[1]).sort().join(','), listOf(ts, /export const DETAIL_CURRENCIES = \[([^\]]+)\]/)],
   ]
@@ -47,7 +47,8 @@ const listOf = (text, re) => [...(text.match(re)?.[1] ?? '').matchAll(/'([A-Za-z
   const want = { name: 40, names: 10, text: 60, on: 30, amount: 1000000 }
   for (const [k, v] of Object.entries(want)) if (lim(k) !== v) problems.push(`DETAIL_LIMITS.${k} is ${lim(k)}, the database's ${v}`)
   if (!/task_details_text_ok\(n, 40\)/.test(sql) || !/between 1 and 10/.test(sql) || !/task_details_text_ok\(p -> 'seats', 60\)/.test(sql)
-      || !/task_details_text_ok\(p -> 'on', 30\)/.test(sql) || !/between 0 and 1000000/.test(sql)) problems.push('a limit in 215 moved (40 / 10 / 60 / 30 / 1 000 000)')
+      || !/task_details_text_ok\(p -> 'on', 30\)/.test(sql) || !/task_details_text_ok\(p -> 'cinema', 60\)/.test(sql)
+      || !sql.includes("!~ '[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\uFEFF]'") || !/between 0 and 1000000/.test(sql)) problems.push('a limit in 215 moved (40 / 10 / 60 / 30 / 1 000 000)')
   // "Cost not toward my spending no." (owner, 27.11.2026): no money read names a task's details.
   const money = ['src/features/shop', 'src/features/daily/monthLines.ts'].flatMap(p => {
     const full = join(root, p)

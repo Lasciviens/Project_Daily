@@ -33,7 +33,8 @@ create or replace function public.t_details(p uuid) returns jsonb language sql s
 $$;
 grant execute on function public.t_details(uuid) to authenticated;
 
-insert into public.user_movie_entries (id, user_id, title) values ('10000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-000000000001', 'Film One');
+insert into public.user_movie_entries (id, user_id, title) values ('10000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-000000000001', 'Film One'),
+  ('10000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-000000000001', 'Film Two');
 insert into public.games (id, user_id, title) values ('50000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-000000000001', 'Game One (details)');
 
 -- ═══ R. The runs ═════════════════════════════════════════════════════════════
@@ -51,13 +52,16 @@ do $$
 declare r jsonb;
 begin
   r := public.app_save_item(public.t_item('Cinema: Film One'), '{"kind":"movie","id":"10000000-0000-0000-0000-0000000000d1"}',
-    '{"category":"media","type":"cinema","with":["Ola","Kari Nordmann"],"cost":{"amount":149.5,"currency":"NOK"},"seats":"H12–H13","booking":"AB12CD"}');
+    '{"category":"media","type":"cinema","with":["Ola","Kari Nordmann"],"cost":{"amount":149.5,"currency":"NOK"},"seats":"H12–H13","booking":"AB12CD","cinema":"Ringen kino"}');
   insert into public.t_keep values ('cinema', r, txid_current());
   perform t_ok(r -> 'details' ->> 'type' = 'cinema' and r -> 'link' ->> 'kind' = 'movie'
     and (select movie_entry_id = '10000000-0000-0000-0000-0000000000d1' and details -> 'cost' ->> 'amount' = '149.5'
            and details -> 'with' = '["Ola","Kari Nordmann"]' and details ->> 'booking' = 'AB12CD'
            from public.tasks where id = (r ->> 'taskId')::uuid),
     'S1 a cinema trip: the movie is the task''s link, its details (with who, cost, seats, booking) saved in the same save');
+  perform t_ok(not (t_details((r ->> 'taskId')::uuid) ? 'category') and not (t_details((r ->> 'taskId')::uuid) ? 'cinema')
+      and (select category from public.time_blocks where task_id = (r ->> 'taskId')::uuid) = 'media',
+    'S1b one source: an item with a slot keeps its category (and its place) on the slot, never in its details too');
 end $$;
 do $$
 declare r jsonb;
@@ -65,7 +69,7 @@ begin
   r := public.app_save_item(public.t_item('🎮 Game One', '{"category":"games"}'), '{"kind":"game","id":"50000000-0000-0000-0000-0000000000d1"}',
     '{"category":"games","on":"RP6","with":["Kari"]}');
   insert into public.t_keep values ('game', r, txid_current());
-  perform t_ok((select game_id = '50000000-0000-0000-0000-0000000000d1' and details = '{"category":"games","on":"RP6","with":["Kari"]}'
+  perform t_ok((select game_id = '50000000-0000-0000-0000-0000000000d1' and details = '{"on":"RP6","with":["Kari"]}'
                   from public.tasks where id = (r ->> 'taskId')::uuid),
     'S2 a game plan: the game is the link, On and with who are its details');
 end $$;
@@ -87,7 +91,7 @@ begin
     'S4 a save without details (the 1-argument call, every older writer) keeps them');
   r := public.app_save_item(public.t_item('Cinema: Film One, late show', jsonb_build_object('taskId', t_id('cinema'))),
     null, '{"category":"media","type":"cinema","with":["Ola"],"seats":"J4"}');
-  perform t_ok(t_details(t_id('cinema')) = '{"category":"media","type":"cinema","with":["Ola"],"seats":"J4"}'
+  perform t_ok(t_details(t_id('cinema')) = '{"type":"cinema","with":["Ola"],"seats":"J4"}'
       and (select movie_entry_id from public.tasks where id = t_id('cinema')) = '10000000-0000-0000-0000-0000000000d1',
     'S5 an edit''s details replace them as a whole; no link sent = the link kept');
   insert into public.t_keep values ('cinema-edit', r, txid_current());
@@ -100,6 +104,53 @@ begin
   perform t_ok(r ->> 'scheduleBlockId' is not null and r ->> 'taskId' is null and r -> 'details' = 'null'::jsonb
       and not exists (select 1 from public.tasks where schedule_block_id = (r ->> 'scheduleBlockId')::uuid and details is not null),
     'S6 a repeating item has no task of its own: it saves and answers details null, no day''s task gets them');
+  insert into public.t_keep values ('repeat', r, null);
+end $$;
+do $$
+declare r jsonb;
+begin
+  r := public.app_save_item(public.t_item('Cinema: Film One, some day', '{"time":null,"durationMinutes":null,"date":null}'), null,
+    '{"category":"media","type":"cinema","cinema":"Ringen kino","with":["Ola"]}');
+  perform t_ok(r ->> 'blockId' is null and t_details((r ->> 'taskId')::uuid) = '{"category":"media","type":"cinema","cinema":"Ringen kino","with":["Ola"]}',
+    'S7 an item with no slot keeps its category and its cinema in its details (nowhere else to keep them)');
+end $$;
+
+-- A link taken off (an edit's ×, or a category that can't hold it): {"kind":"none"}.
+do $$
+declare r jsonb;
+begin
+  r := public.app_save_item(public.t_item('Watch Film Two', '{"category":"media"}'), '{"kind":"movie","id":"10000000-0000-0000-0000-0000000000d2"}',
+    '{"category":"media","type":"movie"}');
+  insert into public.t_keep values ('unlink', r, null);
+  r := public.app_save_item(public.t_item('Watch Film Two', jsonb_build_object('taskId', t_id('unlink'), 'category', 'work')),
+    '{"kind":"none"}', '{"category":"work"}');
+  perform t_ok(r -> 'link' = 'null'::jsonb and (select movie_entry_id is null and tv_entry_id is null and game_id is null and source_type = 'movie'
+                  from public.tasks where id = t_id('unlink')),
+    'S8 an edit takes the movie off ({"kind":"none"}); its label stays as it was');
+  r := public.app_save_item(public.t_item('Watch Film Two, later', jsonb_build_object('taskId', t_id('unlink'), 'source', jsonb_build_object('type', 'movie', 'id', '10000000-0000-0000-0000-0000000000d2'))));
+  perform t_ok((select movie_entry_id from public.tasks where id = t_id('unlink')) is null
+      and not exists (select 1 from public.tasks where id = t_id('unlink') and status in ('done', 'cancelled')),
+    'S8b …and a later save that sends the old label back links nothing again (210''s label rule needs a changed label)');
+  perform t_ok(public.t_err(format('select public.app_save_item(public.t_item(%L), %L, null)', 'Bad none', '{"kind":"none","id":"x"}')) = '22023',
+    'S8c only exactly {"kind":"none"} takes a link off — anything else is a link and is checked as one');
+end $$;
+reset role;
+-- A repeat's day (its category is the repeat's): the details keep only the add-ons.
+insert into public.t_keep select 'day', jsonb_build_object('taskId', id), null from public.tasks
+  where schedule_block_id = ((select v from public.t_keep where k = 'repeat') ->> 'scheduleBlockId')::uuid limit 1;
+with made as (
+  insert into public.tasks (user_id, title, status, section, due_date, schedule_block_id, occurrence_date)
+  select '00000000-0000-0000-0000-000000000001', 'Rewatch', 'open', 'backlog', '2026-12-04', ((select v from public.t_keep where k = 'repeat') ->> 'scheduleBlockId')::uuid, '2026-12-04'
+   where not exists (select 1 from public.t_keep where k = 'day') returning id)
+insert into public.t_keep select 'day', jsonb_build_object('taskId', id), null from made;
+set role authenticated;
+do $$
+declare r jsonb;
+begin
+  r := public.app_save_item(public.t_item('Rewatch', jsonb_build_object('taskId', t_id('day'), 'date', '2026-12-04', 'time', null, 'durationMinutes', null)), null,
+    '{"category":"media","type":"movie","with":["Kari"]}');
+  perform t_ok(t_details((r ->> 'taskId')::uuid) = '{"type":"movie","with":["Kari"]}',
+    'S9 a repeat''s day keeps only its add-ons: its category is the repeat''s (one source)');
 end $$;
 
 -- ═══ C. The allow-list, for every writer ═════════════════════════════════════
@@ -118,6 +169,14 @@ select t_ok(public.t_err(format('select public.app_save_item(public.t_item(%L), 
     ('{"category":"media","with":[]}', 'an empty list of names'),
     ('{"category":"media","with":["   "]}', 'a name of spaces only'),
     ('{"category":"media","with":["Ola\u0007"]}', 'a control character in a name'),
+    ('{"category":"media","with":["Ola\u200b"]}', 'a zero-width space in a name (U+200B)'),
+    ('{"category":"media","type":"cinema","booking":"AB\u202eDC"}', 'a right-to-left override in a booking (U+202E)'),
+    ('{"category":"games","on":"\ufeffRP6"}', 'a byte order mark in On (U+FEFF)'),
+    ('{"category":"games","on":"RP\u20606"}', 'a word joiner in On (U+2060)'),
+    ('{"category":"media","type":"cinema","cinema":"' || repeat('x', 61) || '"}', 'a cinema of 61 characters'),
+    ('{"category":"media","type":"movie","cinema":"Ringen kino"}', 'a cinema on a movie at home'),
+    ('{"type":"movie","on":"PS5"}', 'Media''s and Games'' keys together (no category)'),
+    ('{"category":5}', 'a category that is not text'),
     ('{"category":"media","with":"Ola"}', 'names that are not a list'),
     ('{"category":"media","with":[42]}', 'a name that is not text'),
     ('{"category":"media","type":"cinema","cost":{"amount":-1,"currency":"NOK"}}', 'a negative cost'),
@@ -181,7 +240,7 @@ begin
   snap := public.app_delete_rows('tasks', array[public.t_id('game')::text]);
   perform t_ok(not exists (select 1 from public.tasks where id = public.t_id('game')), 'U1 the plan deleted (one delete flow)');
   back := public.app_restore_rows(snap);
-  perform t_ok(public.t_details(public.t_id('game')) = '{"category":"games","on":"RP6","with":["Kari"]}'
+  perform t_ok(public.t_details(public.t_id('game')) = '{"on":"RP6","with":["Kari"]}'
       and (select game_id from public.tasks where id = public.t_id('game')) = '50000000-0000-0000-0000-0000000000d1',
     'U2 …and its Undo brings the details back with the task and its link');
 end $$;

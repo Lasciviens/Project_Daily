@@ -11,7 +11,7 @@ import type { TimeBlockCategory } from '../../../features/daily/types'
 import type { TaskPriority, TaskDomain } from '../../../features/todo/types'
 import type { GoogleTarget, ItemInput, ItemLink, RepeatEnd, RepeatInput } from '../../../features/items/itemTypes'
 import {
-  cleanDetails, defaultType, detailFields, readAmount, type DetailCurrency, type ItemDetails, type MediaType,
+  cleanDetails, defaultType, detailFields, detailsOf as detailsDef, readAmount, type DetailCurrency, type ItemDetails, type MediaType,
 } from '../../../features/items/categoryDetails'
 import type { QuickAddResult } from '../../../features/items/quickAdd'
 import { DOMAIN_LABEL } from '../../../features/todo/domainColors'
@@ -27,7 +27,7 @@ import {
   clampDurationMinutes, pickRecurrence, taskSourceTypeForBlock, type RepeatFormFields,
 } from './planModal.config'
 import type { PlanDefaults, PlanMode, PlanSource } from './planModal.types'
-import { cleanPlace, type ItemPlace } from '../../../features/items/itemPlace'
+import { cleanPlace, placeFromText, type ItemPlace } from '../../../features/items/itemPlace'
 import { lengthToEnd, type EndProblem } from './itemScreenRules'
 import {
   alertsForKind, alertsOnAllDaySwitch, cleanItemUrl, repeatEndProblem, type CalendarField,
@@ -49,6 +49,10 @@ export interface DetailsForm {
   on: string
 }
 
+/** A title picked from TMDB's search that isn't in the library yet: added through the library's own add inside the
+ *  save (never on pick — a cancelled screen leaves nothing behind), then linked. */
+export interface PendingTitle { kind: 'movie' | 'tv'; tmdbId: number; title: string }
+
 export interface PlanForm extends RepeatFormFields {
   /** What is saved as the title (quick add's words taken out; the field shows what was typed). */
   title: string
@@ -64,8 +68,11 @@ export interface PlanForm extends RepeatFormFields {
   detailsTouched: boolean
   /** The thing it plans (210): the caller's (a Plan button), the task's own, or one picked in the details. */
   link: ItemLink | null
-  /** The owner picked (or took off, on a new item) the thing here: only then is `link` sent instead of the caller's. */
+  /** The owner picked or took off the thing here: only then is `link` sent instead of the caller's (null = take the
+   *  saved one off, 215). */
   linkTouched: boolean
+  /** A TMDB title picked here, added to the library by the save (then it is `link`). */
+  pendingTitle: PendingTitle | null
   /** YYYY-MM-DD; null = no date (Inbox). A repeat's start; "This day": that day. */
   date: string | null
   /** HH:MM; null = anytime. */
@@ -141,13 +148,21 @@ export interface FormSeed {
   nextTime: string
 }
 
-/** The details the screen starts with: the saved ones, else the category's first type and nothing filled. */
+/** A saved cost as the field shows it: a whole amount as it is, else two decimals after a comma ("149,50"). */
+export function costText(amount: number): string {
+  return Number.isInteger(amount) ? String(amount) : amount.toFixed(2).replace('.', ',')
+}
+
+/**
+ * The details the screen starts with: the saved ones whatever category they were saved under (a repeat's category
+ * changed since; the save's cleanDetails keeps only what fits), else the category's first type and nothing filled.
+ */
 export function detailsForm(category: TimeBlockCategory, saved: ItemDetails | null | undefined, type?: MediaType | null): DetailsForm {
-  const d = saved && saved.category === category ? saved : null
+  const d = saved ?? null
   return {
     type: d?.type ?? (type && defaultType(category) ? type : defaultType(category) ?? null),
     with: d?.with ?? [],
-    cost: d?.cost ? (Number.isInteger(d.cost.amount) ? String(d.cost.amount) : d.cost.amount.toFixed(2)) : '',
+    cost: d?.cost ? costText(d.cost.amount) : '',
     currency: d?.cost?.currency ?? 'NOK',
     seats: d?.seats ?? '',
     booking: d?.booking ?? '',
@@ -199,6 +214,7 @@ function formFromDefaults({ mode, defaults: d = {}, source, today, nextTime }: F
     detailsTouched: false,
     link: source?.link ?? null,
     linkTouched: false,
+    pendingTitle: null,
     date: date ?? (repeat.recurrence ? today : null),
     time,
     duration: time && slot ? (d.duration ?? 60) : null,
@@ -226,7 +242,7 @@ function formFromDefaults({ mode, defaults: d = {}, source, today, nextTime }: F
 }
 
 function formFromItem({ storedGoogle, category: slotCategory, startDate, occurrenceDate, link }: FormSeed, item: ItemInput): PlanForm {
-  // The slot's or repeat's category; an item with no slot keeps it in its details (215).
+  // The slot's or repeat's category decides; an item with neither keeps it in its details (215, one source).
   const saved = item.details ? cleanDetails(item.details) : null
   const category = slotCategory ?? saved?.category ?? defaultScheduleCategory(item.domain, item.source?.type)
   const repeat = item.repeat ? repeatFormFromRow(columnsFromRepeatInput(item.repeat)) : {}
@@ -245,6 +261,7 @@ function formFromItem({ storedGoogle, category: slotCategory, startDate, occurre
     detailsTouched: false,
     link: link ?? null,
     linkTouched: false,
+    pendingTitle: null,
     date: item.date,
     time: item.time,
     duration: item.durationMinutes,
@@ -256,7 +273,8 @@ function formFromItem({ storedGoogle, category: slotCategory, startDate, occurre
     labels: item.labels ?? [],
     labelsTouched: false,
     timeZone: item.timeZone ?? null,
-    place: item.place ?? null,
+    // A cinema trip with no slot keeps its cinema by name in its details (215).
+    place: item.place ?? (saved?.cinema ? placeFromText(saved.cinema) : null),
     placeTouched: false,
     alerts: alertsForKind(item.alerts ?? null, !item.time),
     showAs: item.showAs ?? null,
@@ -366,8 +384,9 @@ export function inputFromForm(f: PlanForm, ctx: SaveContext): SheetItemInput {
     blockSource: src?.sourceType
       ? { type: src.sourceType, id: src.sourceId ?? null, seasonNumber: src.episodeInfo?.seasonNumber, episodeNumber: src.episodeInfo?.episodeNumber }
       : null,
-    // The thing it plans: one picked here, else the caller's (a Plan button) — never a second write (210).
-    ...(f.linkTouched ? (f.link ? { link: f.link } : {}) : src?.link ? { link: src.link } : {}),
+    // The thing it plans: one picked here (or taken off an edit: null, 215), else the caller's (a Plan button) — never
+    // a second write (210). A repeat's rule has no task to link.
+    ...(f.linkTouched ? (f.link ? { link: f.link } : ctx.item?.taskId && !repeat ? { link: null } : {}) : src?.link ? { link: src.link } : {}),
     ...(repeat ? {} : detailsInput(f, ctx)),
   }
 }
@@ -375,18 +394,50 @@ export function inputFromForm(f: PlanForm, ctx: SaveContext): SheetItemInput {
 /** The details a save sends (215): a new item's; an edit's when the owner changed the category or a detail, or when
  *  the task had some — never details over an older item the screen didn't change. A repeat's rule has none. */
 function detailsInput(f: PlanForm, ctx: SaveContext): Pick<ItemInput, 'details'> {
-  if (ctx.item && !f.detailsTouched && !ctx.item.details) return {}
+  if (ctx.item && !f.detailsTouched && !f.linkTouched && !ctx.item.details) return {}
   return { details: detailsOf(f) }
 }
 
-/** The form's details as 215 keeps them (cleaned: only the category's fields for its type). */
-export function detailsOf(f: Pick<PlanForm, 'category' | 'details'>): ItemDetails {
+/**
+ * The form's details as 215 keeps them: cleaned under the item's category — only its fields for its type (what another
+ * category held stays on the screen, never saved under this one). The category and a cinema trip's cinema go along;
+ * the database keeps them only for an item with no slot or repeat (one source).
+ */
+export function detailsOf(f: Pick<PlanForm, 'category' | 'details' | 'place'>): ItemDetails {
   const d = f.details
   const amount = readAmount(d.cost)
   return cleanDetails({
-    category: f.category, type: d.type ?? undefined, with: d.with, seats: d.seats, booking: d.booking, on: d.on,
+    type: d.type ?? undefined, with: d.with, seats: d.seats, booking: d.booking, on: d.on, cinema: f.place?.name,
     cost: 'amount' in amount && amount.amount != null ? { amount: amount.amount, currency: d.currency } : undefined,
-  }) ?? { category: f.category }
+  }, f.category) ?? { category: f.category }
+}
+
+/** The kinds of thing a category's fields hold (Media: a movie or a show; Games: a game) — no other kind is any
+ *  category's (a shop thing, a wish, a match, a routine stay whatever the category). */
+const OWNED_KINDS = ['movie', 'tv', 'game'] as const
+const linkedKind = (f: Pick<PlanForm, 'link' | 'pendingTitle'>) => f.pendingTitle?.kind ?? (f.link && 'id' in f.link ? f.link.kind : null)
+
+/** The kinds a category (and, for Media, a type) holds. */
+function holds(category: TimeBlockCategory, type?: MediaType | null): string[] {
+  const def = detailsDef(category)
+  if (!def?.linkKind) return []
+  const types = type ? [type] : def.types?.map(t => t.value) ?? [undefined]
+  return types.map(t => def.linkKind!(t ?? undefined))
+}
+
+/** The category picked on the top row: its fields (withDetails), and a movie, show or game it can't hold taken off
+ *  (215 — on an edit the save sends "none"). */
+export function withCategory(f: Pick<PlanForm, 'category' | 'details' | 'link' | 'pendingTitle'>, category: TimeBlockCategory): Partial<PlanForm> {
+  const kind = linkedKind(f)
+  const drop = !!kind && (OWNED_KINDS as readonly string[]).includes(kind) && !holds(category).includes(kind)
+  return { ...withDetails(f, { category }), ...(drop ? { link: null, pendingTitle: null, linkTouched: true } : {}) }
+}
+
+/** Media's type picked: a show doesn't fit a movie (and back) — taken off. */
+export function withMediaType(f: Pick<PlanForm, 'category' | 'details' | 'link' | 'pendingTitle'>, type: MediaType): Partial<PlanForm> {
+  const kind = linkedKind(f)
+  const drop = (kind === 'movie' || kind === 'tv') && !holds(f.category, type).includes(kind)
+  return { ...withDetails(f, { details: { type } }), ...(drop ? { link: null, pendingTitle: null, linkTouched: true } : {}) }
 }
 
 /** Why the details can't be saved as typed (a cost that isn't an amount), or null. */
@@ -397,12 +448,13 @@ export function detailsProblem(f: Pick<PlanForm, 'category' | 'details'>): strin
 }
 
 /**
- * A change of the category or a detail (the top row, the Details section): marked touched, so an edit sends it. A new
- * category starts its own fields (its first type).
+ * A change of the category or a detail (the top row, the Details section): marked touched, so an edit sends it. The
+ * values stay on the form across a category change (switching back finds them); the save keeps only what fits.
  */
 export function withDetails(f: Pick<PlanForm, 'category' | 'details'>, p: { category?: TimeBlockCategory; details?: Partial<DetailsForm> }): Partial<PlanForm> {
   const category = p.category ?? f.category
-  const details = p.category && p.category !== f.category ? detailsForm(category, null) : { ...f.details, ...p.details }
+  const details = { ...f.details, ...p.details }
+  if (!details.type && defaultType(category)) details.type = defaultType(category) ?? null
   return { category, details, detailsTouched: true }
 }
 
@@ -582,8 +634,8 @@ export function revertedForm(opened: PlanForm, now: PlanForm): PlanForm {
     placeTouched: opened.placeTouched || now.placeTouched,
     calendarTouched: [...new Set([...opened.calendarTouched, ...now.calendarTouched])],
     detailsTouched: opened.detailsTouched || now.detailsTouched,
-    // A link can't be taken off an edit (210: absent = keep): the opened one is sent back when another was picked.
-    linkTouched: opened.linkTouched || (now.linkTouched && !!opened.link),
+    // The opened link is sent back (or, when it had none, the one picked since is taken off).
+    linkTouched: opened.linkTouched || now.linkTouched,
     shown: now.shown.filter(r => r !== 'list'),
   }
 }

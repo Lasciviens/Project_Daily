@@ -179,10 +179,10 @@ console.log('\n== 7. The screen keeps its data paths ==')
   check('…the banner comes after the card\'s heading (read and tabbed to after it)',
     rows.indexOf('<h3 className="section-label') > 0 && rows.indexOf('<h3 className="section-label') < rows.indexOf('<CardBanner marks='))
   const formSrc = src('src/shared/components/plan-modal/ItemForm.tsx')
-  check('…the untitled title card has no banner of its own (only a grey sliver showed): its mark joins the next card\'s (the category\'s details, else Location, else Time)',
-    /<Section marksTo=\{titleMarks\.register\}>/.test(formSrc) && /<Section title=\{details\.heading\} carried=\{titleMarks\.marks\}>/.test(formSrc)
-    && /<Section title="Location" carried=\{details \? undefined : titleMarks\.marks\}>/.test(formSrc)
-    && /<Section title="Time" carried=\{slotFields \|\| details \? undefined : titleMarks\.marks\}>/.test(formSrc)
+  check('…the untitled title card has no banner of its own (only a grey sliver showed): its mark — and the untitled category fields\' — join the next card\'s (Location, else Time)',
+    /<Section marksTo=\{titleMarks\.register\}>/.test(formSrc) && (formSrc.match(/<Section marksTo=\{titleMarks\.register\}>/g) || []).length === 2
+    && /<Section title="Location" carried=\{titleMarks\.marks\}>/.test(formSrc)
+    && /<Section title="Time" carried=\{slotFields \? undefined : titleMarks\.marks\}>/.test(formSrc)
     && /const marks = carried\?\.length \? \[\.\.\.carried, \.\.\.own\.marks\] : own\.marks/.test(rows) && /const register = marksTo \?\? \(title \? own\.register : null\)/.test(rows))
   check('…a tap on the banner says where the rows go; its fade-in and hover fade only under useMotion()', /onClick=\{e => show\(e\.currentTarget, text\)\}/.test(marks)
     && /motion && 'mark-banner-motion motion-pop-in'/.test(marks))
@@ -464,9 +464,14 @@ console.log('\n== 11. The category at the top and its add-on fields (owner, 27.1
   // A form through the screen's own rules: a category change starts its own fields and marks them touched.
   const f0 = F.buildInitialForm({ mode: 'schedule', today: '2026-11-27', nextTime: '19:00', defaults: { category: 'daily' } })
   const toMedia = { ...f0, ...F.withDetails(f0, { category: 'media' }) }
-  check('a new item picked Media: Movie first, nothing filled, touched (so it is saved); Games has no type',
-    toMedia.category === 'media' && toMedia.details.type === 'movie' && toMedia.detailsTouched && toMedia.details.with.length === 0
-    && F.withDetails(toMedia, { category: 'games' }).details.type === null)
+  check('a new item picked Media: Movie first, nothing filled, touched (so it is saved)',
+    toMedia.category === 'media' && toMedia.details.type === 'movie' && toMedia.detailsTouched && toMedia.details.with.length === 0)
+  check('…the section has no heading: the Category row right above names it', /\{details && \(\n\s*\/\/[^\n]*\n\s*<Section marksTo=\{titleMarks\.register\}>/.test(form))
+  const filled = { ...toMedia, ...F.withDetails(toMedia, { details: { with: ['Ola'], seats: 'H1', type: 'cinema' } }) }
+  const toGames = { ...filled, ...F.withCategory(filled, 'games') }
+  check('…another category keeps the values on the screen (switching back finds them); the save keeps only what fits',
+    toGames.details.seats === 'H1' && same(F.detailsOf(toGames), { category: 'games', with: ['Ola'] })
+    && F.detailsOf({ ...toGames, ...F.withCategory(toGames, 'media') }).seats === 'H1')
   const cinema = { ...toMedia, ...F.withDetails(toMedia, { details: { type: 'cinema', with: ['Ola'], cost: '149,50', seats: 'H12', booking: 'AB12' } }) }
   check('…a cinema trip saves its type, with who, cost, seats and booking as the database keeps them',
     same(F.detailsOf(cinema), { category: 'media', type: 'cinema', with: ['Ola'], cost: { amount: 149.5, currency: 'NOK' }, seats: 'H12', booking: 'AB12' }))
@@ -485,7 +490,37 @@ console.log('\n== 11. The category at the top and its add-on fields (owner, 27.1
   const fg = F.buildInitialForm({ mode: 'task', today: '2026-11-27', nextTime: '19:00', item: withD, link: { kind: 'game', id: '00000000-0000-4000-8000-000000000002' } })
   check('…one with details opens in its category with them (a slotless item keeps its category there) and sends them back',
     fg.category === 'games' && fg.details.on === 'RP6' && same(F.inputFromForm(fg, { item: withD, googleConnected: false, today: '2026-11-27' }).details, { category: 'games', on: 'RP6' }))
-  check('…the saved link is never re-sent unless another was picked (210: absent = keep)', !('link' in F.inputFromForm(fg, { item: withD, googleConnected: false, today: '2026-11-27' })))
+  check('…the saved link is never re-sent unless another was picked or it was taken off (210: absent = keep)', !('link' in F.inputFromForm(fg, { item: withD, googleConnected: false, today: '2026-11-27' })))
+  // One source for the category (review, 27.11.2026): a repeat whose category changed to Games, its day's details saved
+  // under Media — the day opens as Games with the old values kept, and saves only Games' fields.
+  const dayItem = { ...edit, details: { category: 'media', type: 'cinema', with: ['Ola'], seats: 'H1' } }
+  const fd = F.buildInitialForm({ mode: 'task', today: '2026-11-27', nextTime: '19:00', item: dayItem, category: 'games' })
+  check('a repeat\'s category changed and its day\'s details have the old one: the repeat\'s decides, the old values stay on the screen, the save keeps what fits',
+    fd.category === 'games' && fd.details.seats === 'H1' && fd.details.type === 'cinema'
+    && same(F.inputFromForm(fd, { item: dayItem, googleConnected: false, today: '2026-11-27' }).details, { category: 'games', with: ['Ola'] }))
+  // A link taken off (215): the ×, a category that can't hold it, a type that can't.
+  const linkedForm = F.buildInitialForm({ mode: 'task', today: '2026-11-27', nextTime: '19:00', item: withD, link: { kind: 'game', id: '00000000-0000-4000-8000-000000000002' } })
+  const off = { ...linkedForm, link: null, linkTouched: true, detailsTouched: true }
+  const offInput = F.inputFromForm(off, { item: withD, googleConnected: false, today: '2026-11-27' })
+  check('an edit\'s × takes the game off: the save sends link null (215\'s "none") with the details', offInput.link === null && offInput.details !== undefined)
+  const toWork = { ...linkedForm, ...F.withCategory(linkedForm, 'work') }
+  check('…a category that can\'t hold the game takes it off too; one that can keeps it', toWork.link === null && toWork.linkTouched
+    && F.withCategory(linkedForm, 'games').link === undefined)
+  const shopLinked = { ...linkedForm, link: { kind: 'shop_item', id: '00000000-0000-4000-8000-000000000003' } }
+  check('…a shop thing (no category\'s) stays whatever the category', F.withCategory(shopLinked, 'media').link === undefined)
+  const movieForm = { ...toMedia, link: { kind: 'movie', id: '00000000-0000-4000-8000-000000000001' } }
+  check('…Media\'s type TV takes a movie off; Cinema keeps it', F.withMediaType(movieForm, 'tv').link === null && F.withMediaType(movieForm, 'cinema').link === undefined)
+  check('a new item\'s × sends nothing (no saved link to take off)', !('link' in F.inputFromForm({ ...toMedia, title: 'x', link: null, linkTouched: true }, { googleConnected: false, today: '2026-11-27' })))
+  check('a TMDB title is added to the library inside the save, never on pick (a cancelled screen leaves nothing behind)',
+    /const added = await withTitleAdded\(f\)/.test(sheet) && /const f = await withTitleAdded\(form\)/.test(sheet)
+    && !/useLibraryEntryForPlan/.test(src('src/shared/components/plan-modal/DetailsSection.tsx')))
+  check('the Linked chip follows a link taken off here', /const linked = form\.linkTouched \? screenLinkOf\(null, form\.link\)/.test(sheet))
+  check('a cinema trip\'s Cinema is the item\'s one place: its row in the category\'s fields, Location keeping only Travel Time',
+    /\{!cinema && <PlaceRow/.test(form) && /label="Cinema"/.test(src('src/shared/components/plan-modal/DetailsSection.tsx'))
+    && F.detailsOf({ ...filled, place: { name: 'Ringen kino' } }).cinema === 'Ringen kino')
+  check('…a saved cinema with no slot opens as its place', F.buildInitialForm({ mode: 'task', today: '2026-11-27', nextTime: '19:00',
+    item: { ...edit, details: { category: 'media', type: 'cinema', cinema: 'Ringen kino' } } }).place?.name === 'Ringen kino')
+  check('a saved cost shows as typed with a comma ("149,50")', F.costText(149.5) === '149,50' && F.costText(149) === '149')
   const rep = F.buildInitialForm({ mode: 'recurring', today: '2026-11-27', nextTime: '19:00', defaults: { category: 'media' } })
   check('a repeat\'s rule sends no details (it has no task of its own)', !('details' in F.inputFromForm({ ...rep, title: 'x' }, { googleConnected: false, today: '2026-11-27' })))
 }

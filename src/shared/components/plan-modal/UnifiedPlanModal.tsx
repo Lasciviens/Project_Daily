@@ -724,6 +724,7 @@ import { ModalShell } from '../../modals/ModalShell'
 import { LinkedChip } from '../../../features/items/components/LinkedPlanChips'
 import { screenLinkOf, taskLinkOf } from '../../../features/items/linkKinds'
 import { cleanDetails } from '../../../features/items/categoryDetails'
+import { useLibraryEntryForPlan } from '../../../features/items/useItemDetails'
 import { entityModal } from '../../modals/useEntityModal'
 import { Button, SegmentedControl, Skeleton } from '../../ui'
 import { todayStr } from '../../utils/dateUtils'
@@ -1021,6 +1022,20 @@ export function UnifiedPlanModal({
     }
   }
 
+  // A TMDB title picked in the details (215) is added to the library here, inside the save — never on pick, so a
+  // screen closed without saving leaves nothing behind. Null: it couldn't be added (its hook said why) — nothing saves.
+  const libraryEntry = useLibraryEntryForPlan()
+  async function withTitleAdded(f: PlanForm): Promise<PlanForm | null> {
+    const p = f.pendingTitle
+    if (!p) return f
+    const id = await libraryEntry(p.kind, p.tmdbId, p.title)
+    if (!id) return null
+    const next = { ...f, link: { kind: p.kind, id }, pendingTitle: null }
+    // The screen holds the link from now on (a later save sends it, never a second add).
+    setForm(cur => (cur.pendingTitle === p ? { ...cur, link: next.link, pendingTitle: null } : cur))
+    return next
+  }
+
   function inputOf(f: PlanForm, base: ItemInput | null, googleTaskListId: string | null | undefined): SheetItemInput {
     return inputFromForm(f, { item: base, occurrenceDate, googleConnected: choiceShown, googleTaskListId, source, color: defaults?.color, today })
   }
@@ -1035,6 +1050,9 @@ export function UnifiedPlanModal({
       return 'kept'
     }
     const base = item ? { ...item, ...liveIds.current } : null
+    const added = await withTitleAdded(f)
+    if (!added) throw new Error('The title could not be added to the library')
+    f = added
     const fTarget = effectiveGoogleTarget(shapeOf(f), f.googlePick)
     const input = inputOf(f, base, hasGoogleTasks(fTarget) ? await resolveGoogleList(f.googleListTitle) : undefined)
     const saved = await save.mutateAsync(input as ItemInput)
@@ -1060,7 +1078,9 @@ export function UnifiedPlanModal({
     if (!(await confirmNoTwin(form, null))) return
     setSaving(true)
     try {
-      const input = inputOf(form, item, hasGoogleTasks(target) ? await resolveGoogleList(form.googleListTitle) : undefined)
+      const f = await withTitleAdded(form)
+      if (!f) return
+      const input = inputOf(f, item, hasGoogleTasks(target) ? await resolveGoogleList(f.googleListTitle) : undefined)
       // The extras (category, colour, window, the slot's own source) ride along
       // until the contract names them (contract changes, BRIEF).
       const saved = await save.mutateAsync(input as ItemInput)
@@ -1154,7 +1174,7 @@ export function UnifiedPlanModal({
     ? <SegmentedControl size="xs" options={SCOPES} value={form.scope} onChange={switchTo} />
     : undefined
   // What this item plans (210/211): the Linked chip opens the thing — one picked in the details (215) once picked.
-  const linked = form.linkTouched && form.link ? screenLinkOf(null, form.link) : screenLinkOf(task, source?.link)
+  const linked = form.linkTouched ? screenLinkOf(null, form.link) : screenLinkOf(task, source?.link)
   const headerActions = (
     <>
       {linked && <LinkedChip link={linked} />}
@@ -1208,7 +1228,6 @@ export function UnifiedPlanModal({
           own={{ blockId: madeBlockId ?? item?.blockId, scheduleBlockId: item?.scheduleBlockId }}
           onDelete={editMode ? () => { void handleDelete() } : undefined} deleting={working}
           urlIssue={urlIssue} endIssue={endIssue} savedSection={task?.section} taskId={scheduleBlock ? null : task?.id}
-          savedLink={!!(task && taskLinkOf(task))}
           fill={{ button: <FillButton fill={fill} />, panel: <FillPanel fill={fill} />, rows: fill.rows }}
         />
         </div>

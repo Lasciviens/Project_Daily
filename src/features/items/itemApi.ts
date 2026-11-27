@@ -13,6 +13,8 @@ export const TASK_LINKS_NOT_MIGRATED = 'Planning this needs migration 210 — mi
 /** A save with details (app_save_item's p_details) on a database without 215: nothing was written. Remove once 215 has
  *  been live a while (with saveItem's retry). */
 export const ITEM_DETAILS_NOT_MIGRATED = 'Saving its details needs migration 215 — migration 215 not applied yet.'
+/** p_link's "take the movie, show or game off" (215). */
+export const LINK_NONE = { kind: 'none' } as const
 
 interface PgError { code?: string; message?: string; details?: string; hint?: string }
 
@@ -85,14 +87,17 @@ export function itemPayload(input: ItemInput, ctx: SaveItemContext): Record<stri
  *  it as p_link (210): the task and its link in one transaction, the thing checked as the caller's own. */
 export async function saveItem(input: ItemInput, ctx: SaveItemContext): Promise<SaveItemAnswer> {
   const p_item = itemPayload(input, ctx)
+  // A link taken off (215) goes only with the details, through the save that knows "none".
+  if (input.link === null && input.details === undefined) throw new Error('A link is taken off together with the details')
   // The details (215) go with the item and its link: app_save_item(p_item, p_link, p_details), one transaction.
   if (input.details !== undefined) {
-    const { data, error } = await supabase.rpc('app_save_item', { p_item, p_link: input.link ?? null, p_details: input.details })
+    const p_link = input.link === null ? LINK_NONE : input.link ?? null
+    const { data, error } = await supabase.rpc('app_save_item', { p_item, p_link, p_details: input.details })
     if (!error) return saveAnswerOf(data)
     if (!isMissingRpc(error)) throw rpcError(error)
     // A database without 215 refused before writing anything. Details that are only the category (stored on the slot
     // as before) are saved without them; real add-on fields are said, never dropped without a word.
-    if (input.details && Object.keys(input.details).some(k => k !== 'category')) throw new Error(ITEM_DETAILS_NOT_MIGRATED)
+    if (input.link === null || (input.details && Object.keys(input.details).some(k => k !== 'category'))) throw new Error(ITEM_DETAILS_NOT_MIGRATED)
     return saveItem({ ...input, details: undefined }, ctx)
   }
   const { data, error } = await supabase.rpc('app_save_item', input.link ? { p_item, p_link: input.link } : { p_item })

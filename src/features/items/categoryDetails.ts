@@ -5,8 +5,9 @@
 // The item screen draws one section from it for Add and Edit wherever it opens; a mode may hide a field, never copy it.
 //
 // Where each value lives: the movie, show or game is the task's real link (210, app_save_item's p_link — so the thing
-// shows "Planned …"); the cinema is the slot's place (186, the Location row, labelled Cinema); everything else is
-// `tasks.details` (215), saved by the one item save. `cleanDetails` is the browser's copy of 215's
+// shows "Planned …"); everything else is `tasks.details` (215), saved by the one item save. One source for the
+// category and a cinema trip's cinema: an item with a slot or a repeat keeps them there (the slot's category, its
+// place); only an item with neither keeps them in its details (the database takes them out otherwise). `cleanDetails` is the browser's copy of 215's
 // `task_details_ok` — change the two together (verify-db-item-details compares the lists, verify-item-details the rule).
 // The cost is never spending (owner: "Cost not toward my spending no."): nothing that counts money reads it.
 import type { TimeBlockCategory } from '../daily/types'
@@ -18,18 +19,21 @@ export type MediaType = typeof MEDIA_TYPES[number]
 export const DETAIL_CURRENCIES = ['NOK', 'TRY', 'EUR', 'USD'] as const
 export type DetailCurrency = typeof DETAIL_CURRENCIES[number]
 
-/** 215's bounds: a name, how many names, seats / booking, On, the largest cost. */
+/** 215's bounds: a name, how many names, seats / booking / cinema, On, the largest cost. */
 export const DETAIL_LIMITS = { name: 40, names: 10, text: 60, on: 30, amount: 1_000_000 } as const
 
-/** What tasks.details holds (215): the item's category and that category's add-on fields. */
+/** What tasks.details holds (215): the category's add-on fields — and, for an item with no slot or repeat, its
+ *  category and a cinema trip's cinema. */
 export interface ItemDetails {
-  category: TimeBlockCategory
+  category?: TimeBlockCategory
   type?: MediaType
   with?: string[]
   cost?: { amount: number; currency: DetailCurrency }
   seats?: string
   booking?: string
   on?: string
+  /** A cinema trip's cinema, by name — kept here only for an item with no slot (one with a slot has its place). */
+  cinema?: string
 }
 
 /** A field the Details section draws. `thing` is the link (a movie or show, a game); `cinema` names the Location row. */
@@ -66,7 +70,7 @@ export const CATEGORY_DETAILS: Partial<Record<TimeBlockCategory, CategoryDetails
 }
 
 /** Which stored key each field writes (the link and the place are stored elsewhere). */
-const STORED: Partial<Record<DetailField, StoredKey>> = { with: 'with', cost: 'cost', seats: 'seats', booking: 'booking', on: 'on' }
+const STORED: Partial<Record<DetailField, StoredKey>> = { with: 'with', cost: 'cost', seats: 'seats', booking: 'booking', on: 'on', cinema: 'cinema' }
 
 export function detailsOf(category: TimeBlockCategory): CategoryDetailsDef | null {
   return CATEGORY_DETAILS[category] ?? null
@@ -83,12 +87,16 @@ export function defaultType(category: TimeBlockCategory): MediaType | undefined 
 }
 
 const CATEGORIES: readonly TimeBlockCategory[] = ['daily', 'training', 'media', 'games', 'work', 'projects', 'football', 'other']
+// Control characters, and the invisible format characters (Unicode Cf) that make a name read one way and be stored
+// another: zero-width ones, the direction overrides, the word joiners, the byte order mark (215's copy).
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/
+const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/
 
 /** A short text as 215 takes it: trimmed, at most `max` characters, something that is not a space, no control character. */
 export function cleanText(v: unknown, max: number): string | undefined {
-  if (typeof v !== 'string') return undefined
+  // Before the spaces are tidied: JavaScript counts U+FEFF as a space, so it would be trimmed away unseen.
+  if (typeof v !== 'string' || INVISIBLE.test(v)) return undefined
   const t = v.replace(/\s+/g, ' ').trim()
   return t && t.length <= max && !CONTROL.test(t) ? t : undefined
 }
@@ -118,17 +126,21 @@ export function cleanCost(v: unknown): ItemDetails['cost'] | undefined {
   return { amount, currency: currency as DetailCurrency }
 }
 
+const isCategory = (c: unknown): c is TimeBlockCategory => CATEGORIES.includes(c as TimeBlockCategory)
+
 /**
  * The details as 215 keeps them, from anything (what the screen built, or a row read back — a value read is input too):
- * only the category's keys and its type's fields, each cleaned; what doesn't fit is left out. null = not details.
+ * only the category's keys and its type's fields, each cleaned; what doesn't fit is left out. `category`: the item's
+ * own (its slot's or repeat's) — it decides, never one stored with older details. Without either, the add-ons are read
+ * as Media's when they name a type, else as Games'. null = not details.
  */
-export function cleanDetails(raw: unknown): ItemDetails | null {
+export function cleanDetails(raw: unknown, category?: TimeBlockCategory | null): ItemDetails | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const r = raw as Record<string, unknown>
-  if (!CATEGORIES.includes(r.category as TimeBlockCategory)) return null
-  const category = r.category as TimeBlockCategory
-  const def = detailsOf(category)
-  const out: ItemDetails = { category }
+  const own = isCategory(category) ? category : isCategory(r.category) ? r.category : null
+  if (r.category !== undefined && !isCategory(r.category)) return null
+  const out: ItemDetails = own ? { category: own } : {}
+  const def = own ? detailsOf(own) : MEDIA_TYPES.includes(r.type as MediaType) ? CATEGORY_DETAILS.media! : CATEGORY_DETAILS.games!
   if (!def) return out
   const type = def.types ? (MEDIA_TYPES.includes(r.type as MediaType) ? r.type as MediaType : undefined) : undefined
   if (type) out.type = type
@@ -137,7 +149,7 @@ export function cleanDetails(raw: unknown): ItemDetails | null {
     if (!key) continue
     if (key === 'with') { const v = cleanNames(r.with); if (v) out.with = v }
     else if (key === 'cost') { const v = cleanCost(r.cost); if (v) out.cost = v }
-    else { const k = key as 'seats' | 'booking' | 'on'; const v = cleanText(r[k], k === 'on' ? DETAIL_LIMITS.on : DETAIL_LIMITS.text); if (v) out[k] = v }
+    else { const k = key as 'seats' | 'booking' | 'on' | 'cinema'; const v = cleanText(r[k], k === 'on' ? DETAIL_LIMITS.on : DETAIL_LIMITS.text); if (v) out[k] = v }
   }
   return out
 }

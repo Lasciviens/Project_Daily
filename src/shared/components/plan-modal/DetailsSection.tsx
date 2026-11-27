@@ -9,19 +9,23 @@
 //  show, with who, and a cinema trip's cost, seats and booking (its cinema is
 //  the Location row, named Cinema); Games — the game, On, with who.
 //  The movie, show or game is the task's link (210: picked from the library,
-//  or from TMDB's search after the library's own add); "On" offers only what
-//  the owner typed before ("do not add those manually, it will be added after
-//  I put them in"). Values change the form only through planForm.withDetails.
+//  or from TMDB's search — added through the library's own add by the save,
+//  never on pick); × takes it off, an edit too (215). A cinema trip's Cinema
+//  is the item's place (its slot's; by name in the details without a slot).
+//  "On" offers only what the owner typed before ("do not add those manually,
+//  it will be added after I put them in"). Values change the form only
+//  through planForm.withDetails.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { Combobox, ComboboxInput, ComboboxOption, ComboboxOptions } from '@headlessui/react'
 import { Plus, User, X } from 'lucide-react'
 import { SegmentedControl, Truncate } from '../../ui'
-import { ChoiceRow, Panel, Row, TapRow } from './ItemRows'
+import { ChoiceRow, LINE, Panel, Row, TapRow } from './ItemRows'
 import { ChipSelect } from './fields'
 import { CATEGORY_LABELS } from './planModal.config'
-import { withDetails, type DetailsForm, type PlanForm } from './planForm'
+import { withCategory, withDetails, withMediaType, type DetailsForm, type PendingTitle, type PlanForm } from './planForm'
+import { PlaceRow } from './PlaceRow'
 import type { PanelKey } from './TimeSection'
 import {
   cleanNames, cleanText, DETAIL_CURRENCIES, DETAIL_LIMITS, detailFields, detailsOf, earlierValues, readAmount, suggestionsFor,
@@ -30,7 +34,7 @@ import {
 import { episodeCode, LINK_KINDS, screenLinkOf } from '../../../features/items/linkKinds'
 import type { ItemLink, ItemLinkKind } from '../../../features/items/itemTypes'
 import { useLinkedThing } from '../../../features/items/usePlanThis'
-import { useEarlierDetails, useLibraryEntryForPlan } from '../../../features/items/useItemDetails'
+import { useEarlierCinemas, useEarlierDetails } from '../../../features/items/useItemDetails'
 import { useMovies } from '../../../features/media/hooks/useMovies'
 import { useTVSeries } from '../../../features/media/hooks/useTVSeries'
 import { useSearchTitles } from '../../../features/media/hooks/useTMDB'
@@ -50,10 +54,7 @@ export function CategoryRow({ form, patch, open, toggle, mark }: {
   mark?: ReactNode
 }) {
   function pick(category: TimeBlockCategory) {
-    const kind = detailsOf(category)?.linkKind?.(undefined)
-    // A thing picked here for another category is taken off (a caller's link and a saved one stay: 210 keeps them).
-    const dropLink = form.linkTouched && form.link && (!kind || (kind === 'game') !== (form.link.kind === 'game'))
-    patch({ ...withDetails(form, { category }), ...(dropLink ? { link: null } : {}) })
+    patch(withCategory(form, category))
     toggle(null)
   }
   return (
@@ -69,23 +70,26 @@ export function CategoryRow({ form, patch, open, toggle, mark }: {
 }
 
 /** The category's own section (nothing for a category without add-on fields). */
-export function DetailsSection({ form, patch, mark, savedLink }: {
+export function DetailsSection({ form, patch, mark, placeMark }: {
   form: PlanForm
   patch: (p: Partial<PlanForm>) => void
   mark?: ReactNode
-  /** The saved task's link: an edit can change it, not take it off (210: absent = keep). */
-  savedLink: boolean
+  /** Where a cinema trip's Cinema goes: its slot's place (Apple Calendar's location), or only the app without a slot. */
+  placeMark?: ReactNode
 }) {
   const def = detailsOf(form.category)
   const type = form.details.type ?? undefined
   const fields = detailFields(form.category, type)
   const earlier = useEarlierDetails(fields.includes('with') || fields.includes('on'))
+  const cinemas = useEarlierCinemas(fields.includes('cinema'))
   if (!def) return null
   const set = (details: Partial<DetailsForm>) => patch(withDetails(form, { details }))
   const linkKind = def.linkKind?.(type) ?? null
   // The link shown: the one the form holds when it is of this field's kind.
   const link = form.link && 'id' in form.link && linkKind && form.link.kind === linkKind ? form.link : null
-  const setLink = (next: ItemLink | null) => patch({ link: next, linkTouched: true })
+  const pending = form.pendingTitle && form.pendingTitle.kind === linkKind ? form.pendingTitle : null
+  const setLink = (next: ItemLink | null, pendingTitle: PendingTitle | null = null) =>
+    patch({ link: next, pendingTitle, linkTouched: true, detailsTouched: true })
   const rows = earlier.data ?? []
 
   return (
@@ -94,24 +98,26 @@ export function DetailsSection({ form, patch, mark, savedLink }: {
         <Row label="Type" mark={mark}>
           <SegmentedControl<MediaType> size="xs" value={type ?? def.types[0].value}
             options={def.types.map(t => ({ value: t.value, label: t.label, tip: t.tip }))}
-            onChange={t => {
-              const kind = def.linkKind?.(t)
-              // A show picked here doesn't fit a movie (and back): taken off on a type switch (a saved link stays).
-              const drop = form.linkTouched && form.link && kind && form.link.kind !== kind
-              patch({ ...withDetails(form, { details: { type: t } }), ...(drop ? { link: null } : {}) })
-            }} />
+            onChange={t => patch(withMediaType(form, t))} />
         </Row>
       )}
       {fields.includes('thing') && linkKind && (
-        <ThingRow kind={linkKind} link={link} mark={mark} canClear={!savedLink || form.linkTouched}
-          onPick={setLink} onClear={() => setLink(null)} />
+        <ThingRow kind={linkKind} link={link} pending={pending} mark={mark}
+          onPick={picked => ('link' in picked ? setLink(picked.link) : setLink(null, picked.pending))} onClear={() => setLink(null)} />
       )}
       {fields.includes('thing') && linkKind === 'tv' && link && (
         <EpisodeRow link={link} mark={mark} onChange={setLink} />
       )}
+      {fields.includes('cinema') && (
+        // The item's one place (its slot's — Location shows only Travel Time then — or by name without a slot).
+        <div className={LINE}>
+          <PlaceRow value={form.place} onChange={place => patch({ place, placeTouched: true, detailsTouched: true })}
+            label="Cinema" earlier={cinemas} mark={placeMark} />
+        </div>
+      )}
       {fields.includes('on') && (
         <TextRow label="On" tip="On: what it is played on — your own words; earlier ones are offered" value={form.details.on}
-          max={DETAIL_LIMITS.on} mark={mark} placeholder="e.g. what you play it on"
+          max={DETAIL_LIMITS.on} mark={mark} placeholder="Device"
           offered={earlierValues(rows, d => d.on)} onChange={on => set({ on })} />
       )}
       {fields.includes('with') && (
@@ -133,21 +139,25 @@ export function DetailsSection({ form, patch, mark, savedLink }: {
   )
 }
 
-type Option = { key: string; label: string; sub?: string; pick: () => Promise<ItemLink | null> | ItemLink | null }
+/** A pick: a thing in the library (its link), or a TMDB title the save adds to the library first. */
+type Picked = { link: ItemLink } | { pending: PendingTitle }
+type Option = { key: string; label: string; sub?: string; pick: Picked }
+/** A thing picked in this screen's own fields (not a Plan button: those build their requests in items/planThis). */
+const thingOf = (kind: 'movie' | 'tv' | 'game', id: string): Picked => ({ link: { kind, id } })
 
-/** The movie, show or game: its title (a tap searches again), or the search. */
-function ThingRow({ kind, link, mark, canClear, onPick, onClear }: {
+/** The movie, show or game: its title (a tap searches again; × takes it off), or the search. */
+function ThingRow({ kind, link, pending, mark, onPick, onClear }: {
   kind: ItemLinkKind
   link: ItemLink | null
+  pending: PendingTitle | null
   mark?: ReactNode
-  canClear: boolean
-  onPick: (link: ItemLink) => void
+  onPick: (picked: Picked) => void
   onClear: () => void
 }) {
   const label = LINK_KINDS[kind].label
   const [editing, setEditing] = useState(false)
   const thing = useLinkedThing(link ? screenLinkOf(null, link) : null)
-  if (!link || editing) {
+  if ((!link && !pending) || editing) {
     return (
       <Row label={label} mark={mark}>
         <ThingSearch kind={kind} label={label} autoFocus={editing} onClose={() => setEditing(false)}
@@ -155,28 +165,26 @@ function ThingRow({ kind, link, mark, canClear, onPick, onClear }: {
       </Row>
     )
   }
-  const title = thing.data?.title ?? (thing.isLoading ? '…' : `A ${label.toLowerCase()} not in your library`)
+  const title = pending ? pending.title : thing.data?.title ?? (thing.isLoading ? '…' : `A ${label.toLowerCase()} not in your library`)
   return (
     <Row label={label} mark={mark}>
       <button type="button" onClick={() => setEditing(true)} className="min-w-0 max-w-[65%] py-2 text-right text-fg"
-        aria-label={`${label}: ${title} — change it`} title={`${label}: ${title} — tap to pick another`}>
+        aria-label={`${label}: ${title} — change it`} title={pending ? `${label}: ${title} — added to your library when saved` : `${label}: ${title} — tap to pick another`}>
         <bdi className="block min-w-0"><Truncate>{title}</Truncate></bdi>
       </button>
-      {canClear && (
-        <button type="button" onClick={onClear} aria-label={`Remove the ${label.toLowerCase()}`} title={`Remove the ${label.toLowerCase()}`}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-fg-faint hover:bg-surface-hover hover:text-fg">
-          <X aria-hidden className="h-4 w-4" />
-        </button>
-      )}
+      <button type="button" onClick={onClear} aria-label={`Remove the ${label.toLowerCase()}`} title={`Remove the ${label.toLowerCase()}`}
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-fg-faint hover:bg-surface-hover hover:text-fg">
+        <X aria-hidden className="h-4 w-4" />
+      </button>
     </Row>
   )
 }
 
 const yearOf = (d: string | null | undefined): string | undefined => (d && /^\d{4}/.test(d) ? d.slice(0, 4) : undefined)
 
-type SearchProps = { kind: ItemLinkKind; label: string; autoFocus: boolean; onPick: (link: ItemLink) => void; onClose: () => void }
+type SearchProps = { kind: ItemLinkKind; label: string; autoFocus: boolean; onPick: (picked: Picked) => void; onClose: () => void }
 
-/** The search: the library first, then (a movie or show) TMDB's titles, added to the library on pick. */
+/** The search: the library first, then (a movie or show) TMDB's titles — added to the library by the save. */
 function ThingSearch(props: SearchProps) {
   return props.kind === 'game' ? <GameSearch {...props} /> : <MediaSearch {...props} />
 }
@@ -185,13 +193,14 @@ function ThingSearch(props: SearchProps) {
 function GameSearch(props: SearchProps) {
   const [focused, setFocused] = useState(props.autoFocus)
   const [query, setQuery] = useState('')
-  const retro = useAllGames()
-  const steam = useLibraryGames('steam')
-  const ps = useLibraryGames('playstation')
+  // Read only once the search is used (the Games page's rule: no eager read on mount).
+  const retro = useAllGames(focused)
+  const steam = useLibraryGames('steam', focused)
+  const ps = useLibraryGames('playstation', focused)
   const q = query.trim().toLowerCase()
   const options: Option[] = !focused ? [] : [...(retro.data ?? []), ...steam.games, ...ps.games]
     .filter(g => !q || g.title.toLowerCase().includes(q)).slice(0, 8)
-    .map(g => ({ key: `own-${g.id}`, label: g.title, sub: g.release_year ? String(g.release_year) : undefined, pick: () => ({ kind: 'game', id: g.id }) }))
+    .map(g => ({ key: `own-${g.id}`, label: g.title, sub: g.release_year ? String(g.release_year) : undefined, pick: thingOf('game', g.id) }))
   const note = focused && q && !options.length ? 'No game by that name in your library' : null
   return <SearchCombo {...props} query={query} setQuery={setQuery} setFocused={setFocused} options={options} note={note} />
 }
@@ -205,19 +214,18 @@ function MediaSearch(props: SearchProps) {
   const movies = useMovies()
   const shows = useTVSeries()
   const tmdb = useSearchTitles(kind === 'tv' ? 'tv' : 'movie', focused && debounced.length >= 2 ? debounced : '')
-  const addToLibrary = useLibraryEntryForPlan()
   const q = query.trim().toLowerCase()
   const has = (title: string) => !q || title.toLowerCase().includes(q)
 
   const options: Option[] = []
   if (focused && kind === 'movie') {
     for (const e of (movies.data ?? []).filter(e => has(e.movie.title)).slice(0, 6)) {
-      options.push({ key: `own-${e.id}`, label: e.movie.title, sub: yearOf(e.movie.release_date), pick: () => ({ kind: 'movie', id: e.id }) })
+      options.push({ key: `own-${e.id}`, label: e.movie.title, sub: yearOf(e.movie.release_date), pick: thingOf('movie', e.id) })
     }
   }
   if (focused && kind === 'tv') {
     for (const e of (shows.data ?? []).filter(e => has(e.tv_series.title)).slice(0, 6)) {
-      options.push({ key: `own-${e.id}`, label: e.tv_series.title, sub: yearOf(e.tv_series.first_air_date), pick: () => ({ kind: 'tv', id: e.id }) })
+      options.push({ key: `own-${e.id}`, label: e.tv_series.title, sub: yearOf(e.tv_series.first_air_date), pick: thingOf('tv', e.id) })
     }
   }
   if (debounced.length >= 2) {
@@ -226,11 +234,8 @@ function MediaSearch(props: SearchProps) {
       const title = kind === 'movie' ? (r as TMDBSearchMovie).title : (r as TMDBSearchTV).name
       const year = yearOf(kind === 'movie' ? (r as TMDBSearchMovie).release_date : (r as TMDBSearchTV).first_air_date)
       options.push({
-        key: `tmdb-${r.id}`, label: title, sub: [year, 'adds it to your library'].filter(Boolean).join(' · '),
-        pick: async () => {
-          const id = await addToLibrary(kind as 'movie' | 'tv', r.id, title)
-          return id ? { kind: kind as 'movie' | 'tv', id } : null
-        },
+        key: `tmdb-${r.id}`, label: title, sub: [year, 'added to your library when saved'].filter(Boolean).join(' · '),
+        pick: { pending: { kind: kind as 'movie' | 'tv', tmdbId: r.id, title } },
       })
     }
   }
@@ -248,7 +253,7 @@ function SearchCombo({ label, autoFocus, onPick, onClose, query, setQuery, setFo
 }) {
   return (
     <Combobox<Option | null> value={null} immediate
-      onChange={o => { if (o) void Promise.resolve(o.pick()).then(l => { if (l) onPick(l) }) }}
+      onChange={o => { if (o) onPick(o.pick) }}
       onClose={() => { if (!query) { setFocused(false); onClose() } }}>
       <div className="relative min-w-0 flex-1">
         <ComboboxInput autoFocus={autoFocus} aria-label={`${label}: search`} placeholder="Search" maxLength={80} value={query}
@@ -388,7 +393,9 @@ function NamesRow({ value, mark, known, onChange }: { value: string[]; mark?: Re
                 }}
                 // A name typed and never Entered is kept when the field is left, never dropped without a word.
                 onBlur={() => { if (typed && !has(typed)) add(typed); setFocused(false); setQuery('') }}
-                autoComplete="off" enterKeyHint="done" className="input-bare w-24 pb-0 text-right text-lead" />
+                autoComplete="off" enterKeyHint="done"
+                // Narrow beside the names (no line of its own on a phone), wider while typing.
+                className={`input-bare pb-0 text-right text-lead transition-[width] motion-reduce:transition-none ${value.length ? 'w-10 focus:w-24' : 'w-24'}`} />
               {(isNew || offered.length > 0) && (
                 <ComboboxOptions modal={false} anchor={{ to: 'bottom end', gap: 6, padding: 12 }} className="menu z-toast min-w-[12rem]">
                   {isNew && offered.length > 0 && (

@@ -52,7 +52,16 @@ console.log('\n== 2. The cleaning (215\'s rule in the browser) ==')
 const full = { category: 'media', type: 'cinema', with: ['Ola', 'Kari Nordmann'], cost: { amount: 149.5, currency: 'NOK' }, seats: 'H12–H13', booking: 'AB12CD' }
 check('a full cinema trip is kept as it is', same(D.cleanDetails(full), full))
 check('a category with no fields keeps only the category (an item with no slot keeps its category)', same(D.cleanDetails({ category: 'work', with: ['Ola'] }), { category: 'work' }))
-check('not details: null, a list, a string, an unknown category', [null, undefined, [], 'media', { category: 'cinema' }, { type: 'movie' }].every(x => D.cleanDetails(x) === null))
+check('not details: null, a list, a string, an unknown category', [null, undefined, [], 'media', { category: 'cinema' }, { category: 5 }].every(x => D.cleanDetails(x) === null))
+check('one source: the item\'s own category (its slot\'s or repeat\'s) decides, never one stored with older details',
+  same(D.cleanDetails({ category: 'media', type: 'cinema', with: ['Ola'], seats: 'H1' }, 'games'), { category: 'games', with: ['Ola'] }))
+check('…details stored without a category (an item with a slot) read as Media\'s with a type, else as Games\'',
+  same(D.cleanDetails({ type: 'movie', with: ['Ola'], on: 'PS5' }), { type: 'movie', with: ['Ola'] }) && same(D.cleanDetails({ on: 'RP6' }), { on: 'RP6' }))
+check('a cinema trip\'s cinema (≤ 60, an item with no slot); never on a movie at home',
+  D.cleanDetails({ category: 'media', type: 'cinema', cinema: 'Ringen kino' }).cinema === 'Ringen kino'
+  && !('cinema' in D.cleanDetails({ category: 'media', type: 'movie', cinema: 'Ringen kino' })) && !('cinema' in D.cleanDetails({ category: 'media', type: 'cinema', cinema: 'x'.repeat(61) })))
+check('invisible format characters are refused (U+200B, U+200E, U+202E, U+2060, U+FEFF) — 215\'s copy',
+  ['Ola\u200b', '\u200eOla', 'AB\u202eDC', 'RP\u20606', '\ufeffRP6'].every(t => D.cleanText(t, 60) === undefined) && D.cleanText('Åse Ødegård', 40) === 'Åse Ødegård')
 check('only the type\'s fields: a movie at home drops cost, seats, booking', same(D.cleanDetails({ ...full, type: 'movie' }), { category: 'media', type: 'movie', with: ['Ola', 'Kari Nordmann'] }))
 check('…Games drops a media type and seats; Media drops On', same(D.cleanDetails({ category: 'games', type: 'movie', seats: 'A1', on: 'RP6' }), { category: 'games', on: 'RP6' })
   && same(D.cleanDetails({ category: 'media', type: 'movie', on: 'PS5' }), { category: 'media', type: 'movie' }))
@@ -107,6 +116,13 @@ console.log('\n== 4. The save ==')
   calls.length = 0
   await api.saveItem({ ...base, details: null }, ctx)
   check('null details: sent as null (none)', calls.length === 1 && calls[0].args.p_details === null)
+  calls.length = 0
+  await api.saveItem({ ...base, link: null, details: { category: 'work' } }, ctx)
+  check('a link taken off (an edit\'s ×, 215): p_link {"kind":"none"} with the details, one call',
+    calls.length === 1 && same(calls[0].args.p_link, { kind: 'none' }) && same(calls[0].args.p_details, { category: 'work' }))
+  let refused = null
+  try { await api.saveItem({ ...base, link: null }, ctx) } catch (e) { refused = e.message }
+  check('…never without the details (only the 3-argument save knows "none"; 210\'s null keeps the link)', !!refused)
   calls.length = 0
   await api.saveItem({ ...base, link }, ctx)
   check('no details (absent = keep): the 2-argument save as before', same(Object.keys(calls[0].args), ['p_item', 'p_link']))

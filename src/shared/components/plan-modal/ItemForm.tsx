@@ -6,9 +6,11 @@
 //
 //    [Title                                    ]         (quick add: Read as …)
 //               Category                                 (every item; owner, 27.11.2026: "bring category to top")
-//    MEDIA      Type · Movie / Show · With · Cost · Seats · Booking   (the category's add-on fields, 215 —
-//    GAMES      Game · On · With                          DetailsSection.tsx; not a repeat's rule)
-//    LOCATION   ⌖ Location (Cinema for a cinema trip) · Travel Time   (a slot: a time, a repeat or all day)
+//               Type · Movie / Show · Cinema · With · Cost · Seats · Booking   (Media's add-on fields, 215 — no
+//               Game · On · With                          heading: the Category row is right above; DetailsSection.tsx;
+//                                                         not a repeat's rule)
+//    LOCATION   ⌖ Location · Travel Time                 (a slot: a time, a repeat or all day; a cinema trip's place
+//                                                         is its Cinema row above — Location keeps Travel Time)
 //    TIME       Date · All-day · Starts [Tue 10.11.2026] [17:30]
 //               Ends [Tue 10.11.2026] [18:30] · the day's timeline · Time Zone · Repeat · End Repeat
 //    OPTIONS    Calendar  Apple Calendar · busy  ·  List (a Google Task's)
@@ -38,7 +40,6 @@ import { cx } from '../../ui'
 import { LINE, Section } from './ItemRows'
 import { CalendarRow, GoogleListRow } from './OptionsSection'
 import { CategoryRow, DetailsSection } from './DetailsSection'
-import { useEarlierCinemas } from '../../../features/items/useItemDetails'
 import { detailsOf } from '../../../features/items/categoryDetails'
 import { useCardMarks } from './cardMarks'
 import { PlaceRow } from './PlaceRow'
@@ -100,8 +101,6 @@ interface Props {
   savedSection?: TaskSection | null
   /** An edit of a task (not a repeat's rule): Planning's Waiting for and Parent rows. */
   taskId?: string | null
-  /** The saved task has a link (210): the details can change it, not take it off. */
-  savedLink?: boolean
 }
 
 /** What "Default" means on the Alert row where the item goes (193: null = the area's alert in Apple Calendar; nothing
@@ -113,7 +112,7 @@ const DEFAULT_ALERT_HINT: Partial<Record<ReturnType<typeof fieldGoes>, string>> 
 export function ItemForm({
   form, patch, config, typed, onTitle, parse, onKeepText, creating, today, nextTime, googleConnected, calendarApp, keptTarget,
   occurrenceDate, savedKind, savedRepeat, savedZone, exceptDates, showMarks, appleNotes, refused, own, onDelete, deleting,
-  urlIssue, endIssue, savedSection, taskId, fill, savedLink = false,
+  urlIssue, endIssue, savedSection, taskId, fill,
 }: Props) {
   const titleId = useId()
   // A menu's "Set parent…", "Move to list…" or a Waiting chip opens the screen at that row (config.openRow).
@@ -134,8 +133,8 @@ export function ItemForm({
   // fields belong to a task: a repeat's rule has none (its days are tasks the database makes).
   const showCategory = !isScheduleFieldHidden('category', config)
   const details = showCategory && !(repeating && !day) ? detailsOf(form.category) : null
-  const cinema = !!details && form.details.type === 'cinema'
-  const earlierCinemas = useEarlierCinemas(cinema && slotFields)
+  // A cinema trip's place is its Cinema row in the category's fields: Location then keeps only Travel Time.
+  const cinema = !!details && form.category === 'media' && form.details.type === 'cinema'
   // A repeat's days go to the default list (156 stores no list per repeat).
   const showList = showGoogle && hasGoogleTasks(target) && !repeating && !hideTask('googleList')
   const marksTarget = showGoogle ? target : (keptTarget ?? 'none')
@@ -162,22 +161,23 @@ export function ItemForm({
         </Section>
 
         {details && (
-          <Section title={details.heading} carried={titleMarks.marks}>
-            <DetailsSection form={form} patch={patch} mark={<FieldMark goes={goes('own')} />} savedLink={savedLink} />
+          // No heading of its own: the Category row right above names it. Its marks join the title card's.
+          <Section marksTo={titleMarks.register}>
+            <DetailsSection form={form} patch={patch} mark={<FieldMark goes={goes('own')} />}
+              placeMark={<FieldMark goes={goes(slotFields ? 'place' : 'own')} row="Cinema" />} />
           </Section>
         )}
 
         {slotFields && (
-          <Section title="Location" carried={details ? undefined : titleMarks.marks}>
-            <PlaceRow value={form.place} onChange={place => patch({ place, placeTouched: true })}
-              label={cinema ? 'Cinema' : undefined} earlier={cinema ? earlierCinemas : undefined}
-              mark={<><FilledMark row="Location" /><FieldMark goes={goes('place')} row="Location" /></>} />
+          <Section title="Location" carried={titleMarks.marks}>
+            {!cinema && <PlaceRow value={form.place} onChange={place => patch({ place, placeTouched: true })}
+              mark={<><FilledMark row="Location" /><FieldMark goes={goes('place')} row="Location" /></>} />}
             <TravelRow minutes={form.travelMinutes} hasPin={hasPin} open={open} toggle={toggle} mark={<FieldMark goes={goes('travel')} />}
               onChange={travelMinutes => patch(withCalendarField(form, 'travelMinutes', travelMinutes))} />
           </Section>
         )}
 
-        <Section title="Time" carried={slotFields || details ? undefined : titleMarks.marks}>
+        <Section title="Time" carried={slotFields ? undefined : titleMarks.marks}>
           <TimeSection
             form={form} patch={patch} open={open} toggle={toggle} today={today} nextTime={nextTime} config={config}
             occurrenceDate={occurrenceDate} savedKind={savedKind} savedRepeat={savedRepeat} savedZone={savedZone}

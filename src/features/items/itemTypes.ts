@@ -90,7 +90,8 @@ export interface ItemInput {
   /** The slot's own origin when it differs from the task's (time_blocks.source_type
    *  vocabulary — a TV episode with its numbers; 077). */
   blockSource?: { type: string; id: string | null; seasonNumber?: number; episodeNumber?: number } | null
-  /** The thing this task plans (210): saved with the item in one transaction (app_save_item's p_link). Absent = keep. */
+  /** The thing this task plans (210): saved with the item in one transaction (app_save_item's p_link). Absent = keep;
+   *  null = take its movie, show or game off (215: sent as {"kind":"none"}, with the details). */
   link?: ItemLink | null
   /** The item's category and its add-on fields (215, items/categoryDetails.ts): saved with the item in one transaction
    *  (app_save_item's p_details). Absent = keep; null = none. A repeat's rule has no task: it keeps none. */

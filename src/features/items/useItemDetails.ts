@@ -24,14 +24,17 @@ export function useEarlierCinemas(enabled: boolean): unknown[] {
   const visits = useCinemaVisits(enabled)
   return [
     ...(earlier.data ?? []).filter(r => cleanDetails(r.details)?.type === 'cinema' && r.place).map(r => r.place),
+    // An earlier cinema trip with no slot keeps its cinema by name in its details.
+    ...(earlier.data ?? []).map(r => cleanDetails(r.details)?.cinema).filter(Boolean).map(name => ({ name })),
     ...(visits.data ?? []).filter(v => v.cinema).map(v => ({ name: v.cinema, ...(v.location ? { locality: v.location } : {}) })),
   ]
 }
 
 /**
  * A title picked from TMDB's search for a plan: its library entry, added first through the library's own add (Want to
- * watch) when it isn't there — so the plan's link always names a real entry (owner, 27.11.2026). Resolves the entry's
- * id, or null when it couldn't be added (the add's hook said why).
+ * watch) when it isn't there — so the plan's link always names a real entry (owner, 27.11.2026). Called by the item
+ * screen's save, never on pick (a cancelled screen leaves nothing behind). Resolves the entry's id, or null when it
+ * couldn't be added (the add's hook said why).
  */
 export function useLibraryEntryForPlan() {
   const qc = useQueryClient()

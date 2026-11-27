@@ -32,8 +32,8 @@ export function useGameStats(enabled = true) {
  *  elsewhere (an ES-DE push, a scrape) — the page's "Refresh library". */
 export const LIBRARY_STALE_MS = 10 * 60_000
 
-export function useAllGames() {
-  return useQuery({ queryKey: GAMES_QK, queryFn: fetchAllGames, staleTime: LIBRARY_STALE_MS })
+export function useAllGames(enabled = true) {
+  return useQuery({ queryKey: GAMES_QK, queryFn: fetchAllGames, staleTime: LIBRARY_STALE_MS, enabled })
 }
 
 /** Everything under ['games'] now — the explicit "Refresh library". */
@@ -295,11 +295,12 @@ export function useSetPrimaryVariant() {
  *  map and a modal that needs a single row cost one request between them. This
  *  is also what lets the grid render from OUR table while the provider's API
  *  is still being reached. */
-export function useLibraryGames(library: GameLibrary) {
+export function useLibraryGames(library: GameLibrary, enabled = true) {
   const q = useQuery({
     queryKey: ['games', 'library', library],
     queryFn: () => fetchLibraryGames(library),
     staleTime: LIBRARY_STALE_MS,
+    enabled,
   })
   const byRef = useMemo(() => {
     const m = new Map<string, Game>()
