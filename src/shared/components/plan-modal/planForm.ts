@@ -147,7 +147,7 @@ export function detailsForm(category: TimeBlockCategory, saved: ItemDetails | nu
   return {
     type: d?.type ?? (type && defaultType(category) ? type : defaultType(category) ?? null),
     with: d?.with ?? [],
-    cost: d?.cost ? String(d.cost.amount) : '',
+    cost: d?.cost ? (Number.isInteger(d.cost.amount) ? String(d.cost.amount) : d.cost.amount.toFixed(2)) : '',
     currency: d?.cost?.currency ?? 'NOK',
     seats: d?.seats ?? '',
     booking: d?.booking ?? '',

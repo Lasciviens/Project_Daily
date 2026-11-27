@@ -38,6 +38,8 @@ export function useLibraryEntryForPlan() {
   const addMovie = useAddMovie()
   const addTV = useAddTV()
   return async (kind: 'movie' | 'tv', tmdbId: number, title: string): Promise<string | null> => {
+    // TMDB's id (an outside answer) goes into a request path: only a positive whole number.
+    if (!Number.isSafeInteger(tmdbId) || tmdbId <= 0) return null
     // Already there (the list may be older than this screen): its own entry, never a second one.
     const list = kind === 'movie'
       ? (await qc.fetchQuery({ queryKey: qk.media.userMovies(), queryFn: fetchUserMovieEntries, staleTime: STALE.default })).find(e => e.movie.tmdb_id === tmdbId)

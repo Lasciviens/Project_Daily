@@ -34,7 +34,7 @@ import { useEarlierDetails, useLibraryEntryForPlan } from '../../../features/ite
 import { useMovies } from '../../../features/media/hooks/useMovies'
 import { useTVSeries } from '../../../features/media/hooks/useTVSeries'
 import { useSearchTitles } from '../../../features/media/hooks/useTMDB'
-import { useAllGames } from '../../../features/games/hooks/useGames'
+import { useAllGames, useLibraryGames } from '../../../features/games/hooks/useGames'
 import type { TimeBlockCategory } from '../../../features/daily/types'
 import type { TMDBSearchMovie, TMDBSearchTV } from '../../../features/media/types'
 
@@ -172,46 +172,57 @@ function ThingRow({ kind, link, mark, canClear, onPick, onClear }: {
   )
 }
 
-const yearOf = (d: string | null | undefined) => (d && /^\d{4}/.test(d) ? d.slice(0, 4) : undefined)
+const yearOf = (d: string | null | undefined): string | undefined => (d && /^\d{4}/.test(d) ? d.slice(0, 4) : undefined)
 
-/** The search: the library first (a game always — the Games library), then TMDB's titles, added to the library on pick. */
-function ThingSearch({ kind, label, autoFocus, onPick, onClose }: {
-  kind: ItemLinkKind
-  label: string
-  autoFocus: boolean
-  onPick: (link: ItemLink) => void
-  onClose: () => void
-}) {
+type SearchProps = { kind: ItemLinkKind; label: string; autoFocus: boolean; onPick: (link: ItemLink) => void; onClose: () => void }
+
+/** The search: the library first, then (a movie or show) TMDB's titles, added to the library on pick. */
+function ThingSearch(props: SearchProps) {
+  return props.kind === 'game' ? <GameSearch {...props} /> : <MediaSearch {...props} />
+}
+
+/** A game: the Games library (retro, Steam and PlayStation), read only when this search shows. */
+function GameSearch(props: SearchProps) {
+  const [focused, setFocused] = useState(props.autoFocus)
+  const [query, setQuery] = useState('')
+  const retro = useAllGames()
+  const steam = useLibraryGames('steam')
+  const ps = useLibraryGames('playstation')
+  const q = query.trim().toLowerCase()
+  const options: Option[] = !focused ? [] : [...(retro.data ?? []), ...steam.games, ...ps.games]
+    .filter(g => !q || g.title.toLowerCase().includes(q)).slice(0, 8)
+    .map(g => ({ key: `own-${g.id}`, label: g.title, sub: g.release_year ? String(g.release_year) : undefined, pick: () => ({ kind: 'game', id: g.id }) }))
+  const note = focused && q && !options.length ? 'No game by that name in your library' : null
+  return <SearchCombo {...props} query={query} setQuery={setQuery} setFocused={setFocused} options={options} note={note} />
+}
+
+function MediaSearch(props: SearchProps) {
+  const { kind } = props
+  const [focused, setFocused] = useState(props.autoFocus)
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   useEffect(() => { const id = setTimeout(() => setDebounced(query.trim()), 300); return () => clearTimeout(id) }, [query])
-  const [focused, setFocused] = useState(autoFocus)
-  const media = kind === 'movie' || kind === 'tv'
   const movies = useMovies()
   const shows = useTVSeries()
-  const games = useAllGames()
-  const tmdb = useSearchTitles(kind === 'tv' ? 'tv' : 'movie', media && focused && debounced.length >= 2 ? debounced : '')
+  const tmdb = useSearchTitles(kind === 'tv' ? 'tv' : 'movie', focused && debounced.length >= 2 ? debounced : '')
   const addToLibrary = useLibraryEntryForPlan()
   const q = query.trim().toLowerCase()
   const has = (title: string) => !q || title.toLowerCase().includes(q)
 
   const options: Option[] = []
   if (focused && kind === 'movie') {
-    const own = (movies.data ?? []).filter(e => has(e.movie.title)).slice(0, 6)
-    for (const e of own) options.push({ key: `own-${e.id}`, label: e.movie.title, sub: yearOf(e.movie.release_date), pick: () => ({ kind: 'movie', id: e.id }) })
+    for (const e of (movies.data ?? []).filter(e => has(e.movie.title)).slice(0, 6)) {
+      options.push({ key: `own-${e.id}`, label: e.movie.title, sub: yearOf(e.movie.release_date), pick: () => ({ kind: 'movie', id: e.id }) })
+    }
   }
   if (focused && kind === 'tv') {
-    const own = (shows.data ?? []).filter(e => has(e.tv_series.title)).slice(0, 6)
-    for (const e of own) options.push({ key: `own-${e.id}`, label: e.tv_series.title, sub: yearOf(e.tv_series.first_air_date), pick: () => ({ kind: 'tv', id: e.id }) })
+    for (const e of (shows.data ?? []).filter(e => has(e.tv_series.title)).slice(0, 6)) {
+      options.push({ key: `own-${e.id}`, label: e.tv_series.title, sub: yearOf(e.tv_series.first_air_date), pick: () => ({ kind: 'tv', id: e.id }) })
+    }
   }
-  if (focused && kind === 'game') {
-    const own = (games.data ?? []).filter(g => has(g.title)).slice(0, 8)
-    for (const g of own) options.push({ key: `own-${g.id}`, label: g.title, sub: g.release_year ? String(g.release_year) : undefined, pick: () => ({ kind: 'game', id: g.id }) })
-  }
-  if (media && debounced.length >= 2) {
+  if (debounced.length >= 2) {
     const inLibrary = new Set(kind === 'movie' ? (movies.data ?? []).map(e => e.movie.tmdb_id) : (shows.data ?? []).map(e => e.tv_series.tmdb_id))
-    const found = (tmdb.data?.pages[0]?.results ?? []).filter(r => !inLibrary.has(r.id)).slice(0, 6)
-    for (const r of found) {
+    for (const r of (tmdb.data?.pages[0]?.results ?? []).filter(r => !inLibrary.has(r.id)).slice(0, 6)) {
       const title = kind === 'movie' ? (r as TMDBSearchMovie).title : (r as TMDBSearchTV).name
       const year = yearOf(kind === 'movie' ? (r as TMDBSearchMovie).release_date : (r as TMDBSearchTV).first_air_date)
       options.push({
@@ -223,9 +234,18 @@ function ThingSearch({ kind, label, autoFocus, onPick, onClose }: {
       })
     }
   }
-  const note = media && debounced.length >= 2 && tmdb.isError ? 'TMDB is not answering — pick from your library'
-    : focused && q && !options.length && !(media && tmdb.isFetching) ? `No ${label.toLowerCase()} by that name` : null
+  const note = debounced.length >= 2 && tmdb.isError ? 'TMDB is not answering — pick from your library'
+    : focused && q && !options.length && !tmdb.isFetching ? `No ${props.label.toLowerCase()} by that name` : null
+  return <SearchCombo {...props} query={query} setQuery={setQuery} setFocused={setFocused} options={options} note={note} />
+}
 
+function SearchCombo({ label, autoFocus, onPick, onClose, query, setQuery, setFocused, options, note }: SearchProps & {
+  query: string
+  setQuery: (q: string) => void
+  setFocused: (on: boolean) => void
+  options: Option[]
+  note: string | null
+}) {
   return (
     <Combobox<Option | null> value={null} immediate
       onChange={o => { if (o) void Promise.resolve(o.pick()).then(l => { if (l) onPick(l) }) }}
@@ -340,6 +360,8 @@ function NamesRow({ value, mark, known, onChange }: { value: string[]; mark?: Re
   const typed = cleanText(query, DETAIL_LIMITS.name)
   const offered = focused ? suggestionsFor(known, query, value).slice(0, 8) : []
   const has = (n: string) => value.some(x => x.toLowerCase() === n.toLowerCase())
+  // A name typed that isn't picked yet nor offered as it is: "Add …" first, so Enter adds what was typed.
+  const isNew = !!typed && !has(typed) && !offered.some(o => o.toLowerCase() === typed.toLowerCase())
   const add = (n: string) => { onChange(cleanNames([...value, n]) ?? []); setQuery('') }
   return (
     <Row label="With" mark={mark} wide>
@@ -361,14 +383,19 @@ function NamesRow({ value, mark, known, onChange }: { value: string[]; mark?: Re
                 placeholder={value.length ? 'Add' : 'Add a name'} maxLength={DETAIL_LIMITS.name + 10} value={query}
                 onFocus={() => setFocused(true)} onChange={e => setQuery(e.target.value)}
                 onKeyDown={e => {
-                  if (e.key === 'Enter' && typed && !has(typed) && offered.length === 0) { e.preventDefault(); add(typed) }
+                  if (e.key === 'Enter' && isNew && offered.length === 0) { e.preventDefault(); add(typed) }
                   if (e.key === 'Escape' && query) { e.stopPropagation(); setQuery('') }
                 }}
                 // A name typed and never Entered is kept when the field is left, never dropped without a word.
                 onBlur={() => { if (typed && !has(typed)) add(typed); setFocused(false); setQuery('') }}
                 autoComplete="off" enterKeyHint="done" className="input-bare w-24 pb-0 text-right text-lead" />
-              {offered.length > 0 && (
+              {(isNew || offered.length > 0) && (
                 <ComboboxOptions modal={false} anchor={{ to: 'bottom end', gap: 6, padding: 12 }} className="menu z-toast min-w-[12rem]">
+                  {isNew && offered.length > 0 && (
+                    <ComboboxOption value={typed} className="menu-item cursor-pointer data-[focus]:bg-surface-hover">
+                      <Plus aria-hidden className="h-4 w-4 shrink-0" /><Truncate className="min-w-0 flex-1" fullText={`Add “${typed}”`}>Add “<bdi>{typed}</bdi>”</Truncate>
+                    </ComboboxOption>
+                  )}
                   {offered.map(n => (
                     <ComboboxOption key={n} value={n} className="menu-item cursor-pointer data-[focus]:bg-surface-hover">
                       <User aria-hidden className="h-4 w-4 shrink-0 text-fg-muted" /><bdi className="min-w-0 flex-1"><Truncate>{n}</Truncate></bdi>
