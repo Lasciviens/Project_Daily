@@ -41,10 +41,12 @@ export function NextExerciseCard({ row }: { row: PlanRow }) {
         <p className="section-label flex items-center gap-1.5">
           Target
           <InfoBubble>
-            <b>Where this target comes from.</b> The progress engine compares your last comparable sessions of this exercise with
-            its rep target (your override, else the routine&apos;s, else a labelled default) and uses double progression: add reps
-            at the same load until every set reaches the top of the range, then add load. Each set keeps its own load, so a
-            backoff set stays at the backoff weight.
+            <b>Where this target comes from.</b> The progress engine compares your last sessions of this exercise with its rep
+            target (your override, else the routine&apos;s, else a labelled default). Matching last time is on track; one more rep
+            anywhere is progress. Weight goes up after 2 sessions in a row at the top of the range, by about 2.5–5 % of the load
+            (5–10 % for big lower-body lifts), rounded to your equipment. When the next step is over 10 % (light dumbbells) it says
+            Almost: reps first, or jump. Below the minimum twice after a jump, it suggests stepping back. RPE is a note only — it
+            never changes the target. Each set keeps its own load, so a backoff set stays at the backoff weight.
             <span className="mt-1.5 block"><SourceNote ids={['acsm2009', 'plotkin2022']} /></span>
           </InfoBubble>
         </p>

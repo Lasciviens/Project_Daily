@@ -141,7 +141,7 @@ function NextTargetTiles({ result }: { result: ExerciseProgressResult }) {
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       <DetailTile
         label="Next session"
-        info={<><b>Next session</b> A concrete plan for the next time you do this exercise: each set keeps its own load, and the floor is simply &quot;don&apos;t let any set drop below last time&quot;. Double progression — add reps at the same load until every set reaches the top of your range, then add load.</>}
+        info={<><b>Next session</b> A concrete plan for the next time you do this exercise, each set at its own load. Matching last time is on track; one more rep anywhere is progress. Weight goes up after 2 sessions in a row at the top of your range.</>}
       >
         {t.nextSession.headline}
       </DetailTile>
@@ -247,7 +247,7 @@ export function DecisionDetail({ result, sessions, metricKind, title }: { result
       {result.currentState.estimatedStrengthChange && (
         <p className="flex items-center gap-1 text-meta text-fg-muted">
           Estimated 1RM: {result.currentState.estimatedStrengthChange.fromKg} kg → {result.currentState.estimatedStrengthChange.toKg} kg
-          <InfoBubble><b>Estimated 1RM</b> A rough estimate of your one-rep max from weight × reps (Epley formula, sets of 12 reps or fewer) — not a tested number. Useful for direction only; the real sets above are what actually happened.</InfoBubble>
+          <InfoBubble><b>Estimated 1RM</b> A rough estimate of your one-rep max from weight × reps (Epley formula, sets of 10 reps or fewer) — not a tested number. Useful for direction only; the real sets above are what actually happened.</InfoBubble>
         </p>
       )}
 

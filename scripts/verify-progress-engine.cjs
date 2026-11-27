@@ -1809,6 +1809,13 @@ console.log('\n== 23. Progression rules 3.0 — the owner\'s example (27.11.2026
   const assist = evaluateExerciseProgress({ exerciseTemplateId: 'assist', metricKind: 'assistedWeight', sessions: buildCanonicalSessions(history('assist', [[10, [10, 10, 10]], [10, [10, 10, 10]]]), 'assist'), expectation: DEFAULT_EXPECTATION(6, 10, 3), equipmentClass: 'machine' }, DEFAULT_POLICY)
   check('assisted at the top twice → one step less assistance, never Almost', assist.currentAction === 'READY_TO_INCREASE' && assist.nextTargets.nextSession.loadKg === 7.75)
 
+  // The Progress table's tabs read the same decision as the pill.
+  const { filterByTab: tabOf } = require('../src/features/training/progress/decisionTabs')
+  const inTab = (r, tab) => tabOf([r], tab, '2026-12-31').length === 1
+  check('tabs: Almost and Add weight are on "Add weight"', inTab(twelveTwice, 'increase') && inTab(bench, 'increase'))
+  check('tabs: a new weight below the minimum builds (never "Check")', inTab(newWeight, 'building') && !inTab(newWeight, 'attention'))
+  check('tabs: Repeat builds; Step back is on "Check"', inTab(twelveOnce, 'building') && inTab(stepBack, 'attention') && !inTab(stepBack, 'building'))
+
   check('ALGORITHM_VERSION is bumped to 3.0.0', ALGORITHM_VERSION === '3.0.0')
   check('no target line says "must", "failed" or "behind"', [first, eights, eightsTop, twelveOnce, twelveTwice, fourteen, bench, worse, newWeight, stepBack, back].every(r => !/\b(must|failed|behind)\b/i.test(headline(r) + ' ' + buildExplanationSentence(r))))
 }

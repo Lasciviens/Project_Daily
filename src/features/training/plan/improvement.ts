@@ -8,16 +8,16 @@
 // assistance, longest hold, longest distance. The start of the window is the
 // better of its first two sessions and the end the better of its last two —
 // one off-day at either end doesn't decide the verdict. A change within
-// ±2.5% is "flat": a product threshold for day-to-day noise, not a
-// research-backed cut-off (e1RM estimates themselves carry ~±10% error, so
-// the absolute number is secondary to its direction over time).
+// ±3% is "flat": day-to-day scatter is about 3–6 % (S16), so a smaller change
+// is noise. e1RM is an estimate — its direction over time matters, not the
+// exact number.
 
 import { est1RM, metricKindForExerciseType, type ProgressMetricKind, type ProgressSetRow } from '../progressAggregate'
 
 export const WINDOW_WEEKS = [4, 12, 26] as const
 export type WindowWeeks = typeof WINDOW_WEEKS[number]
 
-export const FLAT_BAND_PCT = 2.5
+export const FLAT_BAND_PCT = 3
 export const MIN_SESSIONS = 3
 export const MIN_SPAN_DAYS = 14
 

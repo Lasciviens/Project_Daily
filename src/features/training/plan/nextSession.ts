@@ -129,7 +129,7 @@ export function buildTrainingAlerts(
   if (ready.length > 0) {
     out.push({
       id: 'ready', tone: 'success', exerciseIds: ready.map(d => d.exerciseTemplateId),
-      text: `${ready.length} ${ready.length === 1 ? 'lift' : 'lifts'} ready to increase: ${listNames(ready.map(d => titleOf(d.exerciseTemplateId)))}`,
+      text: `${ready.length} ${ready.length === 1 ? 'lift' : 'lifts'} ready for more weight: ${listNames(ready.map(d => titleOf(d.exerciseTemplateId)))}`,
     })
   }
   for (const d of decisions) {

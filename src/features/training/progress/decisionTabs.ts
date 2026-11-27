@@ -10,9 +10,16 @@
 // vanished from Recent even though it was trained yesterday.
 
 import { visibleEvents } from '../progress-engine/copy'
-import type { ExerciseProgressResult } from '../progress-engine/types'
+import type { CurrentAction, ExerciseProgressResult } from '../progress-engine/types'
 
 export type DecisionTab = 'recent' | 'increase' | 'building' | 'attention' | 'all'
+
+/** Each action's tab — the same engine decision as the pill. */
+const INCREASE: ReadonlySet<CurrentAction> = new Set<CurrentAction>(['READY_TO_INCREASE', 'ALMOST_READY'])
+const BUILDING: ReadonlySet<CurrentAction> = new Set<CurrentAction>([
+  'BUILD_AT_CURRENT_LOAD', 'CONFIRM_AT_CURRENT_LOAD', 'HOLD_STEADY', 'REPEAT_AT_TOP', 'NEW_WEIGHT', 'REVIEW_LOAD_REDUCTION',
+])
+const ATTENTION: ReadonlySet<CurrentAction> = new Set<CurrentAction>(['STEP_BACK', 'WATCH_FOR_PLATEAU', 'WATCH_FOR_REGRESSION'])
 
 export const RECENT_DAYS = 14
 
@@ -42,11 +49,12 @@ export function filterByTab(decisions: readonly ExerciseProgressResult[], tab: D
   const below = (d: ExerciseProgressResult) => d.rangeCompliance === 'BELOW_MINIMUM'
   switch (tab) {
     case 'increase':
-      return withDecision.filter(d => d.currentAction === 'READY_TO_INCREASE')
+      return withDecision.filter(d => INCREASE.has(d.currentAction))
     case 'building':
-      return withDecision.filter(d => !below(d) && (d.currentAction === 'BUILD_AT_CURRENT_LOAD' || d.currentAction === 'CONFIRM_AT_CURRENT_LOAD' || d.currentAction === 'HOLD_STEADY'))
+      // Fewer reps right after a jump are normal (S5/S6): a new weight builds, it never needs attention.
+      return withDecision.filter(d => BUILDING.has(d.currentAction) && (d.currentAction === 'NEW_WEIGHT' || !below(d)))
     case 'attention':
-      return withDecision.filter(d => below(d) || d.currentAction === 'WATCH_FOR_PLATEAU' || d.currentAction === 'WATCH_FOR_REGRESSION' || d.currentAction === 'REVIEW_LOAD_REDUCTION')
+      return withDecision.filter(d => ATTENTION.has(d.currentAction) || (below(d) && d.currentAction !== 'NEW_WEIGHT' && !INCREASE.has(d.currentAction)))
     case 'recent': {
       const cutoff = daysAgo(today, RECENT_DAYS)
       return decisions.filter(d => (d.currentState.latest?.date ?? '') >= cutoff)

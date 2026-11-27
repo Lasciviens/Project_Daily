@@ -50,10 +50,10 @@ export function ImprovementCard({ preferIds }: { preferIds: ReadonlySet<string> 
           <InfoBubble>
             Each exercise&apos;s sessions in the window are reduced to one number in its own measure — estimated 1-rep max (e1RM)
             for weighted lifts, top-set reps for bodyweight moves, least assistance for assisted ones. The start is the better
-            of its first two sessions, the end the better of its last two. Within ±2.5% counts as flat (a noise band we chose,
-            not a research cut-off). An exercise needs 3 sessions over at least 2 weeks to be judged.
-            <span className="mt-1.5 block"><b>e1RM</b> (Epley) is an estimate, typically within about ±10% and only computed for
-            sets of 12 reps or fewer — watch its direction, not the exact kilos.</span>
+            of its first two sessions, the end the better of its last two. Within ±3% counts as flat — day-to-day scatter is
+            about 3–6%, so a smaller change is noise. An exercise needs 3 sessions over at least 2 weeks to be judged.
+            <span className="mt-1.5 block"><b>e1RM</b> (Epley) is an estimate, only computed for sets of 10 reps or fewer —
+            watch its direction, not the exact kilos.</span>
           </InfoBubble>
         </span>}
         action={
@@ -87,9 +87,9 @@ export function ImprovementCard({ preferIds }: { preferIds: ReadonlySet<string> 
             {/* Says what est1RM (progressAggregate) and sessionTopValue (plan/improvement) do: change them together. */}
             <InfoBubble label="What 1RM means">
               <b>1RM</b> (one-rep max): the most you could lift for a single rep. Estimated from your logged sets, so you
-              never have to test it: each session&apos;s best set of 12 reps or fewer counts as weight × (1 + reps ÷ 30)
-              (the Epley formula; warm-ups and drop sets are left out). The kilos are the window&apos;s start → end. An
-              estimate can be about ±10% off, so watch the direction, not the exact number.
+              never have to test it: each session&apos;s best set of 10 reps or fewer counts as weight × (1 + reps ÷ 30)
+              (the Epley formula; warm-ups and drop sets are left out). The kilos are the window&apos;s start → end. It is
+              an estimate, so watch the direction, not the exact number.
             </InfoBubble>
           </p>
           <ul className="flex flex-col gap-1.5">

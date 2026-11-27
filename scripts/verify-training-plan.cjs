@@ -65,7 +65,7 @@ console.log('\nnextSession')
     d('a', 'READY_TO_INCREASE'), d('b', 'READY_TO_INCREASE'), d('c', 'WATCH_FOR_PLATEAU', 'POSSIBLE_PLATEAU', 5),
     d('e', 'WATCH_FOR_REGRESSION', 'DECLINING', 4), d('f', 'REVIEW_LOAD_REDUCTION'), d('g', 'HOLD_STEADY'),
   ], id => titles[id] ?? id, { workload: 'review_workload', corroboratingSignal: 'sleep down ~1h/night', affectedCount: 2 })
-  check('alerts: ready lifts grouped in one line', alerts.some(a => a.text === '2 lifts ready to increase: Bench, Squat'), J(alerts.map(a => a.text)))
+  check('alerts: ready lifts grouped in one line', alerts.some(a => a.text === '2 lifts ready for more weight: Bench, Squat'), J(alerts.map(a => a.text)))
   check('alerts: plateau names the session count', alerts.some(a => a.text === 'Row flat for 5 sessions at this load'))
   check('alerts: regression line, not also a plateau line', alerts.some(a => a.id === 'down:e') && !alerts.some(a => a.id === 'flat:e'))
   check('alerts: load reduction asks, info tone', alerts.find(a => a.id === 'lower:f')?.tone === 'info')
@@ -307,6 +307,7 @@ console.log('\nmuscleBalance')
 
 // ─── improvement.ts ─────────────────────────────────────────────────────────
 console.log('\nimprovement')
+check('S16: the "flat" band is 3 % (day-to-day scatter is 3–6 %), mirrored by the muscle watch', I.FLAT_BAND_PCT === 3 && require('../src/features/health/goal/muscleWatch.ts').LIFT_FLAT_PCT === I.FLAT_BAND_PCT)
 {
   const row = (w, date, tid, weight, reps, type = 'normal', extra = {}) => ({ workout_id: w, date, exercise_template_id: tid, set_type: type, weight_kg: weight, reps, duration_seconds: null, distance_meters: null, ...extra })
   check('higherIsBetter false only for assistance', !I.higherIsBetter('assistedWeight') && I.higherIsBetter('reps'))

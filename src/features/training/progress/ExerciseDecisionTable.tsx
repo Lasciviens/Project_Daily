@@ -24,9 +24,9 @@ import { DecisionFilterBar } from './DecisionFilterBar'
 type Tab = DecisionTab
 const TABS: { id: Tab; label: string; hint: string }[] = [
   { id: 'recent', label: 'Recent changes', hint: 'Every exercise you trained in the last 14 days, most recent first. “No change” means the load and reps matched last time.' },
-  { id: 'increase', label: 'Ready to increase', hint: 'Every prescribed set reached the top of the range — try the next load.' },
-  { id: 'building', label: 'Building', hint: 'Keep the load and add reps toward the top of the range.' },
-  { id: 'attention', label: 'Needs attention', hint: 'Below the minimum, a load reduction to check, or a plateau/decline at this load.' },
+  { id: 'increase', label: 'Add weight', hint: 'Every set at the top of the range 2 sessions in a row. Almost: the next step is over 10 % of the load — reps first, or jump.' },
+  { id: 'building', label: 'Add reps', hint: 'Keep the load: matching last time is on track, one more rep anywhere is progress.' },
+  { id: 'attention', label: 'Check', hint: 'A step back after a jump, a set below the minimum, or no change in 3+ weeks at this load.' },
   { id: 'all', label: 'All exercises', hint: 'Every current-program exercise you have logged, including ones with only one session so far.' },
 ]
 

@@ -182,7 +182,7 @@ export function RelativeStrengthChart() {
               Bodyweight is taken from a weigh-in within 14 days, or interpolated between two weigh-ins less than 3 weeks apart.{' '}
               {estimatedCount > 0 && `${estimatedCount} of ${chartData.length} points use an estimated (hollow-dot) bodyweight rather than a same-day weigh-in.`}
             </p>
-            <p>Estimated 1RM carries its own ~±10% error (Epley, sets of 12 reps or fewer only) — read the direction over months, not the exact number.</p>
+            <p>Estimated 1RM is an estimate (Epley, sets of 10 reps or fewer only) — read the direction over months, not the exact number.</p>
             <p>
               Dividing by bodyweight isn&apos;t size-neutral in general (force scales closer to bodyweight^0.67 than bodyweight^1.0), so this is useful for comparing you
               against your own past self — not against anyone else. There are deliberately no &quot;strength standard&quot; reference lines here: what counts as strong
