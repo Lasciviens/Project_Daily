@@ -3,7 +3,7 @@ import { Eye } from 'lucide-react'
 import { cx } from '../../../shared/ui'
 import { useIdlePreload } from '../../../shared/hooks/useIdlePreload'
 import { lazyPart } from '../../../shared/utils/lazyPage'
-import { lookLine, type Look, type RecordFact } from '../shopSuggestions'
+import { lookCount, lookLine, type Look, type RecordFact } from '../shopSuggestions'
 
 // "Needs a look": one button in the Shop page's header that opens every row in a sheet (owner, 23.11.2026; it was a
 // card in a right rail, and on a phone one line above the things). Only this button and its count are in the page's
@@ -24,8 +24,11 @@ export interface LookActions {
   onOpenThing: (id: string, fact?: RecordFact) => void
 }
 
-/** Its state: still loading, a read that failed (one line with Try again — never an answer), or the rows and those put away. */
-export interface LookState { looks: readonly Look[]; hidden: readonly Look[]; loading: boolean; failed: boolean; onRetry: () => void; today: string }
+/**
+ * Its state: still loading, a read that failed (one line with Try again — never an answer), or the rows, those put
+ * away and how many unread Shop notices the bell's list shows among them.
+ */
+export interface LookState { looks: readonly Look[]; hidden: readonly Look[]; notices: number; loading: boolean; failed: boolean; onRetry: () => void; today: string }
 
 /**
  * Needs a look's one button in the Shop page's header (owner, 23.11.2026: it left the rail, whose room goes to the
@@ -33,14 +36,15 @@ export interface LookState { looks: readonly Look[]; hidden: readonly Look[]; lo
  * never changes size, so the bar never reshapes while the rows load or their number changes (THEME §6.3). A tap opens
  * every row in a sheet.
  */
-export function NeedsALookButton({ looks, hidden, loading, failed, onRetry, today, actions }: LookState & { actions: LookActions }) {
+export function NeedsALookButton({ looks, hidden, notices, loading, failed, onRetry, today, actions }: LookState & { actions: LookActions }) {
   const [open, setOpen] = useState(false)
   // Mounted from the first tap on, so the sheet closes with its own transition (and its focus goes back by itself).
   const [mounted, setMounted] = useState(false)
   useIdlePreload(SHEET_PARTS)
-  const counted = !loading && !failed && looks.length > 0
-  const label = failed && !loading ? 'Needs a look (couldn\'t load)' : counted ? `Needs a look (${looks.length})` : 'Needs a look'
-  const claim = counted ? lookLine(looks).claim : null
+  const badge = lookCount(looks, notices)
+  const counted = !loading && !failed && badge.count > 0
+  const label = failed && !loading ? 'Needs a look (couldn\'t load)' : counted ? `Needs a look (${badge.count})` : 'Needs a look'
+  const claim = counted && looks.length ? lookLine(looks).claim : null
   // A row's action closes the sheet first (it opens a record or a sheet of its own); Snooze and Got it keep it open.
   const closing = (fn: (look: Look) => void) => (look: Look) => { setOpen(false); fn(look) }
   const inSheet: LookActions = {
@@ -56,13 +60,13 @@ export function NeedsALookButton({ looks, hidden, loading, failed, onRetry, toda
         className={cx('icon-btn-bordered relative h-9 w-9 shrink-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11', counted && 'text-fg')}>
         <Eye aria-hidden className="h-[18px] w-[18px]" />
         {counted && (
-          <span aria-hidden data-tone={looks[0].tone} className="tone-pill absolute -right-1.5 -top-1.5 min-w-[1.25rem] justify-center px-1 tabular-nums shadow-card">{looks.length}</span>
+          <span aria-hidden data-tone={badge.tone ?? undefined} className="tone-pill absolute -right-1.5 -top-1.5 min-w-[1.25rem] justify-center px-1 tabular-nums shadow-card">{badge.count}</span>
         )}
         {!loading && failed && <span aria-hidden data-tone="warn" className="tone-dot absolute -right-0.5 -top-0.5" />}
       </button>
       {mounted && (
         <Suspense fallback={null}>
-          <NeedsALookSheet open={open} onClose={() => setOpen(false)} looks={looks} hidden={hidden} loading={loading} failed={failed} onRetry={onRetry} today={today} actions={inSheet} />
+          <NeedsALookSheet open={open} onClose={() => setOpen(false)} looks={looks} hidden={hidden} notices={notices} loading={loading} failed={failed} onRetry={onRetry} today={today} actions={inSheet} />
         </Suspense>
       )}
     </>

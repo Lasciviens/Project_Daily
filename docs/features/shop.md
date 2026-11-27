@@ -81,7 +81,7 @@ Drop; fold headings match their tabs — "Gone", "Dropped", "Picked up", "Put aw
 ## Linked plans (owner, 26.11.2026; migration 211)
 
 - Plan on a wish, the record and the quick list goes through `usePlanThis`; an owned thing with a return or complaint day still ahead offers **Return by** / **Complain by** (a plan on that day, linked to the thing), and the sell sheet **Handover** (the day you meet the buyer). While the thing has an open plan these are one chip, **Planned DD.MM.YYYY**, that opens it.
-- Ticking a wishlist thing's plan done buys it as a draft (`bought_at` = the tick; store, price and the rest are the owner's to fill in) and leaves a notice in **Needs a look** ("Bought through a plan · 26.11.2026 · check the purchase"; Open → the record's purchase, Got it reads it). Unticking puts it back on the wishlist — only while the draft is unchanged — and removes the notice. A return, complaint or handover plan only closes. Details: `docs/features/tasks.md` → Linked plans.
+- Ticking a wishlist thing's plan done buys it as a draft (`bought_at` = the tick; store, price and the rest are the owner's to fill in) and leaves a notice that **Needs a look** shows in the bell's own list (`NotificationList`'s `shop` mode, after the urgent rows; owner, 27.11.2026): "Bought through a plan: check the purchase" with the thing's name and when; a tap opens the record at its purchase (and reads the notice), **Read** puts it away with Undo — the same rows, words and actions as the bell (`docs/features/notifications.md`). Unticking puts it back on the wishlist — only while the draft is unchanged — and removes the notice. A return, complaint or handover plan only closes. Details: `docs/features/tasks.md` → Linked plans.
 
 ## Shop points of 23.11.2026 (owner)
 

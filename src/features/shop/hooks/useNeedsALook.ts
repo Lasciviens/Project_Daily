@@ -6,14 +6,22 @@ import { useDealDays, usePriceStats, useSignalStates } from './useShopSignals'
 import { useShopCosts } from './useShopMoney'
 import { useStoreLooks } from './useStoreLooks'
 import { dealsAhead } from '../dealDays'
-import { DEAL_AHEAD_DAYS, needsALook, noticeLooks, splitLooks, type Look } from '../shopSuggestions'
-import { useShopNotices } from './useShopNotices'
+import { DEAL_AHEAD_DAYS, needsALook, splitLooks, type Look } from '../shopSuggestions'
+import { useShopNotices } from '../../notifications/hooks/useNotifications'
 import { factsOf, watchedWishIds, type PriceFacts } from '../wishTile'
 import type { ShopItem } from '../types'
 
 const NO_COSTS: never[] = []
 
-export interface NeedsALookData { looks: Look[]; hidden: Look[]; loading: boolean; failed: boolean; onRetry: () => void }
+export interface NeedsALookData {
+  looks: Look[]
+  hidden: Look[]
+  /** The unread Shop notices (the bell's list shows them in the sheet, after the urgent rows): counted on the button. */
+  notices: number
+  loading: boolean
+  failed: boolean
+  onRetry: () => void
+}
 
 /**
  * Needs a look's rows from the Shop's own reads — the rows, their price
@@ -40,15 +48,10 @@ export function useNeedsALook(items: readonly ShopItem[], itemsLoading: boolean)
   const costsQ = useShopCosts()
   const store = useStoreLooks(items, watches, costsQ.data ?? NO_COSTS, today)
   const all = useMemo(() => needsALook(items, { watches, facts, deals, store: store.inputs }, today), [items, watches, facts, deals, store.inputs, today])
-  // The server's notices (211: a plan bought a thing as a draft) after the urgent rows; they are read, never snoozed.
+  // The server's notices (211: a plan bought a thing as a draft) are the bell's list, which the sheet shows after the
+  // urgent rows (owner, 27.11.2026; the rows come sorted by tone); this reads the same query to count them and to wait for them.
   const noticesQ = useShopNotices()
-  const notices = useMemo(() => noticeLooks(noticesQ.data ?? [], items), [noticesQ.data, items])
-  const split = useMemo(() => splitLooks(all, statesQ.data ?? [], today), [all, statesQ.data, today])
-  const shown = useMemo(() => {
-    const urgent = split.shown.filter(l => l.tone === 'danger' || l.tone === 'warn')
-    return [...urgent, ...notices, ...split.shown.filter(l => !urgent.includes(l))]
-  }, [notices, split.shown])
-  const hidden = split.hidden
+  const { shown, hidden } = useMemo(() => splitLooks(all, statesQ.data ?? [], today), [all, statesQ.data, today])
   const loading = itemsLoading || noticesQ.isLoading || watchQ.isLoading || stats.loading || dealsQ.isLoading || statesQ.isLoading || costsQ.isLoading || store.loading
   const failed = (!itemsLoading && itemsQ.isError) || (!noticesQ.isLoading && noticesQ.isError) || (!watchQ.isLoading && watchQ.isError) || stats.failed
     || (!dealsQ.isLoading && dealsQ.isError) || (!statesQ.isLoading && statesQ.isError) || (!costsQ.isLoading && costsQ.isError) || store.failed
@@ -62,5 +65,5 @@ export function useNeedsALook(items: readonly ShopItem[], itemsLoading: boolean)
     if (costsQ.isError) void costsQ.refetch()
     if (store.failed) store.retry()
   }
-  return { looks: shown, hidden, loading, failed, onRetry }
+  return { looks: shown, hidden, notices: noticesQ.data?.length ?? 0, loading, failed, onRetry }
 }

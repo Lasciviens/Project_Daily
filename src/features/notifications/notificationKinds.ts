@@ -132,7 +132,7 @@ export interface NoticeKindInfo {
 
 /** Every kind, in the order Settings lists them. */
 export const NOTICE_KINDS: readonly NoticeKindInfo[] = [
-  { kind: 'sign_in_failed', label: 'A sign-in stopped working', hint: 'Trakt, Strava, Google or Apple Calendar refused the stored sign-in: connect it again.', defaultChannel: 'push_now' },
+  { kind: 'sign_in_failed', label: 'A sign-in stopped working', hint: 'Trakt, Strava, Google, Apple Calendar or PlayStation refused the stored sign-in: connect it again.', defaultChannel: 'push_now' },
   { kind: 'sign_in_expiring', label: 'A sign-in ends soon', hint: 'PlayStation’s sign-in token: 14, 7 and 1 days before it ends.', defaultChannel: 'push_morning' },
   { kind: 'claude_key_rejected', label: 'Claude API key rejected', hint: 'Anthropic refused the server’s key: the AI features stop until it is replaced.', defaultChannel: 'push_now' },
   { kind: 'claude_key_expiring', label: 'Claude API key ends soon', hint: '14, 7 and 1 days before the end you typed on the Anthropic card.', defaultChannel: 'push_morning' },
@@ -140,6 +140,9 @@ export const NOTICE_KINDS: readonly NoticeKindInfo[] = [
   { kind: 'follow_new_title', label: 'New film from a follow', hint: 'A director, actor, studio or series you follow has a new film.', defaultChannel: 'push_weekly' },
   { kind: 'follow_trailer', label: 'New trailer from a follow', hint: 'A new trailer for a film from something you follow.', defaultChannel: 'in_app' },
 ]
+
+/** The kinds about a Shop thing: Shop → Needs a look shows them, in the bell's list (owner, 27.11.2026). */
+export const SHOP_NOTICE_KINDS: readonly NoticeKind[] = ['shop_bought_draft']
 
 export const NOTICE_KIND_SET: ReadonlySet<string> = new Set(NOTICE_KINDS.map(k => k.kind))
 export const isNoticeKind = (k: unknown): k is NoticeKind => typeof k === 'string' && NOTICE_KIND_SET.has(k)

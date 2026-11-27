@@ -215,14 +215,15 @@ const RPCS = {
     return [...groups.values()].map(({ duration_sum, ...g }) => ({ ...g, avg_duration_ms: g.timed_calls ? Math.round(duration_sum / g.timed_calls) : 0 })).sort((x, y) => x.day.localeCompare(y.day))
   },
 
-  // 212: the bell's read — the owner's notices newest first, with the thing's name (and a film's TMDB id).
+  // 212: the bell's read — the owner's notices newest first, with the thing's name (and a film's TMDB id); 213: only
+  // `p_kinds` when given (Shop → Needs a look).
   notification_feed: (a, store) => {
     const before = a.p_before ? Date.parse(a.p_before) : Infinity
     const limit = Math.min(Math.max(Number(a.p_limit) || 30, 1), 200)
     const subject = n => n.link_kind === 'shop_item' ? store.rows('shop_items').find(r => r.id === n.link_id)?.title ?? null
       : n.link_kind === 'media_follow_event' ? store.rows('media_follow_events').find(r => r.id === n.link_id)?.title ?? null : null
     return store.rows('notifications')
-      .filter(n => Date.parse(n.created_at) < before && (!a.p_unread_only || !n.read_at))
+      .filter(n => Date.parse(n.created_at) < before && (!a.p_unread_only || !n.read_at) && (!Array.isArray(a.p_kinds) || a.p_kinds.includes(n.kind)))
       .sort((x, y) => y.created_at.localeCompare(x.created_at)).slice(0, limit)
       .map(n => ({ id: n.id, kind: n.kind, link_kind: n.link_kind, link_id: n.link_id, service: n.service, due_on: n.due_on, created_at: n.created_at,
         read_at: n.read_at, acted_at: n.acted_at, subject: subject(n),

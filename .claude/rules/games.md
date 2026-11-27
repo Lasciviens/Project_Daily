@@ -21,4 +21,5 @@ Background: `docs/features/games.md`, `docs/games/screenscraper-integration.md`.
 - `hidden` is a play status; `finished_at` comes from the last session, not the button press.
 - Loading is tiered: no new eager call on mount (the one exception: the daily library auto-sync).
 - PlayStation is best-effort and unverified; wrap its surfaces in `ErrorBoundary` and guard every field.
+- `psn-api`'s refresh answered without an access token is the refused sign-in: it tells the bell (`notify_service_problem(user, 'psn')`, 213) and writes nothing to `psn_tokens`; a fresh refresh token written there settles the notice (`docs/features/notifications.md`).
 - Platforms left out of stats stay in the Library but out of every count (`countedGames`).

@@ -8,7 +8,7 @@ import {
   fetchNoticePrefs, fetchNotices, fetchUnreadCount, markAllNoticesRead, saveNoticePref, setNoticeActed, setNoticesRead,
 } from '../api/notificationsApi'
 import { fetchClaudeKeyDates, saveClaudeKeyDates } from '../api/keyExpiryApi'
-import { NOTICE_KINDS, type NoticeChannel, type NoticeKind } from '../notificationKinds'
+import { NOTICE_KINDS, SHOP_NOTICE_KINDS, type NoticeChannel, type NoticeKind } from '../notificationKinds'
 import { formatDate } from '../../../shared/utils/dateFormat'
 
 // A film notice and its What's new event share one "read" (212's triggers), so a read refreshes both.
@@ -34,14 +34,28 @@ export function useDropdownNotices(enabled: boolean) {
   })
 }
 
-/** The page's list, a page at a time, newest first (all, or only the unread). */
-export function usePageNotices(unreadOnly: boolean) {
+/** The page's list, a page at a time, newest first (all, or only the unread; only while the page shows it). */
+export function usePageNotices(unreadOnly: boolean, enabled: boolean) {
   return useInfiniteQuery({
     queryKey: qk.notifications.feed('page', unreadOnly),
     queryFn: ({ pageParam }) => fetchNotices({ limit: PAGE_SIZE, before: pageParam, unreadOnly }),
     initialPageParam: null as string | null,
     getNextPageParam: last => (last.length < PAGE_SIZE ? undefined : last[last.length - 1].created_at),
     staleTime: STALE.short,
+    enabled,
+  })
+}
+
+/** The most unread Shop notices Needs a look lists (the feed's own cap). */
+export const SHOP_LIMIT = 200
+
+/** Shop → Needs a look's notices: the unread ones of the Shop's kinds (its list and its count read this one query). */
+export function useShopNotices(enabled = true) {
+  return useQuery({
+    queryKey: qk.notifications.feed('shop', true),
+    queryFn: () => fetchNotices({ limit: SHOP_LIMIT, unreadOnly: true, kinds: SHOP_NOTICE_KINDS }),
+    staleTime: STALE.short,
+    enabled,
   })
 }
 
