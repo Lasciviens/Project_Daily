@@ -266,7 +266,7 @@ eq(S.weekStartOf('2026-03-29'), '2026-03-23', 'across the DST change')
     const w = week('2026-11-27', [
       s('ua', '2026-11-23', { taskStatus: 'done', taskWorkoutId: 'w1' }, { workoutDate: '2026-11-25' }),
       s('la', '2026-11-24', { taskStatus: 'done', taskWorkoutId: 'w2' }, { workoutDate: '2026-11-25' }),
-      s('ub', '2026-11-26'), s('lb', '2026-11-28'),
+      s('ub', '2026-11-26'), s('lb', '2026-11-28', {}, { taskId: null }),
     ])
     eq([byR(w, 'ua').mark, byR(w, 'ua').shift, S.weekSessionWord(byR(w, 'ua')), S.weekChipWord(byR(w, 'ua'))], ['done', 2, 'Done 25.11.2026 · 2 days late', '2d late'],
       "the owner's case: Upper A done on another day reads done, 2 days late — never missed")
@@ -276,7 +276,7 @@ eq(S.weekStartOf('2026-03-29'), '2026-03-23', 'across the DST change')
       'Upper B (missed Thursday, still open) is next; every session keeps its stored day — nothing moves on screen')
     eq(S.todaysCall(w, '2026-11-27'), "Do Upper B next — it's still open until 02.12.2026.", "Today's call starts with a verb and reads the stored days")
     eq([w.offer.days, w.offer.anchor.routineId, w.offer.moving.map(m => m.routineId)], [1, 'ub', ['ub', 'lb']],
-      'the move is offered, not made: Upper B and the rest one day later (lands today)')
+      'the move is offered, not made: Upper B and the rest one day later (lands today) — a weekly plan\'s day with no task yet too (the database splits it)')
     eq(S.shiftOfferWords(w.offer), { question: "Upper B wasn't done on Thu 26.11.2026 — move it and the rest one day later?", button: 'Move', tip: 'Move Upper B, Lower B one day later' },
       'the offer: a question and a 1-word button, the full words in its tooltip')
   }

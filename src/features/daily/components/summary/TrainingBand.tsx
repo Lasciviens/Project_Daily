@@ -213,7 +213,8 @@ function RestDayBox({ date, label, loading }: { date: string; label: string; loa
   // The week's next session (a missed one first, sessionState.planWeek) — the strip's and Training's Next; another
   // week's day, or a week with nothing left, reads the soonest plan after the day.
   const { week } = useTrainingWeek(date)
-  const weekNext = week.next && week.next.date > date ? week.next : null
+  // Today: the week's next as it is (a missed one still open first); another day: the next one after it.
+  const weekNext = date === todayStr() ? week.next : week.next && week.next.date > date ? week.next : null
   const next = useMemo(() => pickNextTrainingSession({
     blocks, templates: templates.filter(t => t.category === 'training'), dayTasks, today: shiftDateStr(date, 1),
     lookaheadDays: NEXT_SESSION_LOOKAHEAD_DAYS - 1,
@@ -241,7 +242,7 @@ function RestDayBox({ date, label, loading }: { date: string; label: string; loa
           </Menu>
         )}
       </div>
-      <StatNote>{weekNext ? `Next: ${weekNext.title} · ${formatWeekdayDate(weekNext.date)}`
+      <StatNote>{weekNext ? `Next: ${weekNext.title} · ${weekNext.date > date ? formatWeekdayDate(weekNext.date) : `open since ${formatWeekdayDate(weekNext.date)}`}`
         : next ? `Next: ${next.title} · ${formatWeekdayDate(next.date)}` : 'Nothing planned ahead'}</StatNote>
     </StatBox>
   )

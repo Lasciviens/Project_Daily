@@ -16,7 +16,8 @@ const path = require('path')
 const sucrase = require('sucrase')
 const REPO = path.join(__dirname, '..')
 const { buildDailyBrief } = require('../src/features/home/briefRules.ts')
-const { dayTasks, isOverdueOn } = require('../src/features/todo/taskRules.ts')
+const { dayTasks, isOverdueOn, isOpenTask } = require('../src/features/todo/taskRules.ts')
+const NEXT = require('../src/features/training/plan/nextRule.ts')
 
 let ok = 0, bad = 0
 const check = (name, cond, detail) => { if (cond) { ok++; console.log('  ✓', name) } else { bad++; console.log('  ✗', name, detail === undefined ? '' : String(typeof detail === 'string' ? detail : JSON.stringify(detail)).slice(0, 500)) } }
@@ -30,7 +31,7 @@ function makeDb(tables) {
       const tests = []
       const q = { opts: null }
       const add = (fn) => { tests.push(fn); return q }
-      q.select = (cols, opts) => { q.opts = opts ?? null; return q }
+      q.select = (cols, opts) => { q.opts = opts ?? null; q.blocks = /blocks:time_blocks/.test(cols ?? ''); return q }
       q.eq = (c, v) => add(r => r[c] === v)
       q.neq = (c, v) => add(r => r[c] !== v)
       q.gte = (c, v) => add(r => r[c] != null && cmp(r[c], v) >= 0)
@@ -38,6 +39,7 @@ function makeDb(tables) {
       q.lt = (c, v) => add(r => r[c] != null && cmp(r[c], v) < 0)
       q.in = (c, list) => add(r => list.includes(r[c]))
       q.or = (expr) => {
+        if (expr === 'hevy_routine_id.not.is.null,source_type.eq.training_session') return add(r => r.hevy_routine_id != null || r.source_type === 'training_session')
         const m = /^due_date\.lt\.(\d{4}-\d{2}-\d{2}),and\(due_date\.is\.null,section\.eq\.today\)$/.exec(expr)
         if (!m) throw new Error(`the fake database does not know the filter ${expr}`)
         return add(r => (r.due_date != null && r.due_date < m[1]) || (r.due_date == null && r.section === 'today'))
@@ -47,7 +49,9 @@ function makeDb(tables) {
       const rows = () => {
         let out = (tables[table] ?? []).filter(r => tests.every(t => t(r)))
         if (q.orderBy) out = [...out].sort((x, y) => (cmp(x[q.orderBy[0]] ?? '', y[q.orderBy[0]] ?? '') || 0) * (q.orderBy[1] ? 1 : -1))
-        return q.max ? out.slice(0, q.max) : out
+        out = q.max ? out.slice(0, q.max) : out
+        // An embedded slot list (tasks → time_blocks by task_id), as PostgREST answers it.
+        return q.blocks ? out.map(r => ({ ...r, blocks: (tables.time_blocks ?? []).filter(b => b.task_id === r.id).map(b => ({ date: b.date, start_time: b.start_time })) })) : out
       }
       const run = () => (q.opts?.head ? { count: rows().length, error: null } : { data: structuredClone(rows()), error: null })
       q.maybeSingle = async () => ({ data: structuredClone(rows()[0] ?? null), error: null })
@@ -89,12 +93,15 @@ const TASKS = [
   task('Finished at night', { status: 'done', due_date: '2026-11-17', completed_at: '2026-11-17T23:30:00Z' }), // 00:30 today in Oslo: done today
   task('Finished yesterday', { status: 'done', due_date: TODAY, completed_at: '2026-11-17T12:00:00Z' }),      // due today but closed yesterday
   task('Cancelled today', { status: 'cancelled', due_date: TODAY, completed_at: '2026-11-18T07:00:00Z' }),
+  // Training sessions are tasks (156/142), each with its slot.
+  task('Upper A', { due_date: TODAY, due_time: '18:00:00', hevy_routine_id: 'ua', source_type: 'training_session', first_plan_date: TODAY }),
+  task('Lower B', { due_date: '2026-11-20', due_time: '18:00:00', hevy_routine_id: 'lb', source_type: 'training_session', first_plan_date: '2026-11-20' }),
 ]
 const BLOCKS = [
   { user_id: 'owner', title: 'Standup', category: 'work', date: TODAY, start_time: '09:00:00', duration_minutes: 30, task: null },
   { user_id: 'owner', title: 'Dentist', category: 'personal', date: TODAY, start_time: '13:00:00', duration_minutes: 60, task: null },
-  { user_id: 'owner', title: 'Upper A', category: 'training', date: TODAY, start_time: '18:00:00', duration_minutes: 60, task: { status: 'open' } },
-  { user_id: 'owner', title: 'Lower B', category: 'training', date: '2026-11-20', start_time: '18:00:00', duration_minutes: 60, task: { status: 'open' } },
+  { user_id: 'owner', title: 'Upper A', category: 'training', date: TODAY, start_time: '18:00:00', duration_minutes: 60, task_id: 'Upper A', task: { status: 'open' } },
+  { user_id: 'owner', title: 'Lower B', category: 'training', date: '2026-11-20', start_time: '18:00:00', duration_minutes: 60, task_id: 'Lower B', task: { status: 'open' } },
 ]
 const WORKOUTS = [
   { user_id: 'owner', id: 'w1', start_time: '2026-11-16T17:00:00Z', hevy_created_at: '2026-11-16T19:00:00Z' },
@@ -105,7 +112,8 @@ const tables = (over = {}) => structuredClone({
   tasks: TASKS, time_blocks: BLOCKS, hevy_workouts: WORKOUTS, strava_activities: [{ user_id: 'owner', id: 's1', start_date: '2026-11-18T05:00:00Z' }],
   athlete_profile: [{ user_id: 'owner', training_days_per_week: 4 }], day_targets: [{ user_id: 'owner', calories: 2200, protein_g: 140, water_ml: 2500 }],
   food_log_entries: [{ user_id: 'owner', date: TODAY, status: 'eaten', calories: 700, protein_g: 40 }, { user_id: 'owner', date: TODAY, status: 'eaten', calories: 300, protein_g: 20 }],
-  water_log_entries: [{ user_id: 'owner', date: TODAY, amount_ml: 800 }], ...over,
+  water_log_entries: [{ user_id: 'owner', date: TODAY, amount_ml: 800 }], schedule_blocks: [],
+  hevy_routines: [{ user_id: 'owner', id: 'ua', title: 'Upper A' }, { user_id: 'owner', id: 'lb', title: 'Lower B' }], ...over,
 })
 
 ;(async () => {
@@ -113,8 +121,12 @@ const tables = (over = {}) => structuredClone({
   const homeInput = (db) => {
     const rows = db.tasks.filter(t => t.user_id === 'owner')
     const day = dayTasks(rows, TODAY, TODAY)
-    const todayBlock = db.time_blocks.find(b => b.date === TODAY && b.category === 'training' && b.task?.status !== 'done')
-    const next = db.time_blocks.find(b => b.date > TODAY && b.category === 'training')
+    // Training: the app's one "next" rule (plan/nextRule.ts — what useTodayOverview's week gives Home's brief).
+    const own = db.tasks.filter(t => t.user_id === 'owner' && (t.hevy_routine_id || t.source_type === 'training_session'))
+      .map(t => ({ ...t, blocks: db.time_blocks.filter(b => b.task_id === t.id) }))
+    const pick = NEXT.pickNextCandidate(NEXT.trainingCandidatesFrom({ today: TODAY, to: '2026-12-02', isOpen: st => isOpenTask({ status: st }), tasks: own, templates: [], routines: db.hevy_routines ?? [] }), [], TODAY)
+    const todayBlock = pick && pick.date <= TODAY ? { title: pick.title, start_time: `${pick.startTime}:00` } : null
+    const next = pick && pick.date > TODAY ? pick : null
     const timed = db.time_blocks.filter(b => b.date === TODAY && b.start_time && b.task?.status !== 'cancelled')
     const hour = 11
     const ahead = timed.filter(b => { const [h, m] = b.start_time.split(':').map(Number); return h + m / 60 + b.duration_minutes / 60 > hour })
@@ -144,19 +156,24 @@ const tables = (over = {}) => structuredClone({
   }
 
   let text = await compare('a normal Wednesday', tables())
-  check('overdue tasks are counted (Pay the rent, Waiting for Ola), the waiting one as open, the headline names them', /2 tasks overdue/.test(text) && /4 open tasks · 2 overdue/.test(text), text)
+  check('overdue tasks are counted (Pay the rent, Waiting for Ola), the waiting one as open, the headline names them (today\'s training session is a task too)', /2 tasks overdue/.test(text) && /5 open tasks · 2 overdue/.test(text), text)
   check('done today counts what was closed today by completed_at in Oslo time (00:30 included, yesterday and cancelled not): two done', /· 2 done/.test(text), text)
   check('training: today\'s session is named and no "Next planned" line follows it (Home hides the next one when one is today)', /Training today at 18:00: Upper A/.test(text) && !/Next planned/.test(text), text)
   check('training: the sessions this week come with the target (Hevy since Monday + Strava): 3 of 4', /3 of 4 sessions this week/.test(text), text)
-  const noToday = tables(); noToday.time_blocks = noToday.time_blocks.filter(b => b.title !== 'Upper A')
+  const noToday = tables(); noToday.time_blocks = noToday.time_blocks.filter(b => b.title !== 'Upper A'); noToday.tasks = noToday.tasks.filter(t => t.title !== 'Upper A')
   text = await compare('no session today', noToday)
   check('…with no session today the days since the last workout and the next planned one show', /Rest day — last workout yesterday/.test(text) && /Next planned: Lower B/.test(text), text)
-  const idle = tables({ hevy_workouts: [], strava_activities: [], athlete_profile: [] }); idle.time_blocks = idle.time_blocks.filter(b => b.category !== 'training')
+  const idle = tables({ hevy_workouts: [], strava_activities: [], athlete_profile: [] }); idle.time_blocks = idle.time_blocks.filter(b => b.category !== 'training'); idle.tasks = idle.tasks.filter(t => !t.hevy_routine_id)
   await compare('no training data at all', idle)
   const empty = tables({ tasks: [], time_blocks: [], food_log_entries: [], water_log_entries: [] })
   await compare('an empty day', empty)
   const late = tables({ hevy_workouts: [{ user_id: 'owner', id: 'w9', start_time: '2026-11-10T17:00:00Z', hevy_created_at: '2026-11-10T19:00:00Z' }], strava_activities: [] })
-  late.time_blocks = late.time_blocks.filter(b => b.title !== 'Upper A')
+  late.time_blocks = late.time_blocks.filter(b => b.title !== 'Upper A'); late.tasks = late.tasks.filter(t => t.title !== 'Upper A')
+  // A missed session still in its week is next, before today's (the app's rule, S23).
+  const missed = tables(); missed.tasks.push(task('Lower A', { due_date: '2026-11-17', due_time: '18:00:00', hevy_routine_id: 'la', source_type: 'training_session', first_plan_date: '2026-11-17' }))
+  missed.hevy_routines.push({ user_id: 'owner', id: 'la', title: 'Lower A' })
+  text = await compare('a missed session yesterday', missed)
+  check('…the missed Lower A (still open in its week) is today\'s training on the phone, as in the app', /Training today at 18:00: Lower A/.test(text), text)
   text = await compare('a long break', late)
   check('…eight days since the last workout is said, with no sessions this week', /8 days since your last workout/.test(text), text)
   // The gateway reads only the owner's rows.

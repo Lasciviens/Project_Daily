@@ -8,6 +8,7 @@ const fs = require('fs')
 const path = require('path')
 const root = path.join(__dirname, '..')
 const R = require('../src/features/training/plan/nextRule.ts')
+const { isOpenTask } = require('../src/features/todo/taskRules.ts')
 const S = require('../src/features/training/plan/sessionState.ts')
 
 let passed = 0, failed = 0
@@ -15,11 +16,12 @@ const check = (name, ok, detail) => { if (ok) { passed++; console.log(`  ✓ ${n
 const read = f => fs.readFileSync(path.join(root, f), 'utf8')
 const block = t => { const a = t.indexOf('// <training-next-rule>'), b = t.indexOf('// </training-next-rule>'); return a < 0 || b < a ? null : t.slice(a, b) }
 const strip = t => t && t.replace(/\/\/ GENERATED from[^\n]*\n/, '')
+const plain = t => t && t.replace(/^export /gm, '')
 
 const source = block(read('src/features/training/plan/nextRule.ts'))
 for (const f of ['supabase/functions/phone-gateway/index.ts', 'supabase/functions/push-send/index.ts']) {
   const text = read(f)
-  check(`${path.basename(path.dirname(f))}: carries the rule verbatim (run node scripts/sync-training-next-shared.mjs)`, strip(block(text)) === source)
+  check(`${path.basename(path.dirname(f))}: carries the rule verbatim (run node scripts/sync-training-next-shared.mjs)`, strip(block(text)) === plain(source))
   check(`${path.basename(path.dirname(f))}: its next comes from the rule (pickNextCandidate over trainingCandidatesFrom)`, /pickNextCandidate\(list, trainingProgramOrder\(/.test(text) && /await nextTrainingFor\(userId, today\)/.test(text))
 }
 check('planWeek picks next with the same rule', /pickNextCandidate\(/.test(read('src/features/training/plan/sessionState.ts')))
@@ -42,7 +44,7 @@ const cases = [
   ['after today\'s is done: the weekly plan\'s Saturday (no task yet)', [task('la', '2026-11-24', { status: 'done', hevy_workout_id: 'w2' }), task('ub', '2026-11-27', { status: 'done', hevy_workout_id: 'w3' })], 'Lower B'],
 ]
 for (const [name, tasks, want] of cases) {
-  const list = R.trainingCandidatesFrom({ today, to: '2026-12-11', tasks, templates, routines })
+  const list = R.trainingCandidatesFrom({ today, to: '2026-12-11', isOpen: s => isOpenTask({ status: s }), tasks, templates, routines })
   const order = R.trainingProgramOrder(templates, t => routines.find(r => r.title === t)?.id ?? null)
   const server = R.pickNextCandidate(list, order, today)
   const app = S.planWeek({

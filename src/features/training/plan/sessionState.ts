@@ -406,13 +406,14 @@ export function planWeek(input: {
  *  sessions still to do after it that land today or later. A day a session would land on that holds a done one, or
  *  one that isn't moving, means no offer (never two in one day). */
 function shiftOfferOf(sessions: readonly WeekSession[], ctx: { today: string; trainedToday: boolean; program?: readonly string[] }): ShiftOffer | null {
-  const inProgram = (s: WeekSession) => !!s.taskId && !!s.routineId && (!ctx.program || ctx.program.includes(s.routineId))
+  // A weekly plan's day with no task yet moves too (the database splits it first); the anchor needs its task.
+  const inProgram = (s: WeekSession) => !!s.routineId && (!ctx.program || ctx.program.includes(s.routineId))
   const toDo = (s: WeekSession) => STILL_TO_DO.has(s.status.state)
   const fits = (moving: WeekSession[], days: number, anchor: WeekSession) => moving.every(m => {
     const to = shiftDay(m.date, days)
     return !sessions.some(o => o !== anchor && !moving.includes(o) && o.date === to && o.status.state !== 'skipped')
   })
-  const missed = sessions.filter(s => inProgram(s) && toDo(s) && s.date < ctx.today && !s.skippedOver)
+  const missed = sessions.filter(s => inProgram(s) && !!s.taskId && toDo(s) && s.date < ctx.today && !s.skippedOver)
     .sort((a, b) => a.date.localeCompare(b.date))[0]
   if (missed) {
     const days = dayDiff(missed.date, ctx.trainedToday ? shiftDay(ctx.today, 1) : ctx.today)
@@ -421,7 +422,7 @@ function shiftOfferOf(sessions: readonly WeekSession[], ctx: { today: string; tr
       .sort((a, b) => a.date.localeCompare(b.date))
     if (days >= 1 && days <= 14 && fits(moving, days, missed)) return { days, anchor: missed, moving }
   }
-  const early = sessions.find(s => inProgram(s) && s.status.state === 'done' && s.workoutDate === ctx.today && (s.shift ?? 0) < 0)
+  const early = sessions.find(s => inProgram(s) && !!s.taskId && s.status.state === 'done' && s.workoutDate === ctx.today && (s.shift ?? 0) < 0)
   if (early && early.shift != null && early.shift >= -6) {
     const end = shiftDay(early.date, CYCLE_DAYS)
     const moving = sessions.filter(s => inProgram(s) && toDo(s) && s.date > early.date && s.date <= end)

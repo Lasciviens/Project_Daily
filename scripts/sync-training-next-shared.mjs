@@ -15,7 +15,9 @@ export const blockOf = text => {
   return text.slice(a, b + END.length)
 }
 const source = blockOf(readFileSync(join(root, 'src/features/training/plan/nextRule.ts'), 'utf8'))
+// The functions' copies drop `export` (the verify scripts load those files as plain scripts).
 const generated = source.replace(START, `${START}\n// GENERATED from src/features/training/plan/nextRule.ts by scripts/sync-training-next-shared.mjs — edit the source.`)
+  .replace(/^export /gm, '')
 for (const f of TARGETS) {
   const p = join(root, f)
   const text = readFileSync(p, 'utf8')

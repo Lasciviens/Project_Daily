@@ -38,9 +38,12 @@ export function pickNextCandidate<T extends NextCandidate>(sessions: readonly T[
 /** The server's candidates (phone-gateway, push-send), from rows they read with the service role, every one the
  *  account's own: training tasks with their slot's days, and the weekly training plans' days from `today` to `to`
  *  that have no task yet (weekly repeats only — another repeat kind's days are left to its task, made on its day).
+ *  Exported names lose `export` in the functions' copies (they are scripts, read by the verify scripts too).
  *  A plan's routine: its task's, else the routine titled like it (case and outer spaces ignored). */
 export function trainingCandidatesFrom(input: {
   today: string
+  /** A task status that is still to do (the app's taskRules.OPEN_STATUSES; each function passes its own copy). */
+  isOpen: (status: string) => boolean
   to: string
   tasks: readonly { title: string | null; due_date: string | null; due_time?: string | null; status: string; closed_reason?: string | null; hevy_routine_id?: string | null; hevy_workout_id?: string | null; first_plan_date?: string | null; schedule_block_id?: string | null; occurrence_date?: string | null; blocks?: readonly { date: string | null; start_time?: string | null }[] | null }[]
   templates: readonly { id: string; title: string; category?: string | null; days_of_week?: readonly number[] | null; start_time?: string | null; effective_from?: string | null; except_dates?: readonly string[] | null; repeat_kind?: string | null; repeat_until?: string | null }[]
@@ -57,7 +60,7 @@ export function trainingCandidatesFrom(input: {
     const date = slot ?? t.due_date
     if (!date) continue
     const routineId = t.hevy_routine_id ?? byTitle.get(key(t.title ?? '')) ?? null
-    const toDo = !t.hevy_workout_id && (['open', 'in_progress', 'waiting'].includes(t.status) || (t.status === 'cancelled' && t.closed_reason === 'missed'))
+    const toDo = !t.hevy_workout_id && (input.isOpen(t.status) || (t.status === 'cancelled' && t.closed_reason === 'missed'))
     const week = addDays(t.first_plan_date ?? date, 6)
     const late = addDays(date, 6)
     const countsUntil = date >= input.today ? date : t.hevy_routine_id ? (week < late ? week : late) : null
