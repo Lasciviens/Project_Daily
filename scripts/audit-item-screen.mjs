@@ -7,12 +7,15 @@
 //   CUT      text cut or running out of its box where nothing meant it (not a <Truncate>: no ellipsis), or text a
 //            scroller's edge cuts (a timeline hour label half in view);
 //   OVERLAP  two boxes of one row or group on top of each other;
-//   COVERED  a mark, icon, button or line of text partly hidden under another box (the marks tucked behind a card);
+//   COVERED  an icon, button or line of text partly hidden under another box (not the marks' banner: it peeks by design);
 //   HOLDER   a field whose placeholder doesn't fit ("Add a nam");
 //   OUTSIDE  anything past the screen's sides (sideways scrolling) or a list over the screen's top or bottom;
-//   WHEEL    a time wheel whose band, value and bold row disagree (also with the page zoomed).
-// Each phone size runs at the app's Display scale 100 %, 80 % and 125 % too (Settings: the root font size — the
-// iPhone's 80 % put 18 : 20 in the wheel's band for 14:15 and ran "Wed 25.11.2026" into the time pill).
+//   WHEEL    a time wheel whose band, value and bold row disagree (also with the page zoomed);
+//   KEYBOARD the movie search's list with the keyboard up (the window shortened to what it leaves): it must open under
+//            its field, inside the screen — not above it over the title (owner, 27.11.2026).
+// Each phone size runs at the app's Display scale 100 %, 80 % and 125 % too (Settings: the root font size). At 80 % the
+// harness reproduces the owner's screenshots of 27.11.2026: 18 : 20 in the wheel's band for 14:15, "Wed 25.11.2026"
+// running into the time pill.
 // Exit 1 when it finds anything. Needs the app on the mock (scripts/harness/README.md):
 //   node scripts/audit-item-screen.mjs --harness scripts/harness [--base http://127.0.0.1:5371/Project_Daily]
 //        [--sizes 375x812,402x874] [--scales 100,80,125] [--shots <dir>] [--only edit,new,wheel]
@@ -135,8 +138,9 @@ function inspect() {
       if (w > 1.5 && h > 1.5) issues.push(`OVERLAP ${name(kids[i])} × ${name(kids[j])} (${Math.round(w)}×${Math.round(h)}px)`)
     }
     // COVERED: a mark, an icon, a control or a line of text with another box over part of it.
-    const small = el.matches('button, input, textarea, select, img, svg, [role=img], [role=switch], [data-mark-banner]') || (t && el.children.length === 0)
-    if (small && !inList && r.width >= 4 && r.height >= 4 && !el.closest('[role=slider]')) {
+    // The marks' banner peeks from behind its card by design (owner, 24.11.2026: "So not fully fully visible").
+    const small = el.matches('button, input, textarea, select, img, svg, [role=img], [role=switch]') || (t && el.children.length === 0)
+    if (small && !inList && !el.closest('[data-mark-banner]') && r.width >= 4 && r.height >= 4 && !el.closest('[role=slider]')) {
       const pts = [[r.left + 2, r.top + 2], [r.right - 2, r.top + 2], [r.left + 2, r.bottom - 2], [r.right - 2, r.bottom - 2], [(r.left + r.right) / 2, (r.top + r.bottom) / 2]]
       const hid = pts.filter(([x, y]) => {
         if (x < 0 || y < 0 || x >= W || y >= H) return false
@@ -174,6 +178,34 @@ function wheels() {
     if (bold !== near.r) issues.push(`WHEEL ${label}: bold ${bold?.textContent}, in the band ${near.r?.textContent}`)
   }
   return issues
+}
+
+/** The movie search with the keyboard up: Chromium can only shorten the window, which stands in for the visual viewport. */
+async function keyboardList(page, w, h, found) {
+  await openEdit(page, 'Movie night')
+  const search = sheet(page).getByRole('combobox', { name: /search/ }).first()
+  await search.scrollIntoViewIfNeeded()
+  await search.click()
+  const kb = Math.round(h * 0.4)
+  await page.setViewportSize({ width: w, height: h - kb })
+  await search.fill('a')
+  await page.waitForTimeout(1000)
+  const r = await page.evaluate(() => {
+    const l = document.querySelector('[role=listbox]')?.getBoundingClientRect()
+    const f = document.activeElement?.getBoundingClientRect()
+    return l && f ? { top: l.top, bottom: l.bottom, field: f.bottom, H: innerHeight } : null
+  })
+  if (!r) found('KEYBOARD the movie search opened no list')
+  else {
+    if (r.top < r.field - 0.5) found(`KEYBOARD the movie search's list opened above its field (${Math.round(r.top)}–${Math.round(r.bottom)}, field ends at ${Math.round(r.field)})`)
+    if (r.bottom > r.H + 0.5 || r.top < -0.5) found(`KEYBOARD the movie search's list runs outside the screen (${Math.round(r.top)}–${Math.round(r.bottom)} of ${r.H})`)
+  }
+  for (const x of await page.evaluate(inspect)) found(`keyboard search: ${x}`)
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${w}x${h}-keyboard-search.png` })
+  await page.keyboard.press('Escape')
+  await page.setViewportSize({ width: w, height: h })
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(300)
 }
 
 // ── Driving the screen ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -285,6 +317,7 @@ async function run() {
       await page.keyboard.press('Escape')
       await page.keyboard.press('Escape')
       await page.waitForTimeout(300)
+      if (phone && h > w) await keyboardList(page, w, h, found)
       // Repeat on, then all-day.
       await openEdit(page, 'Coffee with Kari')
       await sweep(page, 'edit place', found, shot('edit-place'))

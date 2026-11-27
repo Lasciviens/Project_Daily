@@ -235,11 +235,12 @@ sizes (`text-[12.5px]`) in new code. Cut text with `<Truncate>` (never a bare `t
 `line-clamp-*` on user data): one line truncates, `lines={2|3}` clamps notes and descriptions (§5).
 Balance headings. Text inputs render at 16px on touch automatically (iOS zoom guard).
 **Display scale** (Settings, 80–125 %: the root font size) scales every rem length — widths, heights, gaps —
-while the type scale above is px and stays its size. A box that holds text is never a fixed rem width the text
-must fit (a `min-w` that grows, or `em`, which follows the text); a length that must match the text or a row is
-measured, never a pixel constant beside rem rows; one control is all rem or all px (the Switch's px thumb ran out
-of its rem track at 80 %). Owner, 27.11.2026: at 80 % the item screen's wheel showed 18 : 20 for 14:15 and its date
-pill ran into the time pill — `scripts/audit-item-screen.mjs` checks the item screen at 80 / 100 / 125 %.
+while the type scale above is px and stays its size. A box that must hold its text is never a fixed rem width
+(a `min-w` that grows, or `em`, which follows the text); a length that must match the text or a row is measured,
+never a pixel constant beside rem rows; parts that must line up (a switch's thumb in its track) share one unit.
+The owner's screenshots of the item screen (27.11.2026) — the wheel showing 18 : 20 for 14:15, the date pill
+running into the time pill — are what the harness shows at 80 %; `scripts/audit-item-screen.mjs` checks the item
+screen at 80 / 100 / 125 %.
 
 ---
 
@@ -746,30 +747,35 @@ in a calendar. It is drawn as iOS Calendar draws its event screen and renders `M
   growing with a long title), the URL, the notes, the location's search and the labels' field are the row
   itself. A field's problem is a danger `NoteRow` under it once the field is left (not while typing).
   Every typed field takes `typingHints` (`plan-modal/fieldStyles.ts`): `autocomplete="off"`, a `name` that is no
-  contact's, no autocorrect or spell check on short values, the keyboard's capitals and Return key for the field, and
-  `type="search"` for a search — so the iPhone offers no "AutoFill Contact" (owner, 27.11.2026); no field's words say
-  "name". A placeholder is one or two short words and fits its field at 16px (a field beside chips is sized in `em`).
+  contact's, the keyboard's capitals and Return key for the field, no autocorrect or spell check on short values (on
+  for prose: the title, notes, ✨'s sentence) and `type="search"` for a search. The owner saw "AutoFill Contact" over
+  With and Search (27.11.2026); iOS guesses contact fields from a field's attributes and nearby words, so no field's
+  words say "name" either — untested on a device. A placeholder is one or two short words and fits its field at
+  16px (a field beside chips is sized in `em`).
 - **A link in a row** (the URL): a small ↗ button after the field opens a `Panel` with the address first —
   "Opens **host**" and the whole link (`Truncate lines={3}`, its "More" shows a long one) — then **Open**
   (`btn-secondary btn-sm`, a new tab). Never a bare link that opens on the first tap.
   Text that fills other rows as it is typed says so on a **Read as** line with an undo ("Keep text").
-- **Pills** (`Pill`): a date (at least 9.6em) or a time (at least 4.5em — em: the pill's text, not the Display scale), so nothing jumps as the value
-  changes — and wider only when the text needs it, never cut (owner, 27.11.2026: at Display scale 80 % the
-  8.5rem pill held "Wed 25.11.2026" in 15px text, which ran into the time pill); `bg-surface-2`, open = `bg-accent-50 text-accent-600`, a value that can't
+- **Pills** (`Pill`): a date (at least 9.6em) or a time (at least 4.5em), so nothing jumps as the value
+  changes — and wider only when the text needs it, never cut (the owner's screenshot, 27.11.2026: "Wed
+  25.11.2026" ran into the time pill — an 8.5rem pill around 15px text, as the harness shows at Display scale
+  80 %); sized in em throughout (height, padding, width), so it follows its own text, not the Display scale; `bg-surface-2`, open = `bg-accent-50 text-accent-600`, a value that can't
   be stored struck through on `bg-danger-soft`. **The time wheel** (`TimeWheel.tsx`): two scroll-snap
   columns (hours, five-minute steps) under a `surface-2` band centred in CSS, faded at the ends,
   `role="spinbutton"` per column; a finger flicks it, a mouse wheel turns it, a mouse drags it, ↑ / ↓ step
   it. Its rows are measured, never a pixel constant (`wheelGeometry.ts`: a 32px constant against 2rem rows
-  put another hour in the band at any Display scale but 100 %: 18 : 20 for 14:15 at 80 %, owner 27.11.2026); the
-  offset is set with
-  snapping off and set again after layout, and the bold row is the one in the band.
+  put another hour in the band at any Display scale but 100 % — the owner's screenshot of 18 : 20 for 14:15,
+  27.11.2026, is what the harness shows at 80 %); the offset is set with
+  snapping off and set again after layout until it first settles or the owner touches it (a key, a tap or the
+  timeline then glides it, under Reduce Motion it jumps), and the bold row is the one in the band.
 - **The timeline** (`DayTimeline.tsx`): the whole day, one pixel a minute, in a horizontal scroller with no
-  scrollbar; 20px of room before 00:00 and after 24:00; hour labels `text-micro text-fg-faint` centred over
-  their `bg-line` ticks (which start under the labels' row), a label the scroller's edge would cut hidden until
-  it is whole (owner, 27.11.2026: "9:00" and "15:0" at the edges); the day's other things as
+  scrollbar, all in px (one pixel a minute); 20px of room before 00:00 and after 24:00; hour labels
+  `text-micro text-fg-faint` centred over their `bg-line` ticks (which start under the labels' 16px row), a
+  label the scroller's edge would cut hidden with its tick until it is whole ("9:00" and "15:0" were cut at the
+  edges in the owner's screenshot, 27.11.2026); the day's other things as
   `bg-surface-2` blocks with a `line-strong` left edge (a `warn` ring where this item overlaps them); this
   item as an accent bar (`bg-accent-500 text-on-accent shadow-float`, `touch-none`) with grips at its ends
-  (outside the bar when it is narrow); the now-line `bg-danger`, drawn under the bar; under it a **day strip** (`surface-2`
+  (outside the bar when it is narrow); the now-line `bg-danger`, over the day's other things and under the item's own bar (its times stay readable); under it a **day strip** (`surface-2`
   track, the day's things as ticks, the visible part as an accent-outlined thumb) that works as its
   scrollbar, and one caption line. Respect Reduce Motion: scrolls jump instead of gliding. An all-day item
   gets **the day band** (`AllDayBand`) instead: one `accent-50` track with the day's things as ticks and the
@@ -777,12 +783,11 @@ in a calendar. It is drawn as iOS Calendar draws its event screen and renders `M
 - **Marks** (`FieldMark.tsx`): where each field goes — Apple's logo
   (a CSS mask in `bg-fg`, so it follows the theme), Google's (its own colours: an identity colour), the
   app's logo. A titled card's marks are **one banner** (owner, 24.11.2026: "Use them as banner instead. And like a
-  bit shadow"): each place once, 16px and whole, on the card's heading line at its right — never tucked behind the
-  card (owner, 27.11.2026, of the half-hidden "Peeking logo": "flaws like attached screenshot") — a little faded
-  (`--mark-banner-opacity`, 0.75 light / 0.8 dark, full on hover) with a small `drop-shadow` (`--mark-banner-shadow`:
-  a dark shadow in light, a light halo `rgba(203, 213, 225, 0.4)` in dark — a black one was lost on the dark sheet)
-  — `.mark-banner`, as tall as the heading's line (no extra row), nothing over it or under it; its fade-in and its
-  hover fade (`.mark-banner-motion`) only under `useMotion()`; in
+  bit shadow"; the owner chose the "Peeking logo"): each place once, 44px, tucked behind the card's top-right in the
+  free space beside its title (the card hides its lower part), faded (`--mark-banner-opacity`, 0.5 light / 0.6
+  dark, more on hover) with a soft `drop-shadow` (`--mark-banner-shadow`: a dark shadow in light, a light halo
+  `rgba(203, 213, 225, 0.4)` in dark — a black one was lost on the dark sheet) — `.mark-banner`, never under a
+  row, no height of its own; its fade-in and its hover fade (`.mark-banner-motion`) only under `useMotion()`; in
   the DOM (reading and Tab order) right after the card's heading; a tap or hover names the rows per place. The
   untitled title card has no banner (only a grey sliver fitted above it): its mark joins the next card's
   (Location, else Time). A mark that is a row's value (the Calendar row's) stays 14px in the row, with a red dot (`bg-danger`, a `surface` ring) when the outside
@@ -812,7 +817,7 @@ classes (and, on `/games`, the `tg-portal` class).
 | Use case | Component | Notes |
 |---|---|---|
 | Modal / drawer | `ModalShell` / `SideDrawer`, never a raw `Dialog` | they wrap Headless UI `Dialog` with sheet, drag, Back and stacking built in |
-| Search autocomplete | `Combobox` + `ComboboxInput` + `ComboboxOptions` + `ComboboxOption` | `immediate` goes on the root `<Combobox>` when options should show on focus; `data-[focus]:` styles the active option. In a phone sheet the list is `FieldOptions` (`shared/components/FieldOptions.tsx`): under its field, sized to what the keyboard leaves (`visualViewport`), above only when three rows don't fit below — and then never into the status bar (owner, 27.11.2026: the Movie search's list covered the title and ran under the status bar) |
+| Search autocomplete | `Combobox` + `ComboboxInput` + `ComboboxOptions` + `ComboboxOption` | `immediate` goes on the root `<Combobox>` when options should show on focus; `data-[focus]:` styles the active option. On the item screen the list is `FieldOptions` (`shared/components/FieldOptions.tsx`): under its field, sized to what the keyboard leaves (`visualViewport`); with less than three rows' room the field is first scrolled up, and a list that still can't fit goes above — never into the status bar (owner, 27.11.2026: the Movie search's list covered the title and ran under the status bar) |
 | Floating action panel | `Popover` + `PopoverButton` + `PopoverPanel` | `anchor="top start"` / `"bottom start"` (Floating UI) |
 | Dropdown menu | `Menu` + `MenuButton` + `MenuItems` + `MenuItem` | `anchor="bottom end"`; keyboard navigation built in |
 
@@ -996,7 +1001,7 @@ chrome. English in the product (`AGENTS.md`).
 - [ ] Only token classes (no hex, no `gray-*`/`amber-*`/`bg-white`, no `text-[13px]`-style sizes).
 - [ ] Built from `src/shared/ui` primitives; status via tones; charts via `useChartColors`.
 - [ ] Works at 402 / 1469 / 2450px, light and dark, with no horizontal overflow.
-- [ ] Nothing cut or out of place at Display scale 80 % and 125 % (§3): no fixed rem width around px text.
+- [ ] Nothing cut or out of place at Display scale 80 % and 125 % (§3): no fixed rem width a text must fit.
 - [ ] Checked in the phone layout: compact, no extra lines, nothing squashed; hover-only actions have a touch path.
 - [ ] Loading, empty and error states present; loading copies the loaded geometry, so nothing moves when the data lands (§5).
 - [ ] Entity popups opened with `useEntityModal`; local sheets use `ModalShell`; no native dialogs.

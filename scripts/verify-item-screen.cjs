@@ -173,11 +173,9 @@ console.log('\n== 7. The screen keeps its data paths ==')
     /<FieldMark always goes=/.test(src('src/shared/components/plan-modal/OptionsSection.tsx'))
     && /const toCard = !!register && !always && !refused/.test(marks) && /if \(toCard \|\| \(!on && !always && !refused\)\) return null/.test(marks))
   const rows = src('src/shared/components/plan-modal/ItemRows.tsx')
-  // Owner, 27.11.2026, of the marks half hidden behind the card below: "flaws like attached screenshot" — whole, small, on the line.
-  check('every titled card draws its rows\' marks as one banner, whole and small on its heading\'s line at the right — no extra row, nothing over it',
-    /<div className="flex min-h-4 items-center justify-between gap-2 px-3\.5">\s*<h3 className="section-label">\{title\}<\/h3>/.test(rows) && /<CardBanner marks=\{marks\} \/>/.test(rows)
-    && /'mark-banner flex h-4 shrink-0 cursor-help items-center gap-1\.5'/.test(marks) && /if \(!on \|\| !places\.length\) return null/.test(marks)
-    && !/-z-10|isolate|-top-2/.test(marks.slice(marks.indexOf('export function CardBanner'), marks.indexOf('export function FieldMark'))) && !/isolate/.test(rows))
+  check('every titled card draws its rows\' marks as one banner, tucked behind it (isolate, -z-10), adding no height',
+    /<section className="relative isolate flex flex-col gap-1\.5">/.test(rows) && /\{title && <CardBanner marks=\{marks\} \/>\}/.test(rows)
+    && /mark-banner absolute -top-2 right-3 -z-10/.test(marks) && /if \(!on \|\| !places\.length\) return null/.test(marks))
   check('…the banner comes after the card\'s heading (read and tabbed to after it)',
     rows.indexOf('<h3 className="section-label') > 0 && rows.indexOf('<h3 className="section-label') < rows.indexOf('<CardBanner marks='))
   const formSrc = src('src/shared/components/plan-modal/ItemForm.tsx')
@@ -192,8 +190,7 @@ console.log('\n== 7. The screen keeps its data paths ==')
   check('…its look is tokens only, light and dark (opacity, shadow); the dark shadow is a light halo (a black one is lost on the dark sheet); the hover transition only in .mark-banner-motion',
     (css.match(/--mark-banner-opacity:/g) || []).length === 2 && (css.match(/--mark-banner-shadow:/g) || []).length === 2
     && /\.mark-banner \{ opacity: var\(--mark-banner-opacity\); \}/.test(css) && /\.mark-banner-motion \{ transition: opacity 150ms ease-out; \}/.test(css)
-    && /drop-shadow\([^)]*var\(--mark-banner-shadow\)\)/.test(css) && /--mark-banner-shadow:\s+rgba\(203, 213, 225, 0\.4\)/.test(css)
-    && /\.mark-banner-art \{\s*display: flex;\s*width: 1rem;\s*height: 1rem;/.test(css))
+    && /drop-shadow\([^)]*var\(--mark-banner-shadow\)\)/.test(css) && /--mark-banner-shadow:\s+rgba\(203, 213, 225, 0\.4\)/.test(css))
   const form = src('src/shared/components/plan-modal/ItemForm.tsx')
   check('Apple\'s headers, and no ✨ yet (step 4); no Invitees until they work', ['"Location"', '"Time"', '"Options"', '"Details"', '"Planning"'].every(h => form.includes(`title=${h}`))
     && !form.includes('title="Invitees"') && !/Sparkles/.test(form))
@@ -546,52 +543,69 @@ console.log('\n== 12. The screen\'s look on a phone (owner, 27.11.2026: "Things 
   check('…the wheel measures its rows (no pixel constant), centres its band in CSS, and its bold row is the one read from the offset',
     !/const ROW = /.test(wheel) && /function geometryOf\(el: HTMLDivElement\)/.test(wheel) && /top-1\/2 h-8 w-36 -translate-x-1\/2 -translate-y-1\/2/.test(wheel)
     && (wheel.match(/h-\[calc\(50%-1rem\)\]/g) || []).length === 2 && /i === shown \? 'font-medium text-fg'/.test(wheel))
-  check('…its offset is set with snapping off (no re-snap to another row) and set again after layout until the owner turns it',
-    /el\.style\.scrollSnapType = 'none'\n\s*el\.scrollTop = top/.test(wheel) && /new ResizeObserver\(again\)/.test(wheel) && /if \(!turning\.current\) place\(index, false\)/.test(wheel))
+  check('…its offset is set with snapping off (no re-snap to another row) and set again after layout only while it opens — until it first settles or the owner touches it',
+    /el\.style\.scrollSnapType = 'none'\n\s*el\.scrollTop = top/.test(wheel) && /new ResizeObserver\(again\)/.test(wheel)
+    && /if \(!opening\.current \|\| turning\.current\) return/.test(wheel) && /settled = window\.setTimeout\(stop, 400\)/.test(wheel)
+    && /const touch = \(\) => \{ turning\.current = true; opening\.current = false \}/.test(wheel))
+  check('…after that a change from outside (a key, a tap, the timeline) glides it under useMotion — never cut short by a re-place',
+    /if \(ready\) opening\.current = false\n\s*place\(index, ready && motion\)/.test(wheel) && /if \(smooth\) \{ el\.scrollTo\(\{ top, behavior: 'smooth' \}\); return \}/.test(wheel))
 
   // A field's list: under its field, sized to what the keyboard leaves; above only when even three rows don't fit.
   const vis = { top: 0, bottom: 520, safeTop: 59 }
+  const fo = src('src/shared/components/FieldOptions.tsx')
   check('a list under a field with room for three rows stays under it, sized to the room above the keyboard',
     O.optionsMaxHeight({ top: 300, bottom: 340 }, vis, 8) === 520 - 12 - 348 - 4 && O.optionsMaxHeight({ top: 100, bottom: 140 }, vis, 8) === O.OPTIONS_CAP)
   check('…with less room under it than three rows, the larger side — above it, never into the status bar',
     O.optionsMaxHeight({ top: 300, bottom: 340 }, { ...vis, bottom: 400 }, 8) === 300 - 8 - (59 + 12) - 4 && O.optionsMaxHeight({ top: 300, bottom: 340 }, { top: 0, bottom: 400, safeTop: 0 }, 8) === 300 - 8 - 12 - 4)
   check('…and never a negative height', O.optionsMaxHeight({ top: 20, bottom: 515 }, vis, 8) === 0)
+  check('…with too little room under it the field is scrolled up just enough for three rows, never past the status bar',
+    O.optionsLift({ top: 300, bottom: 340 }, { ...vis, bottom: 400 }, 8) === 340 + 8 + O.OPTIONS_FLOOR + 12 + 4 - 400
+    && O.optionsLift({ top: 100, bottom: 140 }, vis, 8) === 0 && O.optionsLift({ top: 80, bottom: 120 }, { ...vis, bottom: 200 }, 8) === 80 - 59 - 12)
+  check('…FieldOptions scrolls the field up (at most twice) before it sizes the list', /const lift = optionsLift\(/.test(fo) && /lift > 0 && lifted < 2 \? scrollerOf\(el\) : null/.test(fo))
   const listSites = ['DetailsSection.tsx', 'PlaceRow.tsx', 'LabelsRow.tsx'].map(f => src(`src/shared/components/plan-modal/${f}`)).join('\n')
-  check('…every list on the screen is a FieldOptions (no anchored ComboboxOptions of its own)',
+  check('…every list on the screen is a FieldOptions (no anchored ComboboxOptions of its own); it sets --anchor-max-height and its own max-height (Headless UI freezes the var into px) and reads the safe area at each measure',
     !/<ComboboxOptions/.test(listSites) && (listSites.match(/<FieldOptions field=\{field\}/g) || []).length === 5
-    && /--anchor-max-height/.test(src('src/shared/components/FieldOptions.tsx')))
+    && /\{ \['--anchor-max-height' as string\]: `\$\{room\}px`, maxHeight: `\$\{room\}px` \}/.test(fo)
+    && !/let safeTop/.test(fo) && /safeTop: readSafeTop\(\)/.test(fo))
 
   // The phone's typing hints: no contact AutoFill on any typed field of the screen.
   const hints = require('../src/shared/components/plan-modal/fieldStyles').typingHints
   const h = hints('with', 'words')
-  check('typingHints: no AutoFill, a name that is no contact\'s, no autocorrect; a search is type="search"',
+  const prose = hints('notes', 'sentence', 'enter')
+  check('typingHints: no AutoFill, a name that is no contact\'s; short values without autocorrect, prose with it; a search is type="search"',
     h.autoComplete === 'off' && h.name === 'item-with' && h.autoCorrect === 'off' && h.spellCheck === false && h.autoCapitalize === 'words'
-    && hints('q-movie', 'search').type === 'search' && hints('q-movie', 'search').enterKeyHint === 'search' && !('type' in h))
-  const screen = ['DetailsSection', 'PlaceRow', 'LabelsRow', 'OptionsSection', 'TaskRows', 'CalendarFieldRows', 'EndRepeatRows']
+    && hints('q-movie', 'search').type === 'search' && hints('q-movie', 'search').enterKeyHint === 'search' && !('type' in h)
+    && prose.autoComplete === 'off' && prose.autoCorrect === 'on' && prose.spellCheck === true && prose.autoCapitalize === 'sentences' && prose.enterKeyHint === 'enter'
+    && hints('list').autoCorrect === 'on' && hints('list').enterKeyHint === 'done')
+  const screen = ['ItemForm', 'ItemFill', 'DetailsSection', 'PlaceRow', 'LabelsRow', 'OptionsSection', 'TaskRows', 'CalendarFieldRows', 'EndRepeatRows']
     .map(f => [f, src(`src/shared/components/plan-modal/${f}.tsx`)])
-  const tags = screen.flatMap(([f, code]) => (code.match(/<(?:input|ComboboxInput)\b[\s\S]*?\/>/g) || []).map(t => [f, t]))
+  const tags = screen.flatMap(([f, code]) => (code.match(/<(?:input|ComboboxInput|textarea)\b[\s\S]*?\/>/g) || []).map(t => [f, t]))
   const bare = tags.filter(([, t]) => !/typingHints|\{\.\.\.props\}/.test(t)).map(([f, t]) => `${f}: ${t.slice(0, 60)}`)
-  check('…every typed field of the screen takes them', tags.length >= 12 && bare.length === 0, bare.join(' | '))
+  check('…every typed field of the screen takes them, the title, Notes and ✨\'s sentence too', tags.length >= 15 && tags.filter(([, t]) => t.startsWith('<textarea')).length === 3 && bare.length === 0, bare.join(' | '))
   const words = tags.flatMap(([, t]) => [...t.matchAll(/(?:placeholder|aria-label|title)=(?:"([^"]*)"|\{([^}]*)\})/g)].map(m => m[1] ?? m[2]))
-  check('…no field\'s words say "name" (iOS reads it as a contact\'s field)', words.length > 10 && !words.some(w => /\bname\b/i.test(w)), words.filter(w => /\bname\b/i.test(w)).join(' | '))
+  check('…no field\'s words say "name" (iOS guesses contact fields from words too — untested on a device)', words.length > 10 && !words.some(w => /\bname\b/i.test(w)), words.filter(w => /\bname\b/i.test(w)).join(' | '))
   const det = src('src/shared/components/plan-modal/DetailsSection.tsx')
   check('With\'s placeholder is one short word in a field sized in em (it held "Add a nam" at 16px)',
-    /placeholder="Add" maxLength=\{DETAIL_LIMITS\.name \+ 10\}/.test(det) && /input-bare w-\[3em\] pb-0/.test(det) && !/Add a name/.test(det))
+    /placeholder="Add" maxLength=\{DETAIL_LIMITS\.name \+ 10\}/.test(det) && /input-bare w-\[3em\] pb-0 text-right text-lead transition-\[width\] focus:w-\[8em\]/.test(det) && !/Add a name/.test(det)
+    && /placeholder="Title" maxLength=\{100\}/.test(src('src/shared/components/plan-modal/OptionsSection.tsx')))
 
   // Starts / Ends: the pills grow for their text, never cut ("Wed 25.11.2026" ran into 14:15).
   const rows = src('src/shared/components/plan-modal/ItemRows.tsx')
   check('the Starts / Ends pills are at least one width (in em: their text\'s, not the Display scale\'s) and grow for a wider text, never a fixed width that cuts it',
-    /wide \? 'min-w-\[9\.6em\]' : 'min-w-\[4\.5em\]'/.test(rows) && !/w-\[8\.5rem\]/.test(rows))
+    /wide \? 'min-w-\[9\.6em\]' : 'min-w-\[4\.5em\]'/.test(rows) && /'inline-flex h-\[2\.125em\] shrink-0 [^']*px-\[0\.5em\] text-lead/.test(rows) && !/w-\[8\.5rem\]/.test(rows))
 
   // The timeline: whole hour labels, centred on their lines; the now line under the item's bar.
   const tl = src('src/shared/components/plan-modal/DayTimeline.tsx')
-  check('the timeline: room for 00:00 and 24:00, labels centred over their lines, one a scroller\'s edge would cut hidden',
-    /const INSET = 20/.test(tl) && /width: DAY_MINUTES \* PPM \+ 2 \* INSET/.test(tl) && /data-hour="" className="absolute top-0 -translate-x-1\/2/.test(tl)
-    && /data-\[cut='1'\]:invisible/.test(tl) && /new IntersectionObserver\(/.test(tl) && /absolute bottom-0 top-4 w-px bg-line/.test(tl))
-  check('…the now line is drawn before the item\'s bar (under it: the bar\'s times stay readable)',
-    tl.indexOf('bg-danger') > 0 && tl.indexOf('bg-danger') < tl.indexOf('role="slider"'))
+  check('the timeline: room for 00:00 and 24:00, labels centred over their ticks, one a scroller\'s edge would cut hidden — with its tick',
+    /const INSET = 20/.test(tl) && /width: DAY_MINUTES \* PPM \+ 2 \* INSET/.test(tl) && /data-hour="" className="peer absolute top-0 -translate-x-1\/2/.test(tl)
+    && /data-\[cut='1'\]:invisible/.test(tl) && /new IntersectionObserver\(/.test(tl) && /absolute bottom-0 top-\[16px\] w-px bg-line peer-data-\[cut='1'\]:invisible/.test(tl))
+  check('…the now line over the day\'s other things and under the item\'s own bar (drawn between them)',
+    tl.indexOf('{spans.map(s => {') > 0 && tl.indexOf('{spans.map(s => {') < tl.indexOf('rounded-full bg-danger') && tl.indexOf('rounded-full bg-danger') < tl.indexOf('role="slider"'))
+  check('…the day strip\'s thumb maps the same 1440 minutes as its ticks (the room before 00:00 left out)',
+    /const from = Math\.min\(Math\.max\(0, el\.scrollLeft - INSET\), day\)/.test(tl) && /const f = s\.clientWidth \/ day/.test(tl))
   check('…its browser audit exists (clipped, overlapping, covered, cut placeholders, outside the screen, the wheel)',
-    fs.existsSync(path.join(__dirname, 'audit-item-screen.mjs')) && /function inspect\(\)/.test(src('scripts/audit-item-screen.mjs')) && /function wheels\(\)/.test(src('scripts/audit-item-screen.mjs')))
+    fs.existsSync(path.join(__dirname, 'audit-item-screen.mjs')) && /function inspect\(\)/.test(src('scripts/audit-item-screen.mjs')) && /function wheels\(\)/.test(src('scripts/audit-item-screen.mjs'))
+    && /function keyboardList\(/.test(src('scripts/audit-item-screen.mjs')))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)
