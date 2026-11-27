@@ -224,7 +224,7 @@ export function buildNextTargets(
     const repsClause = floorReps != null ? `${floorReps}+ reps${isBackoff ? ' on the top set' : ' on each set'} is good` : 'staying inside your range is good'
     const topReps = Math.min(...evaluatedReps(latest))
     const expect = step && !assisted ? expectedRepsAfterStep(topReps, step.percent, policy) : null
-    const expectClause = expect ? ` (expect about ${expect.low === expect.high ? expect.low : `${expect.low}–${expect.high}`} reps there)` : ''
+    const expectText = expect ? `Expect about ${expect.low === expect.high ? expect.low : `${expect.low}–${expect.high}`} reps there — fewer reps after a jump are normal.` : 'Fewer reps after a jump are normal.'
     let headline: string
     if (nextLoad == null || step == null) {
       const verb = assisted ? 'Cut assistance' : 'Add weight'
@@ -234,8 +234,8 @@ export function buildNextTargets(
     } else {
       const change = assisted ? `down from ${formatKg(load as number)}` : `+${formatKg(step.stepKg)} · +${step.percent} %`
       const what = assisted ? (isBackoff ? 'Cut assistance on the top set' : 'Cut assistance') : (isBackoff ? 'Add weight to the top set' : 'Add weight')
-      const backoffs = isBackoff ? `; keep the backoff sets at ${formatSetTargets(setTargets.slice(1), metricKind)}` : ''
-      headline = `${what}: ${loadLabel(nextLoad)} (${change})${expectClause} — ${repsClause}${backoffs}. Fewer reps after a jump are normal.`
+      const backoffs = isBackoff ? `, backoff sets at ${formatSetTargets(setTargets.slice(1), metricKind)}` : ''
+      headline = `${what}: ${loadLabel(nextLoad)} (${change})${backoffs}. ${expectText}`
     }
     const nextLabel = nextLoad != null ? loadLabel(nextLoad) : 'the new load'
     return {

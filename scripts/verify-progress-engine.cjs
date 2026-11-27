@@ -1056,7 +1056,8 @@ console.log('\n== 18. Second correction round — 7 further blocker fixes ==')
     const sessions = buildCanonicalSessions(rows, 'durationexposure')
     const expectation = resolveExpectation('durationexposure', 'duration', 3, () => null, () => null)
     const result = evaluateExerciseProgress({ exerciseTemplateId: 'durationexposure', metricKind: 'duration', sessions, expectation }, DEFAULT_POLICY)
-    check('D: a genuine top-set duration DECREASE (50s -> 40s) reads REVIEW_LOAD_REDUCTION', result.currentAction === 'REVIEW_LOAD_REDUCTION')
+    check('D: a top-set duration DECREASE (50s -> 40s) is an off day (Add reps), never "Lighter" — a hold has no load', result.currentAction === 'HOLD_STEADY' && /^Your top-set duration dropped/.test(buildExplanationSentence(result)), buildExplanationSentence(result))
+    check('D: its target is floor + stretch, back to last time', result.nextTargets && result.nextTargets.nextSession.headline === 'Repeat 40s/40s/40s = good · back to 50s/50s/50s = progress.', result.nextTargets && result.nextTargets.nextSession.headline)
     const sentence = buildExplanationSentence(result)
     check('D: the exposure never renders a bare "—/—" for a valid duration session', !sentence.includes('—/—'))
     check('D: the exposure renders the REAL duration values (50s and 40s)', sentence.includes('50s') && sentence.includes('40s'))
@@ -1766,7 +1767,7 @@ console.log('\n== 23. Progression rules 3.0 — the owner\'s example (27.11.2026
   check('Almost: "add weight" names the reps-first goal and the jump option', twelveTwice.nextTargets.progressionRequirement.headline === 'Add weight once every set reaches 14 reps at 16 kg — or jump to 18 kg whenever you choose.', twelveTwice.nextTargets.progressionRequirement.headline)
   const fourteen = run('ex16', [[16, [8, 7, 6]], [16, [8, 8, 8]], [16, [10, 10, 9]], [16, [12, 12, 12]], [16, [12, 12, 12]], [16, [14, 14, 14]]])
   check('reps first done (14/14/14) → Add weight 18 kg', fourteen.currentAction === 'READY_TO_INCREASE' && fourteen.nextTargets.nextSession.loadKg === 18, fourteen.currentAction)
-  check('...and says what to expect at 18 kg', /^Add weight: 18 kg \(\+2 kg · \+12\.5 %\) \(expect about 8–10 reps there\)/.test(headline(fourteen)), headline(fourteen))
+  check('...and says what to expect at 18 kg', headline(fourteen) === 'Add weight: 18 kg (+2 kg · +12.5 %). Expect about 8–10 reps there — fewer reps after a jump are normal.', headline(fourteen))
 
   // Barbell 60 kg (upper body): Add weight +2.5 kg after 2 sessions at the top.
   const bench = run('bench60', [[60, [11, 10, 10]], [60, [12, 12, 12]], [60, [12, 12, 12]]], { equipment: 'barbell' })

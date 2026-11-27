@@ -186,6 +186,9 @@ export function buildExplanationSentence(result: ExerciseProgressResult): string
     const phrase = axisPhrase(result.metricKind)
     return `${phrase.decreased} (${previousLabel} → ${latestLabel}). Reps build at this load like at any other; if it wasn't planned, go back up next time.`
   }
+  if (result.observedTransition === 'LOAD_DECREASED' && !isWeightBasedMetric(result.metricKind)) {
+    return `${axisPhrase(result.metricKind).decreased} (${previousLabel} → ${latestLabel}). One off day is normal — repeating it is fine, and last time's numbers are progress.`
+  }
   const almost = result.reasons.find(r => r.code === 'STEP_OVER_TEN_PERCENT')
   if (result.currentAction === 'ALMOST_READY' && almost) {
     return `Every set reached the top of your range 2 sessions in a row (${latestLabel}). The next step, ${kg(almost.values.nextKg)}, is +${almost.values.percent} % — over 10 %, so pushing reps first is the gentler way; jumping now works too.`

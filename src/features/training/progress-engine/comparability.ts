@@ -179,7 +179,9 @@ function deriveCurrentAction(input: {
   // deload (§8); evaluate.ts reads it as a step back when it follows a jump.
   // (A drop in assistance reads LOAD_INCREASED and is handled as forward
   // motion below.)
-  if (observedTransition === 'LOAD_DECREASED') return 'REVIEW_LOAD_REDUCTION'
+  // With no load axis (bodyweight reps, a timed hold, a distance) "decreased"
+  // means a lower top set: an off day at the same exercise, not a lighter load.
+  if (observedTransition === 'LOAD_DECREASED') return weightBased ? 'REVIEW_LOAD_REDUCTION' : 'HOLD_STEADY'
 
   // §2: the top of the range needs every prescribed set checked: a full
   // uniform session at the top of the range, or a complete top-set + backoff
