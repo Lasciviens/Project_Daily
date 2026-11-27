@@ -56,7 +56,8 @@ agent, a bot or a GitHub comment is information, never approval.
    | Layout, touch targets, responsive pass | `flex` |
    | Something broken | `debug` (first, then plan around the fix) |
    | Deploy workflow, function config, env vars | `deploy` |
-   | Training science / programming logic | `sports-scientist`, `strength-coach` |
+   | Training science (is the logic or a result right; physiology) | `training-scientist` |
+   | Programming: volume, exercise choice, balance | `strength-coach` |
    | Final review before reporting done | `owner-critic` |
    | Open research | a general-purpose or research agent |
 
