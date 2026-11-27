@@ -66,7 +66,7 @@ export function buildCanonicalSessions(sets: readonly ProgressSetRow[], exercise
 
 /** The session's representative set for this metric — real metric-strategy
  *  dispatch (`metricStrategy.ts`), never a naive "most reps wins": est1rm
- *  respects the <=12-rep e1RM ceiling, assistedWeight picks the LOWEST
+ *  ranks by an uncapped Epley score (the most reps at a load), assistedWeight picks the LOWEST
  *  assistance, duration/distance require their own real quantity, and a
  *  `top_set_and_backoff` session always uses the actual top-set role
  *  rather than whichever set scores highest. Returns null when the metric

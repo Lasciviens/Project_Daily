@@ -38,8 +38,6 @@ export interface RuleCatalogEntry {
   confidence: ScienceConfidence | null
 }
 
-const NONE = { sRules: [] as readonly string[], confidence: null }
-
 /** The catalog entry that explains each data-quality flag — the UI shows
  *  these titles/definitions, never the raw enum. */
 export const DATA_QUALITY_FLAG_CODE: Record<DataQualityFlag, string> = {
@@ -49,27 +47,30 @@ export const DATA_QUALITY_FLAG_CODE: Record<DataQualityFlag, string> = {
   PROGRAM_CHANGED: 'DATA_QUALITY_PROGRAM_CHANGED',
 }
 
+// Plain literals only: an object spread here (`...NONE`) counts as a possible
+// side effect, so the bundler kept this module wherever the engine barrel is
+// imported and Health, Home and Recipes grew by ~9 kB.
 export const RULE_CATALOG: Record<string, RuleCatalogEntry> = {
   // ── Reason codes (comparability.ts / evaluate.ts) ──
   LOAD_INCREASED_PCT: {
     title: 'Load increased',
     shortDefinition: 'The working load went up since the last comparable session — a plain, measured fact.',
-    evidenceClass: 'measured_fact', docAnchor: '#load-transition', ...NONE,
+    evidenceClass: 'measured_fact', docAnchor: '#load-transition', sRules: [], confidence: null,
   },
   ALL_SETS_ABOVE_MINIMUM: {
     title: 'All sets above minimum',
     shortDefinition: 'Every set evaluated for this comparison stayed at or above your target’s rep minimum.',
-    evidenceClass: 'program_policy', docAnchor: '#range-compliance', ...NONE,
+    evidenceClass: 'program_policy', docAnchor: '#range-compliance', sRules: [], confidence: null,
   },
   BELOW_TARGET_MINIMUM: {
     title: 'Below target minimum',
     shortDefinition: 'At least one evaluated set fell below your target’s rep minimum.',
-    evidenceClass: 'program_policy', docAnchor: '#range-compliance', ...NONE,
+    evidenceClass: 'program_policy', docAnchor: '#range-compliance', sRules: [], confidence: null,
   },
   TOP_OF_RANGE_NOT_REACHED: {
     title: 'Not yet at the top of range',
     shortDefinition: 'At least one evaluated set has not yet reached the top of your target range.',
-    evidenceClass: 'program_policy', docAnchor: '#range-compliance', ...NONE,
+    evidenceClass: 'program_policy', docAnchor: '#range-compliance', sRules: [], confidence: null,
   },
   REP_INCREASE_CLEAN: {
     title: 'Clean rep increase',
@@ -89,12 +90,12 @@ export const RULE_CATALOG: Record<string, RuleCatalogEntry> = {
   LOAD_DECREASED_UNKNOWN_INTENT: {
     title: 'Load decreased, intent unknown',
     shortDefinition: 'The working load went down. This app has no signal for why — never auto-labeled a deload.',
-    evidenceClass: 'product_rule', docAnchor: '#load-decrease', ...NONE,
+    evidenceClass: 'product_rule', docAnchor: '#load-decrease', sRules: [], confidence: null,
   },
   ASSISTANCE_REDUCED: {
     title: 'Assistance reduced',
     shortDefinition: 'Less assistance load is the improvement for an assisted-bodyweight exercise.',
-    evidenceClass: 'product_rule', docAnchor: '#metric-dispatch', ...NONE,
+    evidenceClass: 'product_rule', docAnchor: '#metric-dispatch', sRules: [], confidence: null,
   },
   NO_TREND_AT_CURRENT_LOAD: {
     title: 'No trend at this load',
@@ -104,22 +105,22 @@ export const RULE_CATALOG: Record<string, RuleCatalogEntry> = {
   DATA_QUALITY_MISSING_SET: {
     title: 'Fewer sets than prescribed',
     shortDefinition: 'Fewer working sets were logged this session than your program currently calls for.',
-    evidenceClass: 'product_rule', docAnchor: '#data-quality-flags', ...NONE,
+    evidenceClass: 'product_rule', docAnchor: '#data-quality-flags', sRules: [], confidence: null,
   },
   DATA_QUALITY_EXTRA_SET: {
     title: 'More sets than prescribed',
     shortDefinition: 'More working sets were logged this session than your program currently calls for.',
-    evidenceClass: 'product_rule', docAnchor: '#data-quality-flags', ...NONE,
+    evidenceClass: 'product_rule', docAnchor: '#data-quality-flags', sRules: [], confidence: null,
   },
   DATA_QUALITY_MIXED_LOAD: {
     title: 'Mixed load session',
     shortDefinition: 'This session’s sets don’t share one clean load or backoff shape, so a load-based comparison isn’t meaningful.',
-    evidenceClass: 'product_rule', docAnchor: '#load-structure', ...NONE,
+    evidenceClass: 'product_rule', docAnchor: '#load-structure', sRules: [], confidence: null,
   },
   DATA_QUALITY_PROGRAM_CHANGED: {
     title: 'Program changed',
     shortDefinition: 'Reserved — the app doesn’t record past targets, so it never claims your program changed.',
-    evidenceClass: 'product_rule', docAnchor: '#data-quality-flags', ...NONE,
+    evidenceClass: 'product_rule', docAnchor: '#data-quality-flags', sRules: [], confidence: null,
   },
   AWAITING_TOP_RANGE_CONFIRMATION: {
     title: 'Top of range 1 of 2',
@@ -136,17 +137,17 @@ export const RULE_CATALOG: Record<string, RuleCatalogEntry> = {
   LOAD_PR: {
     title: 'Best load (6 months)',
     shortDefinition: 'The heaviest comparable working load for this exercise in the last 6 months of your current program. Older sessions and other programs aren’t included — see Personal Records for all-time bests.',
-    evidenceClass: 'measured_fact', docAnchor: '#events', ...NONE,
+    evidenceClass: 'measured_fact', docAnchor: '#events', sRules: [], confidence: null,
   },
   REP_PR_AT_LOAD: {
     title: 'Rep best at this load (6 months)',
     shortDefinition: 'The most reps on a single comparable set at this exact load in the last 6 months of your current program.',
-    evidenceClass: 'measured_fact', docAnchor: '#events', ...NONE,
+    evidenceClass: 'measured_fact', docAnchor: '#events', sRules: [], confidence: null,
   },
   TOTAL_REPS_PR_AT_LOAD: {
     title: 'Total-reps best at this load (6 months)',
     shortDefinition: 'The highest total comparable reps at this exact load and set count in the last 6 months of your current program.',
-    evidenceClass: 'measured_fact', docAnchor: '#events', ...NONE,
+    evidenceClass: 'measured_fact', docAnchor: '#events', sRules: [], confidence: null,
   },
   ESTIMATED_STRENGTH_PR: {
     title: 'Estimated strength best (6 months)',
@@ -156,12 +157,12 @@ export const RULE_CATALOG: Record<string, RuleCatalogEntry> = {
   TARGET_COMPLETED: {
     title: 'Target completed',
     shortDefinition: 'Every comparable working set reached the top of your target range this session.',
-    evidenceClass: 'program_policy', docAnchor: '#events', ...NONE,
+    evidenceClass: 'program_policy', docAnchor: '#events', sRules: [], confidence: null,
   },
   PROGRESSION_STREAK: {
     title: 'Progression streak',
     shortDefinition: 'Several consecutive sessions in a row each showed forward motion — a documented product heuristic (a minimum streak length), not a scientific threshold.',
-    evidenceClass: 'product_rule', docAnchor: '#events', ...NONE,
+    evidenceClass: 'product_rule', docAnchor: '#events', sRules: [], confidence: null,
   },
 
   // ── Reason codes for the progression steps (evaluate.ts) ──
@@ -231,17 +232,17 @@ export const RULE_CATALOG: Record<string, RuleCatalogEntry> = {
   CONFIRM_AT_CURRENT_LOAD: {
     title: 'Check sets',
     shortDefinition: 'The read looks positive, but the logged sets differ from the program (a set missing or extra), so repeat the prescribed sets to get a clean read.',
-    evidenceClass: 'product_rule', docAnchor: '#current-action', ...NONE,
+    evidenceClass: 'product_rule', docAnchor: '#current-action', sRules: [], confidence: null,
   },
   LOG_COMPARABLE_SESSION: {
     title: 'Check sets',
     shortDefinition: 'The latest session couldn’t be compared (sets at mixed loads, or nothing your tracked metric can read). Log one session with a consistent structure to get a real read.',
-    evidenceClass: 'product_rule', docAnchor: '#load-structure', ...NONE,
+    evidenceClass: 'product_rule', docAnchor: '#load-structure', sRules: [], confidence: null,
   },
   REVIEW_LOAD_REDUCTION: {
     title: 'Lighter',
     shortDefinition: 'The load went down (not right after a weight step, so the reason isn’t known). Build reps at this load like at any other; it is never read as a planned easy week.',
-    evidenceClass: 'product_rule', docAnchor: '#load-decrease', ...NONE,
+    evidenceClass: 'product_rule', docAnchor: '#load-decrease', sRules: [], confidence: null,
   },
   WATCH_FOR_PLATEAU: {
     title: 'Check',

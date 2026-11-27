@@ -123,7 +123,7 @@ export function ExerciseTrendChart({ sessions, metricKind, height = 180 }: { ses
       <p className="text-meta text-fg-muted">
         {view === 'primary' && weightBased && 'Filled dots mark a load change. '}
         {view === 'primary' && assisted && 'Axis flipped: up means LESS assistance, which is the improvement. '}
-        {view === 'primary' && metricKind === 'est1rm' && 'Est. 1RM (dashed) is an Epley estimate from sets of 12 reps or fewer — a rough direction, not a tested max. '}
+        {view === 'primary' && metricKind === 'est1rm' && 'Est. 1RM (dashed) is an Epley estimate from sets of 10 reps or fewer — a rough direction, not a tested max. '}
         {view === 'total' && 'A drop right after a load increase is expected, not a regression. '}
         {view === 'volume' && 'Volume = weight × reps over every working set (warm-ups excluded) — total work done, not strength. '}
         Hover or tap a point for the sets.
