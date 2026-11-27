@@ -114,11 +114,17 @@ export function useTaskActions() {
     } }))
   }
 
-  /** An overdue item to today — its slot and its due, in the data (useMoveItemToDay says it, with Undo). */
+  /** An open one-off item to a day — its slot and its due together, in the data (useMoveItemToDay says it, with
+   *  Undo): Needs a decision's day. A training session moves through its own Move…, a repeat's day never alone. */
+  function moveToDay(task: Task, day: string): Promise<void> {
+    if (!isOpenTask(task) || isTrainingTask(task) || repeatDayOf(task)) return Promise.resolve()
+    return quietly(moveItem.mutateAsync({ task, day }))
+  }
+
+  /** An overdue item to today (taskRules.movesToToday). */
   function moveToToday(task: Task): Promise<void> {
     const today = todayStr()
-    if (!movesToToday(task, today)) return Promise.resolve()
-    return quietly(moveItem.mutateAsync({ task, day: today }))
+    return movesToToday(task, today) ? moveToDay(task, today) : Promise.resolve()
   }
 
   /** Asks first, says what happened, offers Undo (the owner's rule for every delete). */
@@ -133,7 +139,7 @@ export function useTaskActions() {
   const open = (task: Task) => (isTrainingTask(task) ? modal.open({ kind: 'training-session', taskId: task.id }) : edit(task))
 
   return {
-    setDone, cancel, reopen, setStatus, toggleFocus, remove: removeTask, edit, open, moveToToday,
+    setDone, cancel, reopen, setStatus, toggleFocus, remove: removeTask, edit, open, moveToDay, moveToToday,
     /** A training session's own: Move (asks the day and time), Skip (asks why). */
     move: (task: Task) => session.openMove(planRefForTask(task)),
     skip: (task: Task) => session.openSkip(planRefForTask(task)),

@@ -295,11 +295,11 @@ const KEPT_WHEN_ABSENT = ['labels', 'place', 'alerts', 'showAs', 'url', 'travelM
 
 /**
  * A one-off item moved to another day (owner, 27.11.2026: "if its moved it is moved!" — Move to today on an overdue
- * row): the same item through the one save, only its day changed. Its time, length and a deadline elsewhere stay;
+ * row, Needs a decision's day; null = no day, an Undo's): the same item through the one save, only its day changed. Its time, length and a deadline elsewhere stay;
  * the database moves the task's due along with the slot when the due was the slot's day (item_slot_moves_due), and
  * the section follows the day (saveItemVia).
  */
-export function movedToDay(item: ItemInput, day: string): ItemInput {
+export function movedToDay(item: ItemInput, day: string | null): ItemInput {
   const moved: ItemInput = { ...item, scope: 'item', date: day, section: null }
   for (const k of KEPT_WHEN_ABSENT) delete moved[k]
   return moved

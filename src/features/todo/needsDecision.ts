@@ -1,7 +1,7 @@
 import { localDayOf } from '../../shared/utils/dateUtils'
 import { formatDate } from '../../shared/utils/dateFormat'
 import { labelsOf, cleanLabels } from './taskLabels'
-import { isTrainingTask, sectionForDay } from './taskRules'
+import { isTrainingTask } from './taskRules'
 import type { Task, UpdateTaskInput } from './types'
 
 // "Needs a decision": open tasks the owner keeps seeing and never settles.
@@ -52,11 +52,6 @@ export function needsDecision(tasks: readonly Task[], today: string): DecisionRo
     }
   }
   return rows.sort((a, b) => b.days - a.days || a.task.id.localeCompare(b.task.id))
-}
-
-/** Pick a day: the task's date and the section that follows it (the one rule every writer uses). */
-export function pickDayPatch(day: string, today: string): UpdateTaskInput {
-  return { due_date: day, section: sectionForDay(day, today) }
 }
 
 /**

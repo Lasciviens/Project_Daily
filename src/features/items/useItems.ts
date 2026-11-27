@@ -18,7 +18,7 @@ import { drainICloudSoon } from '../calendar/areas/appleAreas'
 import { linkedTimeBlockQuery, useDeleteScheduleBlock, useDeleteTimeBlock } from '../daily/hooks/useSchedule'
 import { resolveOrCreateGoogleTaskListId } from '../todo/api/googleTaskListsApi'
 import { fetchTaskById } from '../todo/api/tasksApi'
-import { sectionForDay } from '../todo/taskRules'
+import { liveSection, sectionForDay } from '../todo/taskRules'
 import { syncGoogleTasksSoon, useDeleteTask } from '../todo/hooks/useTodos'
 import { CALENDAR_FIELDS_NOT_MIGRATED, sendsCalendarFields } from './itemCalendarFields'
 import {
@@ -114,14 +114,15 @@ export function useSaveItem(own?: {
   })
 }
 
-/** What Move to today needs of a task: the item's own rows are read again by id. */
+/** What a move needs of a task: the item's own rows are read again by id. */
 export type MovableTask = Pick<Task, 'id' | 'title'>
 
 /**
- * Moves a one-off item to another day — Move to today on an overdue row (owner, 27.11.2026: "One truth! … if its
- * moved it is moved!"). The item is read again (its task and its slot, by id) and saved through the one save with
+ * Moves a one-off item to another day — Move to today on an overdue row and Needs a decision's day (owner, 27.11.2026:
+ * "One truth! … if its moved it is moved!"; one action, task and slot together, never a due-only write). The item is read again (its task and its slot, by id) and saved through the one save with
  * only its day changed (itemRules.movedToDay): the slot moves, the database moves the due along, Apple Calendar and
- * Google Tasks follow. Says "Moved to today · <title>" with Undo (the item saved back as it was read).
+ * Google Tasks follow. Says "Moved to today · <title>" with Undo (the item saved back to the day it was read on —
+ * no day and its own section for an undated one).
  */
 export function useMoveItemToDay() {
   const qc = useQueryClient()
@@ -129,7 +130,7 @@ export function useMoveItemToDay() {
   const undo = useMutationWithFeedback<SaveItemAnswer, ItemInput>({
     action: 'move_item_undo',
     mutationFn: send,
-    successMessage: (_a, input) => `Back on ${formatDate(input.date ?? '')} · ${input.title}`,
+    successMessage: (_a, input) => `${input.date ? `Back on ${formatDate(input.date)}` : 'Back with no date'} · ${input.title}`,
     invalidates: ['taskGraph', qk.items.all],
   })
   return useMutationWithFeedback<{ before: ItemInput }, { task: MovableTask; day: string }>({
@@ -139,8 +140,9 @@ export function useMoveItemToDay() {
       if (!row) throw new Error(`“${task.title}” is no longer there`)
       const was = itemFromRows(row, slot ?? null, null)
       await send(movedToDay(was, day))
-      // Undo is the same move back to the day it was on.
-      return { before: movedToDay(was, was.date ?? day) }
+      // Undo is the same move back to the day it was on (an undated one: no day, back in its own section).
+      const before = movedToDay(was, was.date)
+      return { before: was.date ? before : { ...before, section: liveSection(row.section) } }
     },
     silent: 'its onSuccess says "Moved to today · <title>" with Undo',
     onSuccess: ({ before }, { task, day }) => {
