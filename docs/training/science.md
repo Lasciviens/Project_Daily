@@ -504,6 +504,7 @@ These rules are what the science supports, plus marked app choices. Where the ap
 
 - **S17. Weekly sets per muscle** = hard sets over a rolling 7 days ending today. Direct set 1, indirect set 0.5, warm-up 0. (§6.1 — moderate)
 - **S18. Volume bands per muscle per 7 days:** below 4 = "below minimum"; 4–9 = "low"; 10–20 = "target"; 21–30 = "high, extra sets add less"; above 30 = "very high, little extra expected". No band is shown as an error. (§6.1; high for direction, moderate for the edges — **preprint** numbers)
+  - *App reading (27.11.2026):* the band word on screen reads the **4-week average** (the last 28 days ÷ 4), with the last 7 days shown beside it. A rolling 7 days (S17) swings with where the week's sessions fall — on the day before an upper session, the upper muscles hold only half their week — so one short week would flip the word. The average keeps S17's counting and S18's edges; it only steadies the word. (App choice.)
 - **S19. Frequency:** the default plan hits each major muscle at least 2 times in 7 days. Never warn when a muscle's weekly sets came from a single session. (§7.1; high for size, moderate for strength)
 
 ### Schedule: moved and missed sessions

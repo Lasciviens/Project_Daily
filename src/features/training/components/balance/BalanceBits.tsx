@@ -4,7 +4,7 @@ import {
   leanLabel, leanTone, ratioText, sidesText, type BalanceComparison, type RatioRead,
 } from '../../plan/muscleBalance'
 
-// The pieces both balance cards share (Program tab = planned, Muscles body
+// The pieces both balance cards share (Plan tab = planned, Results' body
 // map on Progress = done), so the two read the same words for the same
 // numbers — and each names the other's value.
 

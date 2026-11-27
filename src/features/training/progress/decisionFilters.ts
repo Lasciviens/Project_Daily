@@ -82,7 +82,7 @@ export function muscleOptions(
 export interface RoutineOption { id: string; label: string }
 
 /** The current program's routines that hold at least one listed exercise, in
- *  the order given (the routine list's — the Program tab's order). Two
+ *  the order given (the routine list's — the Plan tab's order). Two
  *  routines with the same name stay apart: "Full body", "Full body (2)". */
 export function routineOptions(
   decisions: readonly ExerciseProgressResult[],

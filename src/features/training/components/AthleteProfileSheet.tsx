@@ -142,8 +142,8 @@ export function AthleteProfileSheet({ open, onClose }: Props) {
         <div className="border-t border-line pt-4">
           <p className="field-label">Current program</p>
           <p className="text-meta text-fg-muted">
-            Which routines you&apos;re running now lives on the Training page&apos;s Program tab, next to what they plan per muscle.{' '}
-            <Link to="/training?tab=program" onClick={onClose} className="font-semibold text-accent-600">Open Program</Link>
+            Which routines you&apos;re running now lives on the Training page&apos;s Plan tab, next to what they plan per muscle.{' '}
+            <Link to="/training?tab=plan" onClick={onClose} className="font-semibold text-accent-600">Open Plan</Link>
           </p>
         </div>
       </div>

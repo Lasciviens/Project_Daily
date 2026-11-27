@@ -100,7 +100,7 @@ export function TrainingConsistencyCalendar() {
       <ChartNote>
         Consistency is a precondition for volume adding up over time, not a claim that more sessions itself drives gains
         — training frequency alone showed no benefit at equal weekly volume.
-        {target == null && ' Set a weekly training-days target (Progress card → Program) to see it plotted here.'}
+        {target == null && ' Set a weekly training-days target (your training profile, on the Plan tab) to see it plotted here.'}
         {' The last bar is this week so far.'}
       </ChartNote>
     </ChartCard>

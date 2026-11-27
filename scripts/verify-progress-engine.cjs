@@ -1668,12 +1668,12 @@ console.log('\n== 21. RPE (Hevy) is carried for display only ==')
   check('21: the chart tooltip shows the session\'s RPE', buildExerciseChartRows(ratedSessions, 'est1rm')[2].setsLabel === '62.5 kg × 9/8/8 @ RPE 9.5/10/10')
 }
 
-// §22 — decision-table tabs (progress/decisionTabs.ts) and the progress
-// model's scope: every current-program exercise trained in the last 14 days
-// is on Recent changes, and All lists single-session exercises too.
-console.log('\n22 · Decision tabs — nothing trained lately is hidden')
+// §22 — Results' exercise list groups (progress/decisionTabs.ts) and the progress
+// model's scope: every current-program exercise is in exactly one group, single-session
+// ones included (the old decision table's Recent / All tabs went with it, 27.11.2026).
+console.log('\n22 · Exercise list groups — nothing is hidden')
 {
-  const { filterByTab, hasRecentChange, isUnchanged } = require('../src/features/training/progress/decisionTabs')
+  const { nextActionGroup, groupCounts } = require('../src/features/training/progress/decisionTabs')
   const { computeProgressModel } = require('../src/features/training/progressModel')
   const today = '2026-09-29'
   const expectation = { repMin: 8, repMax: 12, source: 'routine' }
@@ -1683,14 +1683,10 @@ console.log('\n22 · Decision tabs — nothing trained lately is hidden')
   const first = evalRows('first', uniformRows('f1', '2026-09-27', 'first', 10, [10, 10, 10]))
   const old = evalRows('old', [...uniformRows('o1', '2026-08-01', 'old', 30, [8, 8, 8]), ...uniformRows('o2', '2026-09-01', 'old', 30, [9, 9, 9])])
   const all = [same, moved, first, old]
-  const recent = filterByTab(all, 'recent', today).map(d => d.exerciseTemplateId).sort().join()
-  check('22: Recent lists every lift trained in 14 days — unchanged and single-session too', recent === 'first,moved,same', recent)
-  check('22: Recent leaves out a lift last trained 4 weeks ago', !filterByTab(all, 'recent', today).includes(old))
-  check('22: same load and reps → "No change"', !hasRecentChange(same) && isUnchanged(same))
-  check('22: more reps → a change, no "No change" pill', hasRecentChange(moved) && !isUnchanged(moved))
-  check('22: a first session never reads "No change"', first.currentAction === 'INSUFFICIENT_DATA' && !isUnchanged(first))
-  check('22: All lists every exercise, single-session included', filterByTab(all, 'all', today).length === 4)
-  check('22: decision tabs still skip single-session exercises', !filterByTab(all, 'building', today).includes(first) && !filterByTab(all, 'attention', today).includes(first))
+  const counts = groupCounts(all)
+  check('22: every exercise is in one group — single-session and old ones too', counts.add_weight + counts.almost + counts.add_reps + counts.check === all.length, JSON.stringify(counts))
+  check('22: a first session is Add reps (its pill: First time)', first.currentAction === 'INSUFFICIENT_DATA' && nextActionGroup(first) === 'add_reps')
+  check('22: same load and reps, and more reps, are Add reps', nextActionGroup(same) === 'add_reps' && nextActionGroup(moved) === 'add_reps', `${same.currentAction} ${moved.currentAction}`)
 
   // Model scope: an exercise logged under a current routine that the routine
   // no longer lists is in scope only while trained in the last 14 days.
@@ -1709,7 +1705,7 @@ console.log('\n22 · Decision tabs — nothing trained lately is hidden')
   check('22: a recent lift the routine no longer lists is still in scope', ids === 'bench,inclineCurl', ids)
   check('22: ...and belongs to that routine for the Routine filter', (model.routineIdsByTemplateId.get('inclineCurl') ?? []).join() === 'upperA')
   check('22: an old swapped-out lift and a warm-up-only one stay out', !ids.includes('oldFly') && !ids.includes('warmOnly'))
-  check('22: the recent lift shows on Recent changes', filterByTab(model.decisions, 'recent', today).some(d => d.exerciseTemplateId === 'inclineCurl'))
+  check('22: the recent lift is in the list (one group)', model.decisions.some(d => d.exerciseTemplateId === 'inclineCurl' && !!nextActionGroup(d)))
 }
 
 console.log('\n== 23. Progression rules 3.0 — the owner\'s example (27.11.2026; S3, S4, S5, S6, S12–S16) ==')
@@ -1830,12 +1826,11 @@ console.log('\n== 23. Progression rules 3.0 — the owner\'s example (27.11.2026
   check('resolveLoadStep lands on a load already logged within half a step (62 kg logged → 62, not 62.5)', resolveLoadStep(60, 2.5, 'upper_or_small', DEFAULT_POLICY, false, [57.5, 62]).nextKg === 62 && resolveLoadStep(60, 2.5, 'upper_or_small', DEFAULT_POLICY, false, [65]).nextKg === 62.5)
   check('READY_TO_INCREASE is a product rule, low confidence (S3/S10), its ACSM range named as the moderate part', RULE_CATALOG.READY_TO_INCREASE.evidenceClass === 'product_rule' && RULE_CATALOG.READY_TO_INCREASE.confidence === 'low' && /ACSM 2009’s \(moderate\)/.test(RULE_CATALOG.READY_TO_INCREASE.shortDefinition))
 
-  // The Progress table's tabs read the same decision as the pill.
-  const { filterByTab: tabOf } = require('../src/features/training/progress/decisionTabs')
-  const inTab = (r, tab) => tabOf([r], tab, '2026-12-31').length === 1
-  check('tabs: Almost and Add weight are on "Add weight"', inTab(twelveTwice, 'increase') && inTab(bench, 'increase'))
-  check('tabs: a new weight below the minimum builds (never "Check")', inTab(newWeight, 'building') && !inTab(newWeight, 'attention'))
-  check('tabs: Repeat builds; Step back is on "Check"', inTab(twelveOnce, 'building') && inTab(stepBack, 'attention') && !inTab(stepBack, 'building'))
+  // Results' exercise list groups read the same decision as the pill.
+  const { nextActionGroup: groupOf } = require('../src/features/training/progress/decisionTabs')
+  check('groups: Almost has its own group, Add weight its own', groupOf(twelveTwice) === 'almost' && groupOf(bench) === 'add_weight', `${groupOf(twelveTwice)} ${groupOf(bench)}`)
+  check('groups: a new weight below the minimum builds (never "Check")', groupOf(newWeight) === 'add_reps')
+  check('groups: Repeat builds; Step back is on "Check"', groupOf(twelveOnce) === 'add_reps' && groupOf(stepBack) === 'check')
 
   check('ALGORITHM_VERSION is bumped to 3.0.0', ALGORITHM_VERSION === '3.0.0')
   check('no target line says "must", "failed" or "behind"', [first, eights, eightsTop, twelveOnce, twelveTwice, fourteen, bench, worse, newWeight, gaining, stepBack, back, tight].every(r => !/\b(must|failed|behind)\b/i.test(headline(r) + ' ' + buildExplanationSentence(r))))

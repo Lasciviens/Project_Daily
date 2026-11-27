@@ -347,6 +347,14 @@ console.log('\n== trainingTabs ==')
   check('Library defaults to Routines', tabs.parseLibraryView(null) === 'routines' && tabs.parseLibraryView('exercises') === 'exercises')
   check('the old Log → Body link moves to Health → Body', tabs.movedLogView('log', 'body') === '/health?section=body')
   check('…only on Log', tabs.movedLogView('library', 'body') === null && tabs.movedLogView('log', 'hevy') === null)
+  // 27.11.2026: Next → Today, Program → Plan, Progress → Results; an old link still opens the tab under its new name.
+  check('the tabs are Today · Plan · Results · Log · Library · Coach', tabs.TRAINING_TABS.map(t => t.label).join(' · ') === 'Today · Plan · Results · Log · Library · Coach')
+  check('Today is the default', tabs.parseTrainingTab(null) === 'today' && tabs.parseTrainingTab('nonsense') === 'today')
+  check('?tab=next → today, program → plan, progress → results', tabs.legacyTrainingTab('next') === 'today' && tabs.legacyTrainingTab('program') === 'plan' && tabs.legacyTrainingTab('progress') === 'results')
+  check('…and they parse to the new tab', tabs.parseTrainingTab('next') === 'today' && tabs.parseTrainingTab('program') === 'plan' && tabs.parseTrainingTab('progress') === 'results')
+  check('a current id is not redirected', ['today', 'plan', 'results', 'log', 'library', 'coach', null, 'toString'].every(t => tabs.legacyTrainingTab(t) === null))
+  const page = require('fs').readFileSync(require('path').join(__dirname, '../src/features/training/pages/TrainingPage.tsx'), 'utf8')
+  check('the page replaces an old ?tab= in the URL (Navigate replace)', /legacyTrainingTab\(params\.get\('tab'\)\)/.test(page) && /<Navigate to=\{`\/training\?\$\{n\.toString\(\)\}`\} replace \/>/.test(page))
 }
 
 console.log('\nsessionForTask (a training task opens as its session, migration 141)')

@@ -1,7 +1,7 @@
 import Body, { type ExtendedBodyPart, type Slug } from 'react-muscle-highlighter'
 import { SegmentedControl } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
-import { BANDS_META } from '../../muscleMap'
+import { VOLUME_BANDS } from '../../plan/volumeBands'
 import { useBandColors } from '../muscleBandColors'
 import { FLAG_META } from './muscleVolumeModel'
 
@@ -54,18 +54,18 @@ export function MuscleBodyPanel({ side, onSideChange, bodyData, selectedCount, o
           <span className="text-meta font-semibold text-fg-2">Are you training each muscle the right amount?</span>
           <InfoBubble>
             <p className="mb-1 font-semibold text-fg">How the colours work</p>
-            <p className="mb-1.5">Colour = how many <strong>hard working sets per week</strong> each muscle got, vs typical volume landmarks. <strong>Green means the growth sweet spot — that's the goal, not "the most".</strong> Blue/teal = too little to grow it; amber/red = more than the body usually turns into muscle, so extra mostly adds fatigue.</p>
+            <p className="mb-1.5">Colour = how many <strong>hard working sets per week</strong> each muscle got: blue under 4 (below the minimum), teal 4–9 (low, still works), <strong>green 10–20 (the target)</strong>, lime 21–30 (high — extra sets add less), yellow over 30 (very high). None of them is an error.</p>
             <ul className="list-disc list-inside space-y-0.5">
               <li>Primary muscle of an exercise = 1 set; a secondary (helper) = half a set (a convention, not a measured value).</li>
               <li>Warm-up sets don't count.</li>
               <li>Shows <strong>volume</strong>, not effort/recovery — assumes your sets were reasonably hard.</li>
-              <li>Landmarks are population averages (±); guidance, not personalised.</li>
+              <li>The ranges come from a large meta-regression of training studies — guidance for most people, not personalised.</li>
               {hasFlags && <li>A violet muscle is <strong>flagged</strong> by an active avoid/limit limitation — not "good" or "bad". Open that muscle's card for which limitation and why. (Monitor-only limitations don't flag anything.)</li>}
             </ul>
           </InfoBubble>
         </div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-          {BANDS_META.map(b => (
+          {VOLUME_BANDS.map(b => (
             <div key={b.idx} className="flex items-center gap-1.5">
               <span className="h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: bandColors.bands[b.idx] }} />
               <span className="text-micro font-normal text-fg-muted">{b.label}</span>

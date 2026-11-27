@@ -3,12 +3,13 @@ import { BarChart3, ChevronDown } from 'lucide-react'
 import { Card, CardHeader, TonePill } from '../../../../shared/ui'
 import { InfoBubble } from '../../../../shared/components/InfoBubble'
 import { MusclePreferencesList } from '../MusclePreferencesList'
-import { MUSCLE_STATUS_TONE, RECOMMENDED_RANGE, TIER_LABEL, type MuscleRead } from '../../plan/programBalance'
+import { MUSCLE_STATUS_TONE, RECOMMENDED_RANGE, type MuscleRead } from '../../plan/programBalance'
+import { VOLUME_BANDS } from '../../plan/volumeBands'
 import type { Tone } from '../../../../shared/ui'
 import { SourceNote } from './SourceNote'
 
-// Scale for the bars: 30 sets (Pelland's "lowest efficiency" tier starts
-// there), or the biggest planned figure if higher.
+// Scale for the bars: 30 sets (S18's "very high" starts above it), or the
+// biggest planned figure if higher.
 const SCALE_FLOOR = 30
 
 const BAR_FILL: Record<Tone, string> = {
@@ -33,7 +34,7 @@ function MuscleRow({ m, scale }: { m: MuscleRead; scale: number }) {
           {m.priority && <TonePill tone="star">Priority</TonePill>}
           {m.restriction && <TonePill tone="highlight">{m.restriction === 'avoid' ? 'Avoid' : 'Limit'} limitation</TonePill>}
         </div>
-        <TonePill tone={tone} className="shrink-0">{m.status === 'excluded' ? 'Excluded' : TIER_LABEL[m.tier]}</TonePill>
+        <TonePill tone={tone} className="shrink-0">{m.status === 'excluded' ? 'Excluded' : m.band.label}</TonePill>
       </div>
       <div className="relative h-2 w-full rounded-full bg-surface-2" aria-hidden>
         {/* the 10–20 sets/week band most recreational lifters target */}
@@ -42,7 +43,6 @@ function MuscleRow({ m, scale }: { m: MuscleRead; scale: number }) {
       </div>
       <p className="text-meta text-fg-muted">
         {m.advice}
-        {m.landmarks && m.status !== 'excluded' && <span className="text-fg-faint"> · RP guide {m.landmarks.mev}–{m.landmarks.mav} sets ({m.rpBandLabel.toLowerCase()})</span>}
       </p>
     </li>
   )
@@ -63,11 +63,9 @@ export function PlannedVolumeCard({ muscles, passes }: { muscles: MuscleRead[]; 
             <b>How it&apos;s counted.</b> Each routine&apos;s working sets (warm-ups excluded) × how often it runs a week
             ({passes}×). A set counts 1 for the exercise&apos;s main muscle and ½ for each helper muscle — the counting that fitted
             best in the largest dose-response analysis.
-            <span className="mt-1.5 block"><b>Tiers (trial-based):</b> under 4 sets/week is below the minimum effective dose;
-            5–10 is the most efficient range; each band above still adds a little, at a rising cost per set, with no clear
-            plateau. ≥10 sets a week is linked to more growth; 10–20 suits most recreational lifters (the green band on the bars).</span>
-            <span className="mt-1.5 block"><b>RP guide (heuristic):</b> the MEV–MAV figures are a coaching convention, not a trial
-            result, adjusted ±15% for your experience level.</span>
+            <span className="mt-1.5 block"><b>The words</b> are the same ranges as Results&apos; Weekly sets card:{' '}
+            {VOLUME_BANDS.slice(1).map((b, i) => <span key={b.id}>{i > 0 && ' · '}{b.range} {b.label.toLowerCase()}</span>)} (the green band on the
+            bars is 10–20). None of them is an error: more sets add less and less.</span>
             <span className="mt-1.5 block"><SourceNote ids={['pelland2025', 'acsm2026', 'bazValle2022', 'schoenfeld2017']} /></span>
           </InfoBubble>
         </span>}

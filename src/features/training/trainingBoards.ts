@@ -2,7 +2,7 @@
 // scripts/verify-life-boards.cjs can check every step.
 import type { BoardLayouts } from '../../shared/ui/pageBoardRules'
 
-// ── Next ────────────────────────────────────────────────────────────────────
+// ── Today (was Next) ────────────────────────────────────────────────────────
 // What to do: a rail on the left reads the session — which one and when,
 // then its context (this week's sessions, recovery, the engine's heads-up) — and
 // the exercise cards take every other track, gaining columns as the page
@@ -19,7 +19,7 @@ export const NEXT_BOARD: BoardLayouts<NextSection> = {
   4: { lead: 1, columns: [NEXT_RAIL, { stack: NEXT_MAIN, span: 3 }] },
 }
 
-// ── Program ─────────────────────────────────────────────────────────────────
+// ── Plan (was Program) ──────────────────────────────────────────────────────
 // The plan in columns — which routines and when, then each routine's
 // prescription stacked under them in main | what that adds up to per muscle
 // | balance. The per-muscle card is by far the tallest, so the routines go
@@ -40,21 +40,21 @@ export const PROGRAM_BOARD: BoardLayouts<ProgramSection> = {
   4: { early: true, main: PROGRAM_MAIN, columns: [['current', 'routines'], ['schedule'], ['planned'], ['balance']] },
 }
 
-// ── Progress ────────────────────────────────────────────────────────────────
-// The per-exercise decisions and the weekly-volume body map in main (across
-// two tracks at 1920); the summaries — improvement, the program verdict,
-// days since each muscle — in a rail beside them; the supporting charts
-// under everything, in columns once opened. At 2450 the table keeps main
-// (56rem), the body map takes the two tracks beside it and the rail stays
-// last, instead of both spanning two tracks with the summaries ending early.
-export const PROGRESS_SECTIONS = ['improvement', 'overview', 'decisions', 'muscles', 'recency', 'charts'] as const
-export type ProgressSection = typeof PROGRESS_SECTIONS[number]
-const PROGRESS_MAIN = ['decisions', 'muscles'] as const
-export const PROGRESS_BOARD: BoardLayouts<ProgressSection> = {
-  1: ['improvement', 'overview', 'decisions', 'muscles', 'recency', 'charts'],
-  2: { columns: [PROGRESS_MAIN, ['improvement', 'overview', 'recency']], bottom: ['charts'] },
-  3: { columns: [{ stack: PROGRESS_MAIN, span: 2 }, ['improvement', 'overview', 'recency']], bottom: ['charts'] },
-  4: { columns: [['decisions'], { stack: ['muscles'], span: 2 }, ['improvement', 'overview', 'recency']], bottom: ['charts'] },
+// ── Results ─────────────────────────────────────────────────────────────────
+// Three plain cards and the exercise list (owner, 27.11.2026: "Yes" to Results = three simple cards with the
+// details behind a tap). A laptop reads Main lifts over the list in main and Consistency over Weekly sets in the
+// rail; a 1920 screen gives each card its own track beside the list's column; a 2450 one puts the list first and
+// the three cards beside it. The muscle watch (only during a cut) is a band on top; the details band is last.
+export const RESULTS_SECTIONS = ['watch', 'lifts', 'sets', 'consistency', 'exercises', 'more'] as const
+export type ResultsSection = typeof RESULTS_SECTIONS[number]
+// Main stops at 44rem: a lift or exercise row stretched to 56rem puts its pill far from its name; the board takes
+// its next track as soon as it fits (`early`).
+const RESULTS_MAIN = '44rem'
+export const RESULTS_BOARD: BoardLayouts<ResultsSection> = {
+  1: ['watch', 'lifts', 'sets', 'consistency', 'exercises', 'more'],
+  2: { main: RESULTS_MAIN, top: ['watch'], columns: [['lifts', 'exercises'], ['consistency', 'sets']], bottom: ['more'] },
+  3: { early: true, main: RESULTS_MAIN, top: ['watch'], columns: [['lifts', 'exercises'], ['consistency'], ['sets']], bottom: ['more'] },
+  4: { early: true, main: RESULTS_MAIN, top: ['watch'], columns: [['exercises'], ['lifts'], ['consistency'], ['sets']], bottom: ['more'] },
 }
 
 // ── Log (Hevy view) ─────────────────────────────────────────────────────────

@@ -96,7 +96,7 @@ function daysApart(a: string, b: string): number {
 }
 
 /** `high_reps`: an est1rm lift with enough sessions, but its first or last sessions had no set of ≤ 10 reps, so no e1RM
- *  to compare (S15) — never judged on older sessions alone; the Progress table judges its reps at the load (S12). */
+ *  to compare (S15) — never judged on older sessions alone; Results' exercise list judges its reps at the load (S12). */
 export type LiftStatus = 'improved' | 'flat' | 'declined' | 'insufficient' | 'high_reps'
 
 export interface LiftChange {

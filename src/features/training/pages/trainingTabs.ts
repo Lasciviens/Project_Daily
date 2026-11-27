@@ -1,22 +1,34 @@
-// The Training page's tabs, in order. Next is the default: the page answers
+// The Training page's tabs, in order. Today is the default: the page answers
 // "what do I do today" first. The id is mirrored in `?tab=` so a link (the
 // profile sheet's "Current program" link, a bookmark) can open a tab.
+// Renamed on 27.11.2026 (owner: "Yes" to Next → Today, Program → Plan,
+// Progress → Results); the old ids still land through `legacyTrainingTab`.
 // Log and Library have their own views, switched right after the tabs in the
 // same row and kept in `?view=`.
-export type TrainingTabId = 'next' | 'program' | 'progress' | 'log' | 'library' | 'coach'
+export type TrainingTabId = 'today' | 'plan' | 'results' | 'log' | 'library' | 'coach'
 
 export const TRAINING_TABS: { id: TrainingTabId; label: string }[] = [
-  { id: 'next',     label: 'Next' },
-  { id: 'program',  label: 'Program' },
-  { id: 'progress', label: 'Progress' },
+  { id: 'today',    label: 'Today' },
+  { id: 'plan',     label: 'Plan' },
+  { id: 'results',  label: 'Results' },
   { id: 'log',      label: 'Log' },
   { id: 'library',  label: 'Library' },
   { id: 'coach',    label: 'Coach' },
 ]
 
-export const DEFAULT_TRAINING_TAB: TrainingTabId = 'next'
+export const DEFAULT_TRAINING_TAB: TrainingTabId = 'today'
+
+/** The tabs' names before 27.11.2026 — a bookmark or an old link still opens the tab under its new name. */
+const LEGACY_TABS: Readonly<Record<string, TrainingTabId>> = { next: 'today', program: 'plan', progress: 'results' }
+
+/** The new id for an old `?tab=` value (the page replaces the URL with it), or null when `raw` is not an old one. */
+export function legacyTrainingTab(raw: string | null): TrainingTabId | null {
+  return raw != null && Object.prototype.hasOwnProperty.call(LEGACY_TABS, raw) ? LEGACY_TABS[raw] : null
+}
 
 export function parseTrainingTab(raw: string | null): TrainingTabId {
+  const legacy = legacyTrainingTab(raw)
+  if (legacy) return legacy
   return TRAINING_TABS.some(t => t.id === raw) ? raw as TrainingTabId : DEFAULT_TRAINING_TAB
 }
 

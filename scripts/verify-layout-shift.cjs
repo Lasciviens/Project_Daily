@@ -276,11 +276,11 @@ check('the brief: a failed read of the day\'s tasks or schedule is one line with
     && /Couldn\\'t load today\\'s schedule\./.test(briefHook) && /schedule: overview\.isLoading \|\| overview\.scheduleError \? null/.test(briefHook)
     && /<FailedLine failure=\{failure\} \/>/.test(brief))
 const next = code('src/features/training/components/next/NextTab.tsx')
-check('Training Next shows once the plan is in; this week, recovery and the muscle watch each keep their own room',
+check('Training Today shows once the plan is in; this week, recovery and the muscle watch each keep their own room',
   /if \(plan\.isLoading\) \{/.test(next) && !/week\.isLoading|recovery\.isLoading|muscle\.isLoading/.test(next)
     && /ids="training:recovery"/.test(next) && /<ThisWeekStrip where="next"/.test(next) && /ids=\{`training:week:\$\{where\}`\}/.test(code('src/features/training/components/week/ThisWeekStrip.tsx'))
     && /ids="muscleWatch:line"/.test(code('src/features/health/goal/MuscleWatchCard.tsx')))
-check('Training Next reads the muscle watch once (in MuscleWatchLine), never a second useMuscleWatch of its own', !/useMuscleWatch/.test(next))
+check('Training Today reads the muscle watch once (in MuscleWatchLine), never a second useMuscleWatch of its own', !/useMuscleWatch/.test(next) && /<MuscleWatchLine \/>/.test(next))
 const ahead = code('src/features/training/components/next/NextReadsAhead.tsx')
 check('…its reads only start early (NextReadsAhead, while the plan loads): it draws nothing and hands nothing on, so no line waits for another\'s read',
   /<NextReadsAhead \/>/.test(next) && /export function NextReadsAhead\(\) \{\s+useTrainingWeek\(\)\s+useRecoveryNotes\(\)\s+useMuscleWatch\(\)\s+return null\s+\}/.test(ahead) && !/isLoading|const /.test(ahead))

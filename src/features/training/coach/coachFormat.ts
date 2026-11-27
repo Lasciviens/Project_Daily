@@ -1,5 +1,6 @@
 import { actionLabel, formatSetTargets, formatSessionSets, progressVerdictHeadline, workloadLabel, type ExerciseProgressResult } from '../progress-engine'
-import { MOVEMENT_PATTERN_LABEL, labelForSlug, movementPatternLabel, resolveMovementPattern, type Landmarks } from '../muscleMap'
+import { MOVEMENT_PATTERN_LABEL, labelForSlug, movementPatternLabel, resolveMovementPattern } from '../muscleMap'
+import { volumeBandOf } from '../plan/volumeBands'
 import type { ProgressData } from '../progressModel'
 import type { AthleteLimitation, AthleteProfile } from '../types.athlete'
 import type { HevyRoutine } from '../types.hevy'
@@ -13,7 +14,7 @@ import type { CoachBalance } from './coachModel'
 //    formatPtSnapshot → the PT Coach tab's one-shot text snapshot (Turkish labels)
 //    buildCoachJson   → Ask-AI Coach mode's compact JSON
 //  Both carry the current program, the progress engine's per-exercise
-//  decisions (the very results the Progress tab shows) and the athlete's
+//  decisions (the very results the Results tab shows) and the athlete's
 //  limitations, so neither coach can contradict Progress any more (the PT
 //  prompt used to assume a hard-coded bro-split). Pure: no React, no I/O
 //  (scripts/verify-coach-context.cjs).
@@ -26,7 +27,7 @@ import type { CoachBalance } from './coachModel'
 
 export interface CoachSetLine { title: string; sets: string }
 export interface CoachSession { workoutId: string; date: string; title: string | null; routineId: string | null; exercises: CoachSetLine[] }
-export interface CoachMuscleDose { slug: string; sets: number; landmarks: Landmarks | null; restriction: 'avoid' | 'limit' | null }
+export interface CoachMuscleDose { slug: string; sets: number; restriction: 'avoid' | 'limit' | null }
 export interface CoachDay { date: string; value: number }
 export interface CoachSleepNight { date: string; total: number; deep: number; rem: number }
 export interface CoachWeight { date: string; kg: number; fatPct: number | null }
@@ -135,12 +136,11 @@ export function formatPtSnapshot(d: CoachData): string {
     lines.push(`Recent workout days: ${d.sessions.slice(0, 4).map(s => s.date).join(', ')}`)
   }
 
-  // ── Weekly hard-set volume per muscle vs landmarks ──
+  // ── Weekly hard-set volume per muscle, in S18's words (plan/volumeBands.ts — Results' card reads the same) ──
   if (d.weeklyMuscleSets.length > 0) {
     lines.push('WEEKLY VOLUME (last 7 days, hard sets; primary 1 + secondary 0.5):')
     for (const m of d.weeklyMuscleSets) {
-      const L = m.landmarks
-      lines.push(`  ${labelForSlug(m.slug)}: ${r1(m.sets)} sets/wk${L ? ` [MEV ${L.mev} · MAV ${L.mav} · MRV ${L.mrv}]` : ''}${m.restriction ? ` (restricted: ${m.restriction})` : ''}`)
+      lines.push(`  ${labelForSlug(m.slug)}: ${r1(m.sets)} sets/wk [${volumeBandOf(m.sets).label}]${m.restriction ? ` (restricted: ${m.restriction})` : ''}`)
     }
   }
 
@@ -217,7 +217,7 @@ function balanceJson(b: CoachBalance): Record<string, unknown> {
   const one = (r: RatioRead) => ({ ratio: ratioText(r), lean: leanLabel(r), a: r.a, b: r.b })
   const why = PAIRS.map(p => b.comparison?.[p].why).filter((w): w is string => !!w)
   return {
-    rule: 'weekly sets (primary 1, each distinct secondary 0.5); push = chest+shoulders+triceps, pull = back+traps+biceps; ratios push÷pull and quad÷ham; a side is heavy above 1.5×; push/quad-heavy is worth fixing, the other way rarely matters. Same numbers as the app (Program tab = planned, Progress → Muscles = done) — quote these, never recompute.',
+    rule: 'weekly sets (primary 1, each distinct secondary 0.5); push = chest+shoulders+triceps, pull = back+traps+biceps; ratios push÷pull and quad÷ham; a side is heavy above 1.5×; push/quad-heavy is worth fixing, the other way rarely matters. Same numbers as the app (Plan tab = planned, Results → Body map = done) — quote these, never recompute.',
     ...(b.planned ? { planned: { push_pull: one(b.planned.pushPull), quad_ham: one(b.planned.quadHam) } } : {}),
     [`done_${b.windowDays}d`]: { push_pull: one(b.done.pushPull), quad_ham: one(b.done.quadHam) },
     ...(why.length ? { why } : {}),
@@ -277,7 +277,7 @@ export function buildCoachJson(d: CoachData, windowDays: number): Record<string,
   }))
   if (d.balance) ctx.balance = balanceJson(d.balance)
   if (d.weeklyMuscleSets.length) {
-    ctx.weekly_sets = d.weeklyMuscleSets.map(m => ({ m: m.slug, s: r1(m.sets), mev: m.landmarks?.mev ?? null, mav: m.landmarks?.mav ?? null, mrv: m.landmarks?.mrv ?? null, ...(m.restriction ? { restricted: m.restriction } : {}) }))
+    ctx.weekly_sets = d.weeklyMuscleSets.map(m => ({ m: m.slug, s: r1(m.sets), band: volumeBandOf(m.sets).id, ...(m.restriction ? { restricted: m.restriction } : {}) }))
   }
 
   const inWindow = <T extends { date: string }>(xs: T[]) => xs.filter(x => x.date >= from)

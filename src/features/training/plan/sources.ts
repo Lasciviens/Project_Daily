@@ -67,7 +67,7 @@ export const SOURCES = {
     citation: 'Bell L et al. Integrating Deloading into Strength and Physique Sports Training Programmes: An International Delphi Consensus Approach. Sports Med Open 2023.',
     url: 'https://pubmed.ncbi.nlm.nih.gov/37730925/',
   },
-  // RPE / reps in reserve (the Next card's effort note and the RPE explainer).
+  // RPE / reps in reserve (the Today card's effort note and the RPE explainer).
   robinson2024: {
     id: 'robinson2024', short: 'Robinson 2024',
     citation: 'Robinson ZP et al. Exploring the Dose-Response Relationship Between Estimated Resistance Training Proximity to Failure, Strength Gain, and Muscle Hypertrophy. Sports Med 2024.',

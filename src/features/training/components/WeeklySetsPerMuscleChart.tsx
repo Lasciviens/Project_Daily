@@ -1,23 +1,23 @@
 import { useMemo } from 'react'
 import { Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ComposedChart, ReferenceLine, ReferenceArea } from 'recharts'
 import { useTrainingHistory } from '../hooks/useTrainingProgress'
-import { useAthleteProfile } from '../hooks/useAthleteProfile'
 import { computeWeeklySetsPerMuscleTrend, lastCompleteWeek, mondayOf } from '../progressAggregate'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { fmtWeekRange } from '../dateFormat'
-import { buildTemplateMuscleMap, labelForSlug, contribution, MAJOR_MUSCLES, MUSCLE_LANDMARKS, scaleLandmarksForExperience, bandForWeeklySets, BANDS_META } from '../muscleMap'
+import { buildTemplateMuscleMap, labelForSlug, contribution, MAJOR_MUSCLES } from '../muscleMap'
+import { VOLUME_HIGH_MAX, VOLUME_TARGET, volumeBandOf } from '../plan/volumeBands'
 import { Card, CardHeader, Skeleton, TonePill, Truncate, useChartColors } from '../../../shared/ui'
 import { useTooltipStyle } from '../../../shared/components/charts/chartKit'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Weekly Sets per Muscle — the sports-scientist review's top-priority "what
-//  else" addition (2026-08-31): the SAME currency the Muscles tab already
-//  uses (hard sets/muscle/week vs the RP-framework MEV-MAV landmarks) — the
+//  else" addition (2026-08-31): the SAME currency the body map and Results'
+//  Weekly sets card use (hard sets/muscle/week in S18's ranges, plan/volumeBands.ts) — the
 //  one training measure in this app with an actual dose-response
 //  meta-analysis behind it (Schoenfeld 2017; Pelland 2025) — but as a
 //  per-week TREND rather than a single rolling-window snapshot. Reuses
-//  muscleMap.ts's contribution()/MUSCLE_LANDMARKS/scaleLandmarksForExperience
-//  exactly, no parallel volume model.
+//  muscleMap.ts's contribution() exactly, no parallel volume model; the shaded
+//  band is S18's 10–20 target (27.11.2026: it was the RP MEV–MAV landmarks).
 //
 //  A second review (2026-09-01) replaced the one-at-a-time chip picker with a
 //  SMALL-MULTIPLES GRID — one tiny sparkline per muscle, all visible at once —
@@ -37,13 +37,11 @@ interface MuscleCardData {
   slug: string
   label: string
   weekly: { weekStart: string; sets: number }[]
-  scaled: { mev: number; mav: number; mrv: number } | null
   latest: number | null
-  band: number
 }
 
-function MuscleSparkline({ card, experienceLevel }: { card: MuscleCardData; experienceLevel: string | null | undefined }) {
-  const { label, weekly, scaled, latest, band } = card
+function MuscleSparkline({ card }: { card: MuscleCardData }) {
+  const { label, weekly, latest } = card
   const chartData = weekly.map(w => ({ ...w }))
   const c = useChartColors()
   const tip = useTooltipStyle()
@@ -54,7 +52,7 @@ function MuscleSparkline({ card, experienceLevel }: { card: MuscleCardData; expe
         <Truncate as="p" className="min-w-0 text-meta font-semibold text-fg">{label}</Truncate>
         {latest != null && (
           <span title="Last complete week" className="inline-flex shrink-0">
-            <TonePill tone={BANDS_META[band].tone} className="tabular-nums">{latest}/wk</TonePill>
+            <TonePill tone={volumeBandOf(latest).tone} className="tabular-nums">{Math.round(latest)}/wk</TonePill>
           </span>
         )}
       </div>
@@ -82,30 +80,20 @@ function MuscleSparkline({ card, experienceLevel }: { card: MuscleCardData; expe
                 contentStyle={{ ...tip.contentStyle, fontSize: 10, padding: '2px 6px' }}
                 labelStyle={tip.labelStyle}
               />
-              {scaled && (
-                <>
-                  <ReferenceArea y1={scaled.mev} y2={scaled.mav} fill={c.success} fillOpacity={0.14} strokeWidth={0} />
-                  <ReferenceLine y={scaled.mrv} stroke={c.axis} strokeDasharray="2 2" strokeOpacity={0.6} />
-                </>
-              )}
+              <ReferenceArea y1={VOLUME_TARGET.min} y2={VOLUME_TARGET.max} fill={c.success} fillOpacity={0.14} strokeWidth={0} />
+              <ReferenceLine y={VOLUME_HIGH_MAX} stroke={c.axis} strokeDasharray="2 2" strokeOpacity={0.6} />
               <Line dataKey="sets" stroke={c.series[0]} strokeWidth={1.75} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
       )}
 
-      {scaled && (
-        <p className="text-micro font-normal leading-tight text-fg-faint">
-          MEV–MAV {scaled.mev}–{scaled.mav} · MRV {scaled.mrv}{experienceLevel ? ' (adj.)' : ''}
-        </p>
-      )}
     </div>
   )
 }
 
 export function WeeklySetsPerMuscleChart() {
   const { data, isLoading } = useTrainingHistory()
-  const { data: profile } = useAthleteProfile()
 
   const templateMuscles = useMemo(() => buildTemplateMuscleMap(data?.templates ?? []), [data])
 
@@ -122,12 +110,10 @@ export function WeeklySetsPerMuscleChart() {
     const range = { fromWeek: mondayOf(firstDate), untilWeek: last }
     return [...MAJOR_MUSCLES].map(slug => {
       const weekly = computeWeeklySetsPerMuscleTrend(data.sets, templateMuscles, slug, contribution, range)
-      const landmarks = MUSCLE_LANDMARKS[slug]
-      const scaled = landmarks ? scaleLandmarksForExperience(landmarks, profile?.experience_level) : null
       const latest = weekly.length > 0 ? weekly[weekly.length - 1].sets : null
-      return { slug, label: labelForSlug(slug), weekly, scaled, latest, band: latest != null ? bandForWeeklySets(slug, latest, scaled ?? undefined) : 0 }
+      return { slug, label: labelForSlug(slug), weekly, latest }
     })
-  }, [data, templateMuscles, profile])
+  }, [data, templateMuscles])
 
   if (isLoading) return <Skeleton rounded="rounded-card" className="h-40" />
 
@@ -138,18 +124,17 @@ export function WeeklySetsPerMuscleChart() {
       {/* Tiles by the card's own width (it sits in a chart column, not the
           viewport): five across only when a tile keeps room for its name. */}
       <div className="grid grid-cols-2 gap-2 @[30rem]:grid-cols-3 @[54rem]:grid-cols-5">
-        {cards.map(card => <MuscleSparkline key={card.slug} card={card} experienceLevel={profile?.experience_level} />)}
+        {cards.map(card => <MuscleSparkline key={card.slug} card={card} />)}
       </div>
 
       <div className="flex max-w-3xl flex-col gap-1 text-meta text-fg-muted">
         <p>
-          Hard working sets per week — each exercise credits its primary muscle 1 set and each secondary muscle half a set, a reasonable convention
-          (RP framework), not a measured contribution.
+          Hard working sets per week — each exercise credits its primary muscle 1 set and each secondary muscle half a set, a reasonable convention,
+          not a measured contribution.
         </p>
         <p>
-          The shaded band (MEV–MAV) and the grey dashed line (MRV) are a practitioner model, not a measured threshold
-          {profile?.experience_level ? ', adjusted ±15% for your experience level' : ''} — an unvalidated adjustment on top of an already-heuristic baseline.
-          MRV isn&apos;t coloured as a warning: going over it isn&apos;t asserted harmful, since effort, sleep and recovery (all unmeasured here) decide that.
+          The shaded band is the 10–20 sets a week most people aim for; the grey dashed line is 30, above which little extra is expected.
+          Neither is a warning: more sets add less and less, they never hurt by themselves.
         </p>
         <p>The badge is last complete week&apos;s count. Sets don&apos;t capture effort, tempo or range of motion, none of which are logged. Read the trend, not any single week.</p>
       </div>

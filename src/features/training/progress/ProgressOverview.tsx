@@ -2,6 +2,8 @@ import { useNavigate } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { Settings2 } from 'lucide-react'
 import { useSetCurrentProgramRoutines } from '../hooks/useAthleteProfile'
+import { useTrainingWeek } from '../hooks/useTrainingWeek'
+import { weekCount } from '../plan/sessionState'
 import { useProgressDataContext } from './progressDataContext'
 import { progressVerdictHeadline, workloadLabel, type ProgramDecision } from '../progress-engine/program'
 import type { BodyweightChange } from '../progressAggregate'
@@ -31,7 +33,7 @@ const WORKLOAD_TONE: Record<ProgramDecision['workload'], Tone> = {
 function ProgramSettingsButton({ label }: { label: string }) {
   const navigate = useNavigate()
   return (
-    <Button variant="ghost" size="sm" className="gap-1.5 !px-2" onClick={() => navigate('/training?tab=program')}>
+    <Button variant="ghost" size="sm" className="gap-1.5 !px-2" onClick={() => navigate('/training?tab=plan')} tip={`${label}: open the Plan tab to pick your current program`}>
       <Settings2 aria-hidden className="h-4 w-4" /> {label}
     </Button>
   )
@@ -83,18 +85,19 @@ function bodyweightText(bw: BodyweightChange): { value: string; note: string } {
 
 export function ProgressOverview() {
   const { isLoading, needsCurrentProgram, program, summary } = useProgressDataContext()
+  const thisWeek = weekCount(useTrainingWeek().week)
 
   if (isLoading) return <Skeleton rounded="rounded-card" className="h-32" />
   if (needsCurrentProgram) return <GatingCard />
   if (!program || !summary) return null
 
-  const { adherence } = summary
-  const adherenceText = adherence.target ? `${adherence.completedThisWeek} of ${adherence.target}` : `${adherence.completedThisWeek}`
+  // This week's count is the strip's (sessionState.weekCount) — the same number as Consistency, Today and Daily.
+  const adherenceText = thisWeek.planned > 0 ? `${thisWeek.done} of ${thisWeek.planned}` : '—'
   const bw = bodyweightText(summary.bodyweight)
 
   return (
     <Card className="@container flex flex-col gap-4">
-      <CardHeader variant="label" title="Progress" className="!mb-0" action={<ProgramSettingsButton label="Program" />} />
+      <CardHeader variant="label" title="Program verdict" className="!mb-0" action={<ProgramSettingsButton label="Plan" />} />
 
       <div className="grid grid-cols-1 gap-4 @[34rem]:grid-cols-2">
         <div>
@@ -134,8 +137,8 @@ export function ProgressOverview() {
 
       <div className="grid grid-cols-2 gap-4 border-t border-line pt-3 @[40rem]:grid-cols-4">
         <SummaryCard
-          label="Sessions" value={adherenceText} note={adherence.target ? 'planned, this week so far' : 'this week so far'}
-          info={<><b>Sessions this week</b> Current-program workouts logged since Monday, against your weekly training-days target (set it under Program). It&apos;s a running count for the week in progress, not a verdict — the week isn&apos;t over yet.</>}
+          label="Sessions" value={adherenceText} note="done of planned, this week"
+          info={<><b>Sessions this week</b> Sessions done of the ones planned this week — the This week strip&apos;s own count. It&apos;s a running count for the week in progress, not a verdict — the week isn&apos;t over yet.</>}
         />
         <SummaryCard
           label="Improved" value={`${summary.exerciseProgress.improving}/${summary.exerciseProgress.analyzable}`} note="judgeable exercises"

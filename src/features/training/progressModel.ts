@@ -22,7 +22,7 @@ import type { TrainingExerciseTemplate } from './api/hevyApi'
 //  The progress engine, assembled once from plain data. Pure: no React, no
 //  Supabase. The Progress page (useProgressData, via React Query) and the AI
 //  coaches (coach/coachData.ts, via direct fetches) both call this, so the PT
-//  assessment and the Coach chat read exactly the decisions the Progress tab
+//  assessment and the Coach chat read exactly the decisions the Results tab
 //  shows — they used to work from a hard-coded split and could contradict it.
 // ─────────────────────────────────────────────────────────────────────────────
 

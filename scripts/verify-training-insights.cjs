@@ -31,8 +31,8 @@
  *      "unassessable" group rather than being buried in a flat list.
  *  11. Shared caveats (clauses) print once per group, never inside every
  *      finding; "strong" consistency means the target minus at most one
- *      session; experience-scaled landmarks stay ordered (mv ≤ mev < mav <
- *      mrv) at every level.
+ *      session; the muscle clause names S18's ranges (the RP landmarks and
+ *      their experience scaling are gone, 27.11.2026).
  *
  *   Run:  node scripts/verify-training-insights.cjs
  */
@@ -44,7 +44,7 @@ const {
   clausesFor, FINDING_CLAUSES,
 } = require('../src/features/training/trainingInsights')
 const { mondayOf } = require('../src/features/training/progressAggregate')
-const { limitedSlugsFromLimitations, scaleLandmarksForExperience, MUSCLE_LANDMARKS, bandForWeeklySets } = require('../src/features/training/muscleMap')
+const { limitedSlugsFromLimitations } = require('../src/features/training/muscleMap')
 
 let passed = 0
 let failed = 0
@@ -116,27 +116,30 @@ console.log('\n== 4. computeMuscleFindings ==')
 {
   const today = '2026-09-01'
   const last = lastCompleteWeek(today)
-  const landmarks = { mv: 6, mev: 8, mav: 20, mrv: 22 }
-
-  const zero = computeMuscleFindings([{ slug: 'calves', label: 'Calves', weekly: [], landmarks }], today)
+  // S18's ranges (plan/volumeBands.ts) since 27.11.2026: below 4 is below the minimum, over 30 very high.
+  const zero = computeMuscleFindings([{ slug: 'calves', label: 'Calves', weekly: [] }], today)
   check('zero sets across all 8 weeks -> the zero-sets finding, tier measured', zero.some(f => f.id === 'muscle-zero-Calves' && f.tier === 'measured'))
 
-  const underWeekly = Array.from({ length: 8 }, (_, i) => ({ weekStart: shiftWeek(last, -i), sets: 3 })) // well under mev=8
-  const under = computeMuscleFindings([{ slug: 'hamstring', label: 'Hamstrings', weekly: underWeekly, landmarks }], today)
-  check('persistently under MEV -> the under-MEV finding, tier heuristic', under.some(f => f.id === 'muscle-under-Hamstrings' && f.tier === 'heuristic'))
+  const underWeekly = Array.from({ length: 8 }, (_, i) => ({ weekStart: shiftWeek(last, -i), sets: 3 })) // under the minimum of 4
+  const under = computeMuscleFindings([{ slug: 'hamstring', label: 'Hamstrings', weekly: underWeekly }], today)
+  check('persistently under the minimum of 4 (S18) -> the under finding, tier evidence, no MEV wording', under.some(f => f.id === 'muscle-under-Hamstrings' && f.tier === 'evidence' && f.text.includes('minimum of 4') && !/MEV|MAV|MRV/.test(f.text)))
+  const lowWeekly = Array.from({ length: 8 }, (_, i) => ({ weekStart: shiftWeek(last, -i), sets: 6 }))
+  check('4–9 sets a week (low, still works) is no finding', computeMuscleFindings([{ slug: 'chest', label: 'Chest', weekly: lowWeekly }], today).length === 0)
 
-  const overWeekly = Array.from({ length: 8 }, (_, i) => ({ weekStart: shiftWeek(last, -i), sets: 30 })) // well over mrv=22
-  const over = computeMuscleFindings([{ slug: 'deltoids', label: 'Shoulders', weekly: overWeekly, landmarks }], today)
-  check('persistently over MRV -> the over-MRV finding, positive=null (not asserted harmful)', over.some(f => f.id === 'muscle-over-Shoulders' && f.positive === null))
+  const overWeekly = Array.from({ length: 8 }, (_, i) => ({ weekStart: shiftWeek(last, -i), sets: 31 })) // over 30: very high
+  const over = computeMuscleFindings([{ slug: 'deltoids', label: 'Shoulders', weekly: overWeekly }], today)
+  check('persistently over 30 -> the very-high finding, positive=null (not asserted harmful)', over.some(f => f.id === 'muscle-over-Shoulders' && f.positive === null && !/MRV/.test(f.text)))
+  const thirty = Array.from({ length: 8 }, (_, i) => ({ weekStart: shiftWeek(last, -i), sets: 30 }))
+  check('30 sets a week is "high", not very high: no finding', computeMuscleFindings([{ slug: 'deltoids', label: 'Shoulders', weekly: thirty }], today).length === 0)
 
-  const inRangeWeekly = Array.from({ length: 8 }, (_, i) => ({ weekStart: shiftWeek(last, -i), sets: 14 })) // inside mev-mav
-  const inRange = computeMuscleFindings([{ slug: 'chest', label: 'Chest', weekly: inRangeWeekly, landmarks }], today)
-  check('a muscle inside its MEV-MAV band produces no finding at all (no news is not bad news)', inRange.length === 0)
+  const inRangeWeekly = Array.from({ length: 8 }, (_, i) => ({ weekStart: shiftWeek(last, -i), sets: 14 })) // the 10–20 target
+  const inRange = computeMuscleFindings([{ slug: 'chest', label: 'Chest', weekly: inRangeWeekly }], today)
+  check('a muscle at the 10–20 target produces no finding at all (no news is not bad news)', inRange.length === 0)
 
   // The athlete_limitations cross-check (a follow-up review's #1 correctness fix):
   // an under-MEV muscle with an active restriction must acknowledge it, never
   // silently tell the user to add volume to a muscle they've deliberately limited.
-  const restricted = computeMuscleFindings([{ slug: 'hamstring', label: 'Hamstrings', weekly: underWeekly, landmarks, restriction: 'limit' }], today)
+  const restricted = computeMuscleFindings([{ slug: 'hamstring', label: 'Hamstrings', weekly: underWeekly, restriction: 'limit' }], today)
   const restrictedFinding = restricted.find(f => f.id === 'muscle-under-Hamstrings')
   check('an under-MEV finding with an active restriction acknowledges it instead of just recommending more volume',
     restrictedFinding && restrictedFinding.text.includes('active limit restriction'), JSON.stringify(restrictedFinding))
@@ -253,7 +256,7 @@ console.log('\n== 10. groupFindings ==')
     grouped.working.length + grouped.attention.length + grouped.unassessable.length === findings.length)
 }
 
-console.log('\n== 11. Clauses once per group, honest "strong", ordered landmarks ==')
+console.log('\n== 11. Clauses once per group, honest "strong", S18 ranges ==')
 {
   const today = '2026-09-01'
   const last = lastCompleteWeek(today)
@@ -269,23 +272,12 @@ console.log('\n== 11. Clauses once per group, honest "strong", ordered landmarks
 
   const hamWeekly = Array.from({ length: 8 }, (_, i) => ({ weekStart: shiftWeek(last, -i), sets: 2 }))
   const muscles = computeMuscleFindings([
-    { slug: 'hamstring', label: 'Hamstrings', weekly: hamWeekly, landmarks: MUSCLE_LANDMARKS.hamstring },
-    { slug: 'calves', label: 'Calves', weekly: hamWeekly, landmarks: MUSCLE_LANDMARKS.calves },
+    { slug: 'hamstring', label: 'Hamstrings', weekly: hamWeekly },
+    { slug: 'calves', label: 'Calves', weekly: hamWeekly },
   ], today)
-  check('T35: two under-MEV findings share ONE muscle clause', muscles.length === 2 && clausesFor(muscles).length === 1 && muscles.every(f => !f.text.includes('Renaissance')))
+  check('T35: two below-minimum findings share ONE muscle clause', muscles.length === 2 && clausesFor(muscles).length === 1 && muscles.every(f => !f.text.includes('Renaissance')))
+  check('the muscle clause names S18\'s ranges, never MEV/MAV/MRV', !/MEV|MAV|MRV/.test(FINDING_CLAUSES.muscle) && FINDING_CLAUSES.muscle.includes('10–20 target'))
 
-  let ordered = true
-  const bad = []
-  for (const level of ['novice', 'intermediate', 'advanced']) {
-    for (const [slug, L] of Object.entries(MUSCLE_LANDMARKS)) {
-      const S = scaleLandmarksForExperience(L, level)
-      if (!(S.mv <= S.mev && S.mev < S.mav && S.mav < S.mrv)) { ordered = false; bad.push(`${level}/${slug}`) }
-    }
-  }
-  check('T12: mv ≤ mev < mav < mrv for every muscle at every experience level', ordered, bad.join(', '))
-  const chestNovice = scaleLandmarksForExperience(MUSCLE_LANDMARKS.chest, 'novice')
-  check('T12: novice chest MRV sits above MAV (was 19 < 20)', chestNovice.mrv > chestNovice.mav)
-  check('T12: 19.5 sets for a novice chest reads "Optimal growth", never over-MRV at the same time', bandForWeeklySets('chest', 19.5, chestNovice) === 3 && 19.5 <= chestNovice.mrv)
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

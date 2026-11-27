@@ -12,7 +12,7 @@ import {
   type Finding, type MuscleFindingInput, type RelativeStrengthFindingInput,
 } from '../trainingInsights'
 import { buildCanonicalSessions, sessionBestE1rm } from '../progress-engine'
-import { buildTemplateMuscleMap, contribution, MAJOR_MUSCLES, MUSCLE_LANDMARKS, scaleLandmarksForExperience, labelForSlug, limitedSlugsFromLimitations } from '../muscleMap'
+import { buildTemplateMuscleMap, contribution, MAJOR_MUSCLES, labelForSlug, limitedSlugsFromLimitations } from '../muscleMap'
 import { useProgressDataContext } from '../progress/progressDataContext'
 import { Skeleton, ToneDot, TonePill, type Tone } from '../../../shared/ui'
 import { ChartCard } from './ChartCard'
@@ -33,7 +33,7 @@ const TIER_META: Record<Finding['tier'], { label: string; tone: Tone }> = {
 //  app's canonical verdict, unlike PT Coach's dated one-shot opinion. The
 //  same log must always produce the same text; the trigger logic and copy
 //  live in trainingInsights.ts. Every Finding is tiered (Measured / Evidence-
-//  based / Heuristic) so a practitioner convention (MEV/MAV/MRV) never reads
+//  based / Heuristic) so a practitioner convention never reads
 //  as a measurement, and every sentence carries the exact numbers it came
 //  from — NEVER_HIDES applies here too: where there isn't enough data for a
 //  rule, that's said explicitly rather than the section just being absent.
@@ -78,7 +78,6 @@ export function TrainingInsightsPanel() {
     const muscleInputs: MuscleFindingInput[] = [...MAJOR_MUSCLES].map(slug => ({
       slug, label: labelForSlug(slug),
       weekly: computeWeeklySetsPerMuscleTrend(data.sets, templateMuscles, slug, contribution, { fromWeek: firstWeek, untilWeek: lastComplete }),
-      landmarks: MUSCLE_LANDMARKS[slug] ? scaleLandmarksForExperience(MUSCLE_LANDMARKS[slug], profile?.experience_level) : undefined,
       restriction: limitedSlugs.get(slug),
     }))
     out.push(...computeMuscleFindings(muscleInputs, today))
@@ -114,7 +113,7 @@ export function TrainingInsightsPanel() {
       <div className="flex max-w-3xl flex-col gap-1.5 rounded-row bg-surface-2 p-3 text-meta text-fg-muted">
         <p><strong className="text-fg-2">This is arithmetic on your Hevy log, not medical or coaching advice.</strong> Every statement below names the numbers and sessions it came from — a claim with no numbers attached is a bug.</p>
         <p><strong className="text-fg-2">What it can't see:</strong> effort (reps in reserve), technique, tempo, rest, nutrition, stress or recovery quality — the single biggest thing missing, and it moves real results more than anything counted here. A workout you did but didn&apos;t log doesn&apos;t exist to this page.</p>
-        <p><strong className="text-fg-2">Tiers:</strong> <TonePill tone="info">Measured</TonePill> = arithmetic on your log · <TonePill tone="success">Evidence-based</TonePill> = backed by cited meta-analytic work · <TonePill tone="warn">Heuristic</TonePill> = a practitioner convention (e.g. MEV/MAV/MRV) with no trial support for the exact number. No readiness/fitness/injury-risk scores are computed, ever.</p>
+        <p><strong className="text-fg-2">Tiers:</strong> <TonePill tone="info">Measured</TonePill> = arithmetic on your log · <TonePill tone="success">Evidence-based</TonePill> = backed by cited meta-analytic work · <TonePill tone="warn">Heuristic</TonePill> = a practitioner convention with no trial support for the exact number. No readiness/fitness/injury-risk scores are computed, ever.</p>
       </div>
 
       {findings === null ? null : findings.length === 0 && (

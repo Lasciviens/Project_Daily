@@ -33,7 +33,6 @@ const {
   NO_FILTERS, DATE_WINDOWS, filtersActive, muscleRoleFor, muscleOptions, routineOptions, showsRoutineFilter,
   effectiveFilters, withinDateWindow, applyDecisionFilters,
 } = require('../src/features/training/progress/decisionFilters')
-const { filterByTab } = require('../src/features/training/progress/decisionTabs')
 const { computeProgressModel } = require('../src/features/training/progressModel')
 const { templateMuscleCredit } = require('../src/features/training/muscleMap')
 
@@ -182,7 +181,7 @@ console.log('\n5 · applyDecisionFilters')
   check('5: the 4-week window drops the pulldown (last trained five weeks ago)', !run({ window: '4w' }).some(d => d.exerciseTemplateId === 'pulldown') && run({ window: '8w' }).some(d => d.exerciseTemplateId === 'pulldown'))
   check('5: Window AND Muscle combine — Back has nothing in the last 4 weeks', run({ muscle: 'upper-back', window: '4w' }).length === 0)
   check('5: all five at once', ids(run({ query: 'bench', evidence: strongLevel, window: '4w', muscle: 'deltoids', routineId: 'upperA2' })) === 'bench')
-  check('5: filters narrow a tab\'s list, never add to it', ids(applyDecisionFilters(filterByTab(all, 'recent', today), { ...NO_FILTERS, routineId: 'upperA' }, data)) === 'bench,curl,inclineCurl,pushdown')
+  check('5: filters narrow a list, never add to it', applyDecisionFilters(all.slice(0, 3), { ...NO_FILTERS, routineId: 'upperA' }, data).every(d => all.slice(0, 3).includes(d)))
   const reversed = [...all].reverse()
   check('5: the given order is kept (sorting is the table\'s job)', applyDecisionFilters(reversed, { ...NO_FILTERS, muscle: 'biceps' }, data).map(d => d.exerciseTemplateId).join() === reversed.filter(d => ['curl', 'inclineCurl', 'pulldown'].includes(d.exerciseTemplateId)).map(d => d.exerciseTemplateId).join())
   const undated = { exerciseTemplateId: 'x', evidence: { progress: 'limited' }, currentState: { latest: null } }

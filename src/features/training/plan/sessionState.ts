@@ -402,6 +402,13 @@ export function planWeek(input: {
   return { monday, sunday, sessions, next, offer: shiftOfferOf(sessions, { today, trainedToday, program: input.program }) }
 }
 
+/** This week's count, as the strip, Daily's Training box and Results' Consistency card show it: the week's own
+ *  sessions (not last week's still open), a skipped one left out — done of planned. */
+export function weekCount(week: Pick<TrainingWeek, 'monday' | 'sunday' | 'sessions'>): { done: number; planned: number } {
+  const own = week.sessions.filter(s => s.date >= week.monday && s.date <= week.sunday && s.mark !== 'skipped')
+  return { done: own.filter(s => s.mark === 'done').length, planned: own.length }
+}
+
 /** When to offer moving the rest of the cycle (the database checks the same: training_shift_sessions).
  *  Later: the first program session still to do whose day has passed — not one a later session already passed
  *  over — lands today (tomorrow when today is trained); earlier: a session done today by a workout, days early, with

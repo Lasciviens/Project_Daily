@@ -1,6 +1,6 @@
 # Exercise Progress Engine
 
-The decision engine behind Training → Progress's per-exercise list. Answers,
+The decision engine behind Training → Results' exercise list. Answers,
 per exercise: is this progressing, what changed since the last comparable
 workout, is it time to add weight, and what's the exact next target.
 
@@ -39,7 +39,7 @@ sessions, runs the engine per exercise, takes the program decision and adds
 the per-exercise muscle/routine metadata. Two callers:
 
 - `TrainingProgressProvider` (`components/next/TrainingProgressProvider.tsx`)
-  wraps the Training page's Next and Progress tabs, and the planned-session
+  wraps the Training page's Today and Results tabs, and the planned-session
   popup (`components/session/PlannedSessionBody.tsx`). It calls
   `hooks/useProgressData.ts` once — a thin wrapper that gathers the React Query
   data and memoises `computeProgressModel` — and shares the result through
@@ -47,7 +47,7 @@ the per-exercise muscle/routine metadata. Two callers:
   Calling `useProgressData()` anywhere else would run the whole engine again.
 - The AI coaches (`coach/coachData.ts`) call `computeProgressModel` directly
   on their own fetches, so the PT assessment and the Coach chat read exactly
-  the decisions the Progress tab shows.
+  the decisions the Results tab shows.
 
 Rendered by `src/features/training/progress/ExerciseDecisionTable.tsx` (the
 inline-expansion row/drill-down UI) and its trend chart
@@ -74,7 +74,7 @@ completeness. Run: `node scripts/verify-progress-engine.cjs`.
 `scripts/verify-progress-decisions.cjs` (28) covers `program.ts`'s
 program-level decision.
 
-`scripts/verify-progress-filters.cjs` covers the decision table's filters
+`scripts/verify-progress-filters.cjs` covers the exercise list's filters (Results)
 (`progress/decisionFilters.ts`: search, evidence, window, muscle, routine)
 and the per-exercise muscle/routine metadata `progressModel.ts` hands them —
 see `DATA_AND_LIMITATIONS.md`. The filters only choose which decisions are

@@ -1,5 +1,5 @@
 // Push:pull and quad:hamstring balance — the ONE ratio and verdict every
-// screen uses: the Program tab (sets PLANNED in the current program), the
+// screen uses: the Plan tab (sets PLANNED in the current program), the
 // Muscles body map on Progress (sets DONE in its window), the Muscles verdict
 // banner and the AI coach context. Before this, the two cards had their own
 // slug counting, thresholds (0.67–1.5 vs 0.8–1.25) and orientation

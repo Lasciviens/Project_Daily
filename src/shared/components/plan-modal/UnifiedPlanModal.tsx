@@ -416,7 +416,7 @@
 //                    "Repeating plan deleted"; Training's "Change / Delete
 //                    repeating plan"), a workout's plan note reads the plan's
 //                    own repeat ("Planned every 2 weeks on Tue and Thu,
-//                    16:45", repeatSummary), and the coach / Program tab count
+//                    16:45", repeatSummary), and the coach / Plan tab count
 //                    an every-N-weeks plan's days as 1/N of a training day
 //                    a week (recurrence.weeklyDaysPerWeek).
 //  2026-10-13 · v15 · More ways to repeat (migration 146) + owner's requests:
