@@ -15,9 +15,10 @@ import { logError } from '../../shared/utils/logError'
 import { ensureValidCalendarToken } from '../calendar/api/calendarTokenSync'
 import { settleItemGoogle } from '../calendar/api/itemCalendar'
 import { drainICloudSoon } from '../calendar/areas/appleAreas'
-import { useDeleteScheduleBlock, useDeleteTimeBlock } from '../daily/hooks/useSchedule'
+import { linkedTimeBlockQuery, useDeleteScheduleBlock, useDeleteTimeBlock } from '../daily/hooks/useSchedule'
 import { resolveOrCreateGoogleTaskListId } from '../todo/api/googleTaskListsApi'
-import { sectionForDay } from '../todo/taskRules'
+import { fetchTaskById } from '../todo/api/tasksApi'
+import { liveSection, sectionForDay } from '../todo/taskRules'
 import { syncGoogleTasksSoon, useDeleteTask } from '../todo/hooks/useTodos'
 import { CALENDAR_FIELDS_NOT_MIGRATED, sendsCalendarFields } from './itemCalendarFields'
 import {
@@ -26,12 +27,13 @@ import {
   type RepeatDayAnswer, type SaveItemAnswer, type SaveItemContext,
 } from './itemApi'
 import {
-  describeConverted, describeConvertUndone, describeRepeatDay, describeSaved, itemInputProblem,
+  describeConverted, describeConvertUndone, describeRepeatDay, describeSaved, itemAsMove, itemFromRows, itemInputProblem, movedToDay,
 } from './itemRules'
 import type {
   ConvertPreview, ConvertResult, DeleteItemScope, DeleteItemTarget, ItemInput, RepeatDayInput, SavedItem,
 } from './itemTypes'
 import type { CalendarApp } from './itemRules'
+import type { Task } from '../todo/types'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const googleConnected = () => !!useCalendarStore.getState().accessToken
@@ -108,6 +110,45 @@ export function useSaveItem(own?: {
       return own?.after ? { ...saved, after: await own.after(input, saved).catch(() => null) } : saved
     },
     successMessage: (saved, input) => own?.describe?.(input, saved.after) ?? describeSaved(input, saved, own?.calendarApp),
+    invalidates: ['taskGraph', qk.items.all],
+  })
+}
+
+/** What a move needs of a task: the item's own rows are read again by id. */
+export type MovableTask = Pick<Task, 'id' | 'title'>
+
+/**
+ * Moves a one-off item to another day — Move to today on an overdue row and Needs a decision's day (owner, 27.11.2026:
+ * "One truth! … if its moved it is moved!"; one action, task and slot together, never a due-only write). The item is read again (its task and its slot, by id) and saved through the one save with
+ * only its day changed (itemRules.movedToDay): the slot moves, the database moves the due along, Apple Calendar and
+ * Google Tasks follow. Says "Moved to today · <title>" with Undo (the item saved back as it was read: its day or
+ * none, its deadline, its own section).
+ */
+export function useMoveItemToDay() {
+  const qc = useQueryClient()
+  const send = async (input: ItemInput) => (await saveItemVia(qc, input, saveItem))!
+  const undo = useMutationWithFeedback<SaveItemAnswer, ItemInput>({
+    action: 'move_item_undo',
+    mutationFn: send,
+    successMessage: (_a, input) => `${input.date ? `Back on ${formatDate(input.date)}` : 'Back with no date'} · ${input.title}`,
+    invalidates: ['taskGraph', qk.items.all],
+  })
+  return useMutationWithFeedback<{ before: ItemInput }, { task: MovableTask; day: string }>({
+    action: 'move_item_to_day',
+    mutationFn: async ({ task, day }) => {
+      const [row, slot] = await Promise.all([fetchTaskById(task.id), qc.fetchQuery(linkedTimeBlockQuery(task.id))])
+      if (!row) throw new Error(`“${task.title}” is no longer there`)
+      const was = itemFromRows(row, slot ?? null, null)
+      await send(movedToDay(was, day))
+      // Undo saves the item back as it was read: its day (or none), its deadline, its own section.
+      return { before: { ...itemAsMove(was), section: liveSection(row.section) } }
+    },
+    silent: 'its onSuccess says "Moved to today · <title>" with Undo',
+    onSuccess: ({ before }, { task, day }) => {
+      toast.undo(`Moved to ${day === todayStr() ? 'today' : formatDate(day)} · ${task.title}`, () => {
+        void undo.mutateAsync(before).catch(() => { /* the mutation said why */ })
+      })
+    },
     invalidates: ['taskGraph', qk.items.all],
   })
 }

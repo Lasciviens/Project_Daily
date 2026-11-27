@@ -1,10 +1,11 @@
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { ArrowRightLeft, Check, MoreHorizontal, Trash2 } from 'lucide-react'
+import { ArrowRightLeft, CalendarArrowUp, Check, MoreHorizontal, Trash2 } from 'lucide-react'
 import { HoverPeek } from '../../../shared/components/HoverPeek'
 import { Truncate, cx } from '../../../shared/ui'
 import { formatDate } from '../../../shared/utils/dateFormat'
 import { useTaskActions } from '../../todo/hooks/useTaskActions'
-import { dueLabel, isClosedTask, isOpenTask } from '../../todo/taskRules'
+import { dueLabel, isClosedTask, isOpenTask, movesToToday } from '../../todo/taskRules'
+import { todayStr } from '../../../shared/utils/dateUtils'
 import type { Task } from '../../todo/types'
 import { useMoveProjectTask } from '../hooks/useProjects'
 import { DOTTED } from './peekStyle'
@@ -64,6 +65,13 @@ export function ProjectTaskRow({ task, phases }: { task: Task; phases: ProjectPh
           <MenuItem>
             <button type="button" className="menu-item" onClick={() => act.open(task)}>Open task</button>
           </MenuItem>
+          {movesToToday(task, todayStr()) && (
+            <MenuItem>
+              <button type="button" className="menu-item" title="To today: moves its day and its slot" onClick={() => { void act.moveToToday(task) }}>
+                <CalendarArrowUp aria-hidden className="h-4 w-4" /> To today
+              </button>
+            </MenuItem>
+          )}
           {others.length > 0 && <div className="menu-sep" />}
           {others.length > 0 && <p className="menu-label">Move to</p>}
           {others.map(p => (

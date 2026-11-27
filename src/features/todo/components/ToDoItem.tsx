@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { AlertTriangle, Check, ChevronDown, ChevronRight, CornerDownRight, Dumbbell } from 'lucide-react'
+import { AlertTriangle, CalendarArrowUp, Check, ChevronDown, ChevronRight, CornerDownRight, Dumbbell } from 'lucide-react'
 import type { Task } from '../types'
 import { useTaskById, useSubtasks } from '../hooks/useTodos'
 import { doneByWorkout, useTaskActions } from '../hooks/useTaskActions'
 import { ToneDot, TonePill, Truncate, cx } from '../../../shared/ui'
 import { DOMAIN_LABEL } from '../domainColors'
 import { DOMAIN_TONE, PRIORITY_LABEL, PRIORITY_TONE, STATUS_LABEL, STATUS_TONE, dueTone } from '../taskTones'
-import { isOverdue, isTrainingTask, dueLabel } from '../taskRules'
+import { isOverdue, isTrainingTask, dueLabel, movesToToday } from '../taskRules'
 import { TaskLabelPills } from './TaskLabelPills'
 import { todayStr, tomorrowStr } from '../../../shared/utils/dateUtils'
 import { windowRangeLabel } from '../../../shared/components/windowChips'
@@ -33,9 +33,12 @@ interface Props {
   onMoveDown?:  () => void
   /** Just added to its list (useNewIds): the row rises in with the motion set. */
   isNew?:       boolean
+  /** Its old place on a past day (Daily, dayItems.carriedToToday): today's list carries it, so here it is dimmed,
+   *  says "On today" and has no tick of its own — Mark done and every other action stay in its menu. */
+  carried?:     boolean
 }
 
-export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, isNew }: Props) {
+export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, isNew, carried = false }: Props) {
   const [hovered, setHovered] = useState(false)
   const [pickingList, setPickingList] = useState(false)
   const [subtasksOpen, setSubtasksOpen] = useState(false)
@@ -75,6 +78,9 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
     onCancel: () => { void act.cancel(task) },
     onReopen: () => { void act.reopen(task) },
     onDelete: () => { void act.remove(task) },
+    onMoveToToday: movesToToday(task, todayStr()) ? () => { void act.moveToToday(task) } : undefined,
+    // No tick on a carried row: Mark done is in its menu.
+    onMarkDone: carried && !isDone ? handleToggle : undefined,
     onMoveUp, onMoveDown, canMoveUp, canMoveDown,
     busy: act.busy,
     training: training ? {
@@ -128,13 +134,19 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
           className={cx(
             'group relative flex min-h-[44px] cursor-pointer items-start gap-2.5 rounded-row bg-surface px-3 py-2 transition-colors duration-150 press-feedback',
             hovered && 'bg-surface-hover',
+            carried && 'opacity-60',
           )}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
           {...swipe.rowProps}
         >
-          {/* Circle checkbox — matches Google Tasks iPhone style */}
-          <button
+          {/* Circle checkbox — matches Google Tasks iPhone style; a carried row's tick is today's row's. */}
+          {carried ? (
+            <span role="img" aria-label="Carried to today: still open, overdue"
+              className="-ml-3 flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center text-fg-faint lg:ml-0 lg:mt-0.5 lg:h-auto lg:min-h-0 lg:w-5 lg:min-w-0 [&_svg]:h-4 [&_svg]:w-4">
+              <CalendarArrowUp aria-hidden />
+            </span>
+          ) : <button
             type="button"
             onClick={e => { e.stopPropagation(); handleToggle() }}
             // A session a Hevy workout completed stays done (the session popup
@@ -155,7 +167,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
             >
               {isDone && <Check className="h-3 w-3" strokeWidth={3} aria-hidden />}
             </span>
-          </button>
+          </button>}
 
           <div className="min-w-0 flex-1 py-0.5">
             {/* items-start keeps the priority dot beside a wrapped title's FIRST line. */}
@@ -177,7 +189,7 @@ export function ToDoItem({ task, canMoveUp, canMoveDown, onMoveUp, onMoveDown, i
               {training
                 ? <TonePill tone={DOMAIN_TONE[task.domain]}><Dumbbell className="h-3 w-3" aria-hidden />Training</TonePill>
                 : <TonePill tone={DOMAIN_TONE[task.domain]}>{DOMAIN_LABEL[task.domain]}</TonePill>}
-              {due?.text && (
+              {carried ? <TonePill tone="warn">On today</TonePill> : due?.text && (
                 <TonePill tone={due.tone} className="tabular-nums">
                   {isOverdue(task) && <AlertTriangle className="h-3 w-3" aria-label="Overdue" />}
                   {due.text}

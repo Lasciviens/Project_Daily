@@ -30,7 +30,7 @@ Module._load = function (request) {
   return origLoad.apply(this, arguments)
 }
 const { updateTask, NEEDS_180_LABELS } = require('../src/features/todo/api/tasksApi')
-const { needsDecision, pickDayPatch, somedayPatch, reversePatch, isSomeday } = require('../src/features/todo/needsDecision')
+const { needsDecision, somedayPatch, reversePatch, isSomeday } = require('../src/features/todo/needsDecision')
 let passed = 0, failed = 0
 function check(name, cond, detail) {
   if (cond) { passed++; console.log(`  ✓ ${name}`) } else { failed++; console.log(`  ✗ ${name}${detail ? ' — ' + detail : ''}`) }
@@ -75,8 +75,27 @@ check('longest waiting first', JSON.stringify(ids(needsDecision([a, b, c], TODAY
 check('input is not changed', needsDecision([a, b, c], TODAY) !== null)
 
 console.log('answers and Undo')
-check('pick a day: date and its section (another day → backlog)', JSON.stringify(pickDayPatch('2026-11-25', TODAY)) === JSON.stringify({ due_date: '2026-11-25', section: 'backlog' }))
-check('pick today → today section', pickDayPatch(TODAY, TODAY).section === 'today')
+{
+  // Pick a day is the same job as Daily's Move to today (owner, 27.11.2026): the item moves, task and slot together —
+  // never a write of the task's due alone (that left its slot on the old day).
+  const fs = require('fs'), path = require('path')
+  const src = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
+  const hook = src('src/features/todo/hooks/useNeedsDecision.ts')
+  const actions = src('src/features/todo/hooks/useTaskActions.ts')
+  check('pick a day goes through useTaskActions.moveToDay (the one move), not a due-only patch',
+    /pickDay: \(task: Task, day: string\) => actions\.moveToDay\(task, day\)/.test(hook) && !/pickDayPatch|due_date/.test(hook))
+  check('…which is useMoveItemToDay, the path Move to today takes', /moveItem\.mutateAsync\(\{ task, day \}\)/.test(actions)
+    && /movesToToday\(task, today\) \? moveToDay\(task, today\)/.test(actions))
+  const { movedToDay, itemAsMove, itemFromRows } = require('../src/features/items/itemRules')
+  const t = { id: 't1', title: 'Fix the bike light', domain: 'personal', priority: 'medium', section: 'backlog', status: 'open', due_date: '2026-11-01', due_time: '18:00:00', source_type: 'manual' }
+  const slot = { id: 'b1', date: '2026-11-01', title: 'Fix the bike light', start_time: '18:00:00', duration_minutes: 30, category: 'daily' }
+  const m = movedToDay(itemFromRows(t, slot, null), '2026-11-25')
+  check('a stuck task with its slot: the slot moves to the picked day (the due follows it in the database)',
+    m.taskId === 't1' && m.blockId === 'b1' && m.date === '2026-11-25' && m.time === '18:00' && m.durationMinutes === 30 && m.deadline === null)
+  const u = movedToDay(itemFromRows({ ...t, due_date: null, due_time: null }, null, null), '2026-11-25')
+  check('an undated task gets the day (no slot to move)', u.blockId === null && u.date === '2026-11-25' && u.time === null)
+  check('…and its Undo (the item as read) says no day again', itemAsMove(itemFromRows({ ...t, due_date: null, due_time: null }, null, null)).date === null)
+}
 const lab = task({ labels: ['Errands'] })
 check('Someday keeps the other labels', JSON.stringify(somedayPatch(lab).labels) === JSON.stringify(['Errands', 'Someday']))
 check('Someday twice is once', somedayPatch(task({ labels: ['someday'] })).labels.length === 1)
@@ -84,9 +103,6 @@ check('Someday also clears the date and files it in Backlog', somedayPatch(lab).
 const parked = needsDecision([{ ...task({ due_date: '2026-10-01', section: 'today' }), ...somedayPatch(lab) }], TODAY)
 check('a task parked with Someday is no longer listed', parked.length === 0)
 check('isSomeday', isSomeday({ labels: ['Someday'] }) && !isSomeday({ labels: [] }) && !isSomeday({}))
-const dated = task({ due_date: '2026-11-01', section: 'backlog' })
-check('Undo of a pick restores date and section', JSON.stringify(reversePatch(dated, pickDayPatch('2026-11-25', TODAY))) === JSON.stringify({ due_date: '2026-11-01', section: 'backlog' }))
-check('Undo of a pick on an undated task clears the date', reversePatch(b, pickDayPatch('2026-11-25', TODAY)).due_date === null)
 const late = task({ due_date: '2026-10-01', section: 'today', labels: ['Errands'] })
 const back = reversePatch(late, somedayPatch(late))
 check('Undo of Someday restores labels, date and section', JSON.stringify(back.labels) === JSON.stringify(['Errands']) && back.due_date === '2026-10-01' && back.section === 'today', JSON.stringify(back))
