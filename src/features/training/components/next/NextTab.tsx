@@ -191,8 +191,6 @@ export function NextTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
     )
   }
 
-  // The RPE explainer once, on the first card whose last session was rated.
-  const firstRatedRow = plan.rows.findIndex(r => r.lastHasRpe)
   // Placed by PageBoard (trainingBoards.ts → NEXT_BOARD): the session and its
   // context (missed, recovery, heads-up) in a rail, the exercise cards beside it.
   return (
@@ -203,7 +201,7 @@ export function NextTab({ onGoTo }: { onGoTo: (tab: TrainingTabId) => void }) {
       alerts: <><MuscleWatchLine /><Alerts plan={plan} /></>,
       exercises: plan.rows.length > 0 && (
         <ExerciseGrid>
-          {plan.rows.map((r, i) => <NextExerciseCard key={`${r.templateId}-${r.order}`} row={r} explainRpe={i === firstRatedRow} />)}
+          {plan.rows.map(r => <NextExerciseCard key={`${r.templateId}-${r.order}`} row={r} />)}
         </ExerciseGrid>
       ),
       note: plan.needsCurrentProgram && (

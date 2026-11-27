@@ -9,8 +9,10 @@
 // No decision is made here: the target is the engine's (progress-engine
 // targets.ts), this only lines it up with the routine.
 //
-// RPE (logged per set in Hevy) is shown on "Last time" and read into one
-// light note — near your limit / room to push (lastSessionEffort). The note
+// RPE (logged per set in Hevy) is read into one light note — near your limit /
+// room to push (lastSessionEffort); "Last time" shows the sets without their RPE
+// (owner, 27.11.2026, on the Next card: "dont show RPE here" — every other screen
+// and the coach snapshot keep it). The note
 // is informational and NEVER changes the target: the owner decided that no
 // decision depends on RPE (the engine reads none — a rated and an unrated
 // exercise must get the same target), RPE is self-reported and people misjudge
@@ -53,11 +55,9 @@ export interface PlanRow {
   target: string | null
   targetHeadline: string | null
   decision: ExerciseProgressResult | null
-  /** Last session's sets, each group with its RPE when rated ("… @ RPE 8/9/10"). */
+  /** Last session's sets, without their RPE (owner, 27.11.2026: "dont show RPE here"). */
   lastSets: string | null
   lastDate: string | null
-  /** At least one set of the last session was rated in Hevy. */
-  lastHasRpe: boolean
   /** The last session's effort read from its RPE, or null (too few rated sets). */
   lastEffort: LastEffort | null
 }
@@ -143,8 +143,7 @@ export function buildSessionPlan(
       restSeconds: parseRest(ex.rest_seconds),
       prescription, routineLoads: routineLoadsText(sets, kind),
       target, targetHeadline: next?.headline ?? null, decision,
-      lastSets: latest ? formatSessionSets(latest.allSets, kind, { rpe: true }) : null, lastDate: latest?.date ?? null,
-      lastHasRpe: !!latest && latest.allSets.some(s => isRated(s.rpe)),
+      lastSets: latest ? formatSessionSets(latest.allSets, kind) : null, lastDate: latest?.date ?? null,
       lastEffort: latest ? lastSessionEffort(latest.allSets) : null,
     }
   })
