@@ -165,7 +165,7 @@ export function ItemForm({
         {details && (
           // No heading of its own: the Category row right above names it. Its marks join the title card's.
           <Section marksTo={titleMarks.register}>
-            <DetailsSection form={form} patch={patch} itemKey={taskId ?? own.blockId ?? own.scheduleBlockId ?? null} mark={<FieldMark goes={goes('own')} />}
+            <DetailsSection form={form} patch={patch} mark={<FieldMark goes={goes('own')} />}
               placeMark={<FieldMark goes={goes(slotFields ? 'place' : 'own')} row="Cinema" />} />
           </Section>
         )}

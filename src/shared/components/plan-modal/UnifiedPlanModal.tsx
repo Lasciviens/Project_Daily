@@ -24,10 +24,10 @@
 //  2026-11-28 · v34 · Dropdowns and the next episode (owner, 28.11.2026: "when
 //                    I select the tv serie it should by default bring next
 //                    episode"; "apply that to all dropdowns in task screen").
-//                    A show picked (or opened with no episode) gets its next
-//                    episode from useNextEpisode, saved as a picked one — the
-//                    plan becomes that episode's; an episode set is never
-//                    replaced, a cleared one stays cleared (episodeDefault).
+//                    A show picked in the Show search gets its next episode
+//                    from useNextEpisode, saved as a picked one — the plan
+//                    becomes that episode's; opening an item never fills it
+//                    (a whole-show plan stays one; nothing saves on open).
 //                    Every choice row is a SelectRow / SelectChip in the
 //                    shared field list (FieldSelect); no save path changes.
 //  2026-11-27 · v33 · The look on a phone (owner, 27.11.2026, from the iPhone:

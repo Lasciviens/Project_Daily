@@ -663,7 +663,7 @@ console.log('\n== 13. Every dropdown on the item screen is the shared field list
     && TODAY_RAW.filter(f => !/FieldOptions|FieldSelect/.test(f)).every(f => theme.includes(path.basename(f, '.tsx'))) && /FieldSelect/.test(ui))
 }
 
-console.log('\n== 14. A show\'s next episode by default (owner, 28.11.2026: "when I select the tv serie it should by default bring next episode") ==')
+console.log('\n== 14. A picked show\'s next episode by default (owner, 28.11.2026: "when I select the tv serie it should by default bring next episode") ==')
 {
   const E = require('../src/features/items/episodeDefault')
   const next = { caughtUp: false, season: 2, episode: 6, episodeTitle: 'x', airDate: '2024-01-01', released: true, watchedCount: 13, totalEpisodes: 24, lastWatched: { season: 2, episode: 5 } }
@@ -671,20 +671,19 @@ console.log('\n== 14. A show\'s next episode by default (owner, 28.11.2026: "whe
   check('…never when all is watched, nothing has aired, TMDB\'s data is missing, or there is no answer',
     E.episodeDefault({ ...next, caughtUp: true, season: null, episode: null }) === null && E.episodeDefault({ ...next, released: false }) === null
     && E.episodeDefault({ ...next, airDate: null }) === null && E.episodeDefault(undefined) === null && E.episodeDefault(null) === null)
-  const store = new Map()
-  global.localStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k) }
-  E.rememberEpisodeCleared('task-1:show-1', true)
-  check('a cleared episode is remembered for that item and show, and forgotten once an episode is set again',
-    E.episodeCleared('task-1:show-1') && !E.episodeCleared('task-1:show-2') && (E.rememberEpisodeCleared('task-1:show-1', false), !E.episodeCleared('task-1:show-1')))
   const det = src('src/shared/components/plan-modal/DetailsSection.tsx')
-  check('…the screen asks the app\'s one rule (useNextEpisode), fills only while no episode is set and the owner hasn\'t cleared it, once per show',
+  check('…only after a pick in the Show search on this visit: an item that opens with a show and no episode stays a whole-show plan (opening writes nothing)',
+    /if \(p\.link\.kind === 'tv' && 'id' in p\.link\) setPicked\(/.test(det) && /fill=\{picked\?\.id === link\.id\}/.test(det)
+    && /useState\(\(\) => !pickedNow \|\| \(link\.season != null && link\.episode != null\)\)/.test(det))
+  check('…from the app\'s one rule (useNextEpisode), once per pick, never over an episode the owner set or cleared',
     /useNextEpisode\(decided \? null : link\.id, entry\?\.tv_series\.tmdb_id \?\? null, entry\?\.tv_series\.number_of_episodes \?\? null\)/.test(det)
-    && /useState\(\(\) => \(link\.season != null && link\.episode != null\) \|\| \(!!memoryKey && episodeCleared\(memoryKey\)\)\)/.test(det)
-    && /<ShowEpisode key=\{link\.id\}/.test(det) && /if \(memoryKey\) rememberEpisodeCleared\(memoryKey, cleared\)/.test(det))
+    && /key=\{`\$\{link\.id\}:\$\{picked\?\.id === link\.id \? picked\.n : 0\}`\}/.test(det) && /const own = \(l: ItemLink\) => \{\n\s*setDecided\(true\)/.test(det))
   check('…filled, it is saved as a picked episode (the link\'s season and episode: the plan becomes that episode\'s)',
     /onChange\(\{ kind: 'tv', id: link\.id, season: filled\.season, episode: filled\.episode \}\)/.test(det))
-  check('…the memory is this account\'s: sign-out clears it (the same key in accountState)',
-    src('src/security/accountState.ts').includes(`const EPISODE_CLEARED_KEY = '${E.EPISODE_CLEARED_KEY}'`) && /localStorage\.removeItem\(EPISODE_CLEARED_KEY\)/.test(src('src/security/accountState.ts')))
+  check('…no device memory any more (nothing per item kept, nothing for sign-out to clear)',
+    !/localStorage|episodeCleared/.test(src('src/features/items/episodeDefault.ts')) && !/episodeCleared/.test(src('src/security/accountState.ts')) && !/itemKey/.test(det))
+  check('…the audit opens a whole-show plan and fails on any save it sends, then picks the show and wants S2 E6 saved',
+    /async function showDefault\(/.test(src('scripts/audit-item-screen.mjs')) && /SHOW opening a whole-show plan sent/.test(src('scripts/audit-item-screen.mjs')))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

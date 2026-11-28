@@ -13,6 +13,8 @@
 //   WHEEL    a time wheel whose band, value and bold row disagree (also with the page zoomed);
 //   DROPDOWN every choice list on the screen, opened: the shared field list, under its button, inside the screen
 //            (owner, 28.11.2026: every dropdown on the item screen is the Show / Movie search's list);
+//   SHOW     a show's next episode (owner, 28.11.2026): an existing whole-show plan opens and sends no save (opening never
+//            writes; it stays a whole-show plan), and a show picked in the search gets its next episode;
 //   KEYBOARD the movie search's list with the keyboard up (the window shortened to what it leaves): it must open under
 //            its field, inside the screen — not above it over the title (owner, 27.11.2026).
 // Each phone size runs at the app's Display scale 100 %, 80 % and 125 % too (Settings: the root font size). At 80 % the
@@ -36,7 +38,7 @@ if (!harness || !fs.existsSync(path.join(harness, 'mock-server.cjs'))) {
 const BASE = opt('base', 'http://127.0.0.1:5371/Project_Daily')
 const SIZES = opt('sizes', '375x812,402x874,430x932,874x402,1469x680').split(',').map(s => s.split('x').map(Number))
 const SHOTS = opt('shots', null)
-const ONLY = opt('only', 'edit,apple,new,wheel').split(',')
+const ONLY = opt('only', 'edit,apple,show,new,wheel').split(',')
 const SCALES = opt('scales', '100,80,125').split(',').map(Number)
 const { installMocks, SESSION } = require(path.resolve(harness, 'mock-server.cjs'))
 const { chromium } = require(path.resolve('node_modules/playwright'))
@@ -220,6 +222,47 @@ async function dropdowns(page, label, found, shots) {
   }
 }
 
+// TMDB's season pages for the harness's made-up shows: 8 episodes a season, all aired (so a next episode exists).
+const tmdbSeasons = url => {
+  const m = /\/tv\/(\d+)\/season\/(\d+)/.exec(url)
+  if (!m) return null
+  const episodes = Array.from({ length: 8 }, (_, i) => ({ episode_number: i + 1, name: `Episode ${i + 1}`, air_date: '2024-01-01', season_number: Number(m[2]) }))
+  return { status: 200, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 1, season_number: Number(m[2]), episodes }) }
+}
+
+/** The next-episode default: never on open (a whole-show plan stays one, nothing saved), always on a pick. */
+async function showDefault(browser, w, h, phone, scale, found) {
+  const context = await browser.newContext({ viewport: { width: w, height: h }, isMobile: phone, hasTouch: phone, timezoneId: 'Europe/Oslo', locale: 'en-GB', serviceWorkers: 'block' })
+  const store = await installMocks(context, { outside: tmdbSeasons })
+  await context.addInitScript(s => localStorage.setItem('sb-mock-auth-token', JSON.stringify(s)), SESSION)
+  await context.addInitScript(sc => localStorage.setItem('theme-preference', JSON.stringify({ state: { theme: 'light', accent: 'blue', scale: sc }, version: 1 })), scale)
+  // A whole-show plan: today's birthday-card task turned into a plan of Fjord Patrol (watching, next S2E6), no episode.
+  const show = store.rows('user_tv_entries')[0]
+  const task = store.rows('tasks').find(t => t.title === 'Buy a birthday card for Kari')
+  Object.assign(task, { title: 'Watch Fjord Patrol', tv_entry_id: show.id, link_season: null, link_episode: null, details: { category: 'media', type: 'tv' } })
+  const saves = []
+  await context.route('**/rest/v1/rpc/app_save_item', async r => { saves.push(JSON.parse(r.request().postData() ?? '{}')); await r.fallback() })
+  const page = await context.newPage()
+  await openEdit(page, 'Watch Fjord Patrol')
+  await page.waitForTimeout(3000)
+  const episode = () => page.evaluate(() => [document.querySelector('[aria-label=Season]')?.value ?? null, document.querySelector('[aria-label=Episode]')?.value ?? null])
+  const opened = await episode()
+  if (saves.length) found(`SHOW opening a whole-show plan sent ${saves.length} save(s): ${JSON.stringify(saves[0].p_link ?? null)}`)
+  if (opened[0] === null) found('SHOW the whole-show plan opened without its Episode row')
+  else if (opened[0] || opened[1]) found(`SHOW opening a whole-show plan filled its episode (S${opened[0]} E${opened[1]})`)
+  // A pick fills the next episode (S2E6) and saves it as that episode's plan.
+  await sheet(page).getByRole('button', { name: /^Show:/ }).first().click()
+  const search = sheet(page).getByRole('combobox', { name: /Show: search/ })
+  await search.fill('Fjord'); await page.waitForTimeout(900)
+  await page.getByRole('option', { name: /Fjord Patrol/ }).first().click()
+  await page.waitForTimeout(3000)
+  const picked = await episode()
+  if (picked[0] !== '2' || picked[1] !== '6') found(`SHOW a picked show got S${picked[0]} E${picked[1]}, not its next episode S2 E6`)
+  const last = saves.at(-1)?.p_link
+  if (!last || last.season !== 2 || last.episode !== 6) found(`SHOW the pick's save sent ${JSON.stringify(last ?? null)}, not S2 E6`)
+  await context.close()
+}
+
 /** The movie search with the keyboard up: Chromium can only shorten the window, which stands in for the visual viewport. */
 async function keyboardList(page, w, h, found) {
   await openEdit(page, 'Movie night')
@@ -383,6 +426,8 @@ async function run() {
       await tap(page, sheet(page).getByRole('switch', { name: 'All-day' }))
       await sweep(page, 'edit all-day', found, shot('edit-allday'))
     }
+
+    if (ONLY.includes('show') && scale === SCALES[0]) await showDefault(browser, w, h, phone, scale, found)
 
     if (ONLY.includes('apple')) {
       const appleContext = await newContext(browser, w, h, phone, scale, true)

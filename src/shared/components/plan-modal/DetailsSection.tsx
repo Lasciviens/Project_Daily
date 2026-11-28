@@ -39,7 +39,7 @@ import { useEarlierCinemas, useEarlierDetails } from '../../../features/items/us
 import { useMovies } from '../../../features/media/hooks/useMovies'
 import { useTVSeries } from '../../../features/media/hooks/useTVSeries'
 import { useNextEpisode } from '../../../features/media/hooks/useNextEpisode'
-import { episodeCleared, episodeDefault, rememberEpisodeCleared } from '../../../features/items/episodeDefault'
+import { episodeDefault } from '../../../features/items/episodeDefault'
 import { useSearchTitles } from '../../../features/media/hooks/useTMDB'
 import { useAllGames, useLibraryGames } from '../../../features/games/hooks/useGames'
 import type { TimeBlockCategory } from '../../../features/daily/types'
@@ -63,12 +63,10 @@ export function CategoryRow({ form, patch, mark }: {
 }
 
 /** The category's own section (nothing for a category without add-on fields). */
-export function DetailsSection({ form, patch, mark, placeMark, itemKey = null }: {
+export function DetailsSection({ form, patch, mark, placeMark }: {
   form: PlanForm
   patch: (p: Partial<PlanForm>) => void
   mark?: ReactNode
-  /** The saved item (its task, else its slot), so a cleared episode stays cleared when it opens again. */
-  itemKey?: string | null
   /** Where a cinema trip's Cinema goes: its slot's place (Apple Calendar's location), or only the app without a slot. */
   placeMark?: ReactNode
 }) {
@@ -77,6 +75,9 @@ export function DetailsSection({ form, patch, mark, placeMark, itemKey = null }:
   const fields = detailFields(form.category, type)
   const earlier = useEarlierDetails(fields.includes('with') || fields.includes('on'))
   const cinemas = useEarlierCinemas(fields.includes('cinema'))
+  // A show picked in the search on this visit (each pick counted): only a pick fills its next episode — an item that
+  // opens with a show and no episode stays a whole-show plan, and opening never writes anything by itself.
+  const [picked, setPicked] = useState<{ id: string; n: number } | null>(null)
   if (!def) return null
   const set = (details: Partial<DetailsForm>) => patch(withDetails(form, { details }))
   const linkKind = def.linkKind?.(type) ?? null
@@ -98,10 +99,16 @@ export function DetailsSection({ form, patch, mark, placeMark, itemKey = null }:
       )}
       {fields.includes('thing') && linkKind && (
         <ThingRow kind={linkKind} link={link} pending={pending} mark={mark}
-          onPick={picked => ('link' in picked ? setLink(picked.link) : setLink(null, picked.pending))} onClear={() => setLink(null)} />
+          onPick={p => {
+            if ('link' in p) {
+              setLink(p.link)
+              if (p.link.kind === 'tv' && 'id' in p.link) setPicked(prev => ({ id: (p.link as { id: string }).id, n: (prev?.n ?? 0) + 1 }))
+            } else setLink(null, p.pending)
+          }} onClear={() => setLink(null)} />
       )}
       {fields.includes('thing') && linkKind === 'tv' && link && (
-        <ShowEpisode key={link.id} link={link} mark={mark} itemKey={itemKey} onChange={setLink} />
+        <ShowEpisode key={`${link.id}:${picked?.id === link.id ? picked.n : 0}`} link={link} mark={mark}
+          fill={picked?.id === link.id} onChange={setLink} />
       )}
       {fields.includes('cinema') && (
         // The item's one place (its slot's — Location shows only Travel Time then — or by name without a slot).
@@ -276,23 +283,23 @@ function SearchCombo({ label, autoFocus, onPick, onClose, query, setQuery, setFo
 }
 
 /**
- * A show's episode, filled with its next one by default (owner, 28.11.2026: "when I select the tv serie it should by
- * default bring next episode") — the app's one rule (useNextEpisode: Daily's Watch next, the Media page), only when it
- * is one to fill (episodeDefault: not all watched, aired, TMDB's data there). Filled once per show and only while no
- * episode is set: an episode the owner set is never replaced, and one the owner clears stays cleared — on this visit,
- * and for a saved item when it opens again (episodeDefault's memory). Filled or typed, it is saved the same way: the
- * plan becomes that episode's plan.
+ * A show's episode, filled with its next one when the owner picks the show in the search (owner, 28.11.2026: "when I
+ * select the tv serie it should by default bring next episode") — the app's one rule (useNextEpisode: Daily's Watch
+ * next, the Media page), only when it is one to fill (episodeDefault: not all watched, aired, TMDB's data there). Only
+ * after a pick on this visit (`fill`): an item that opens with a show and no episode stays a whole-show plan, and
+ * opening the screen writes nothing. Filled once per pick and only while no episode is set: one the owner sets or
+ * clears is never refilled. Filled or typed, it is saved the same way: the plan becomes that episode's plan.
  */
-function ShowEpisode({ link, mark, itemKey, onChange }: {
+function ShowEpisode({ link, mark, fill: pickedNow, onChange }: {
   link: { kind: ItemLinkKind; id: string; season?: number; episode?: number }
   mark?: ReactNode
-  itemKey: string | null
+  /** The owner picked this show in the search on this visit. */
+  fill: boolean
   onChange: (l: ItemLink) => void
 }) {
   const shows = useTVSeries()
   const entry = shows.data?.find(e => e.id === link.id) ?? null
-  const memoryKey = itemKey ? `${itemKey}:${link.id}` : null
-  const [decided, setDecided] = useState(() => (link.season != null && link.episode != null) || (!!memoryKey && episodeCleared(memoryKey)))
+  const [decided, setDecided] = useState(() => !pickedNow || (link.season != null && link.episode != null))
   const next = useNextEpisode(decided ? null : link.id, entry?.tv_series.tmdb_id ?? null, entry?.tv_series.number_of_episodes ?? null)
   const [filled, setFilled] = useState<{ season: number; episode: number } | null>(null)
   // The answer lands: taken once (state set while rendering, React's way to follow a value), then sent to the form.
@@ -306,8 +313,6 @@ function ShowEpisode({ link, mark, itemKey, onChange }: {
   }, [filled]) // eslint-disable-line react-hooks/exhaustive-deps -- sent once per fill
   const own = (l: ItemLink) => {
     setDecided(true)
-    const cleared = !('season' in l) || l.season == null
-    if (memoryKey) rememberEpisodeCleared(memoryKey, cleared)
     onChange(l)
   }
   // Remounted by a fill, so its two fields start from the episode filled in.
