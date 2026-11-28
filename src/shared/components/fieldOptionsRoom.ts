@@ -28,12 +28,14 @@ export function optionsMaxHeight(field: FieldBox, visible: Visible, gap: number)
 }
 
 /**
- * How far to scroll the field up so a list of OPTIONS_FLOOR fits under it (0 when it already does): the field moves
- * up, never past the top of the visible area (under the status bar). The list then opens under its field even on the
+ * How far to scroll the field up so its list fits under it — `want` px of it (the list's own height when known, a
+ * select's few choices), at least OPTIONS_FLOOR and at most OPTIONS_CAP — 0 when it already does: the field moves up,
+ * never past the top of the visible area (under the status bar). The list then opens under its field even on the
  * smallest phone with the keyboard up, instead of flipping over the rows above it.
  */
-export function optionsLift(field: FieldBox, visible: Visible, gap: number): number {
-  const need = field.bottom + gap + OPTIONS_FLOOR + OPTIONS_MARGIN + SLACK - visible.bottom
+export function optionsLift(field: FieldBox, visible: Visible, gap: number, want: number = OPTIONS_FLOOR): number {
+  const height = Math.min(OPTIONS_CAP, Math.max(OPTIONS_FLOOR, want))
+  const need = field.bottom + gap + height + OPTIONS_MARGIN + SLACK - visible.bottom
   const most = field.top - Math.max(visible.top, visible.safeTop) - OPTIONS_MARGIN
   return Math.max(0, Math.ceil(Math.min(need, most)))
 }

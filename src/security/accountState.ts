@@ -20,6 +20,8 @@ const SHOP_HANDOVER_TICKS_KEY = 'lasci.shop.handover'
 const SHOP_OWNED_VIEW_KEY = 'lasci.shop.ownedView'
 // The same for Personal → Month's hidden kinds (useMonthKinds' MONTH_KINDS_KEY).
 const MONTH_HIDDEN_KEY = 'lasci.daily.monthHidden'
+// And the item screen's cleared episodes (items/episodeDefault's EPISODE_CLEARED_KEY; verify-item-screen compares them).
+const EPISODE_CLEARED_KEY = 'lasci.items.episodeCleared'
 
 const PUSH_LOOKUP_MS = 3000
 
@@ -77,6 +79,8 @@ export async function clearAccountState(): Promise<void> {
   try { forgetCalendarPrefs() } catch { /* */ }
   // What the pages looked like when their data last landed (row counts, heights): this account's.
   try { forgetLayouts() } catch { /* */ }
+  // The item screen: the items whose next-episode default the owner cleared (items/episodeDefault's EPISODE_CLEARED_KEY).
+  try { localStorage.removeItem(EPISODE_CLEARED_KEY) } catch { /* */ }
   // Shop: the hand-over steps ticked for this account's things (useShopSelling's HANDOVER_TICKS_KEY).
   try { localStorage.removeItem(SHOP_HANDOVER_TICKS_KEY) } catch { /* */ }
   // Shop: how Owned shows its things (rows, list, big pictures).

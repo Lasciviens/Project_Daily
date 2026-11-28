@@ -20,7 +20,7 @@ import { allDayAlertDays, eventShowAs, eventTravel } from '../../../features/cal
 import {
   alertChoices, alertLabel, alertRows, alertsOf, showAsLabel, travelLabel, TRAVEL_CHOICES, type AlertRows, type ShowAs,
 } from '../../../features/items/itemCalendarFields'
-import { ChoiceRow, LINE, NoteRow, Panel, Row, TapRow } from './ItemRows'
+import { LINE, NoteRow, Panel, Row, SelectRow } from './ItemRows'
 import { hostOf, openableUrl } from './itemScreenRules'
 import type { PanelKey } from './TimeSection'
 import { typingHints } from './fieldStyles'
@@ -42,8 +42,12 @@ function alertWords(v: AlertRows['alert'], allDay: boolean): string {
 /** Two alerts mean the same moment: the same minutes, or (all day) the same day at 09:00. */
 const sameAlert = (a: number, b: number, allDay: boolean) => (allDay ? allDayAlertDays(a) === allDayAlertDays(b) : a === b)
 
-/** Alert, then Second Alert once the first is a time — Apple's two rows, saved as one list (alertsOf). */
-export function AlertRows({ alerts, allDay, defaultHint, onChange, mark, open, toggle }: Opened & {
+/** A choice's key in the list: the area's own, none, or the minutes before. */
+const alertKey = (v: AlertRows['alert'] | number | null): string => (v === null ? 'none' : String(v))
+
+/** Alert, then Second Alert once the first is a time — Apple's two rows, saved as one list (alertsOf); each opens the
+ *  shared field list under it. */
+export function AlertRows({ alerts, allDay, defaultHint, onChange, mark }: {
   alerts: number[] | null
   /** No time: the all-day choices (on the day, 1 day, 2 days, a week before — at 09:00). */
   allDay: boolean
@@ -55,34 +59,32 @@ export function AlertRows({ alerts, allDay, defaultHint, onChange, mark, open, t
   const rows = alertRows(alerts)
   const choices = alertChoices(allDay)
   const first = typeof rows.alert === 'number' ? rows.alert : null
-  const pick = (next: AlertRows) => { onChange(alertsOf(next)); toggle(null) }
+  // The row's value is one of the list's: an odd saved minute reads as the choice that means the same moment.
+  const firstKey = first === null ? alertKey(rows.alert) : String(choices.find(m => sameAlert(first, m, allDay)) ?? first)
+  const secondChoices = first === null ? [] : choices.filter(m => !sameAlert(m, first, allDay))
+  const secondKey = rows.second === null ? 'none' : String(secondChoices.find(m => sameAlert(rows.second as number, m, allDay)) ?? rows.second)
+  const alertOptions = [
+    { value: 'default', label: 'Default', hint: defaultHint },
+    { value: 'none', label: 'None' },
+    ...choices.map(m => ({ value: String(m), label: alertLabel(m, allDay) })),
+    ...(first !== null && !choices.some(m => String(m) === firstKey) ? [{ value: firstKey, label: alertWords(first, allDay) }] : []),
+  ]
+  const secondOptions = [
+    { value: 'none', label: 'None' },
+    ...secondChoices.map(m => ({ value: String(m), label: alertLabel(m, allDay) })),
+    ...(rows.second !== null && !secondChoices.some(m => String(m) === secondKey) ? [{ value: secondKey, label: alertLabel(rows.second, allDay) }] : []),
+  ]
+  const pickFirst = (k: string) => {
+    if (k === 'default' || k === 'none') { onChange(alertsOf({ alert: k, second: null })); return }
+    const m = Number(k)
+    onChange(alertsOf({ alert: m, second: rows.second !== null && !sameAlert(rows.second, m, allDay) ? rows.second : null }))
+  }
   return (
     <>
-      <TapRow label="Alert" mark={mark} value={alertWords(rows.alert, allDay)} open={open === 'alert'} onClick={() => toggle('alert')} />
-      {open === 'alert' && (
-        <Panel label="Alert">
-          <ChoiceRow label="Default" hint={defaultHint} chosen={rows.alert === 'default'} onClick={() => pick({ alert: 'default', second: null })} />
-          <ChoiceRow label="None" chosen={rows.alert === 'none'} onClick={() => pick({ alert: 'none', second: null })} />
-          {choices.map(m => (
-            <ChoiceRow key={m} label={alertLabel(m, allDay)} chosen={first !== null && sameAlert(first, m, allDay)}
-              onClick={() => pick({ alert: m, second: rows.second !== null && !sameAlert(rows.second, m, allDay) ? rows.second : null })} />
-          ))}
-        </Panel>
-      )}
+      <SelectRow label="Alert" mark={mark} value={firstKey} options={alertOptions} onChange={pickFirst} />
       {first !== null && (
-        <>
-          <TapRow label="Second Alert" mark={mark} value={rows.second === null ? 'None' : alertLabel(rows.second, allDay)}
-            open={open === 'alert2'} onClick={() => toggle('alert2')} />
-          {open === 'alert2' && (
-            <Panel label="Second Alert">
-              <ChoiceRow label="None" chosen={rows.second === null} onClick={() => pick({ alert: first, second: null })} />
-              {choices.filter(m => !sameAlert(m, first, allDay)).map(m => (
-                <ChoiceRow key={m} label={alertLabel(m, allDay)} chosen={rows.second !== null && sameAlert(rows.second, m, allDay)}
-                  onClick={() => pick({ alert: first, second: m })} />
-              ))}
-            </Panel>
-          )}
-        </>
+        <SelectRow label="Second Alert" mark={mark} value={secondKey} options={secondOptions}
+          onChange={k => onChange(alertsOf({ alert: first, second: k === 'none' ? null : Number(k) }))} />
       )}
     </>
   )
@@ -109,8 +111,8 @@ export function ShowAsRow({ showAs, timedWithLength, onChange, mark }: {
 
 // ── Travel Time ─────────────────────────────────────────────────────────────
 
-/** Automatic (Time to Leave from the place's map pin), None, or minutes before — Apple's list. */
-export function TravelRow({ minutes, hasPin, onChange, mark, open, toggle }: Opened & {
+/** Automatic (Time to Leave from the place's map pin), None, or minutes before — Apple's list, in the shared field list. */
+export function TravelRow({ minutes, hasPin, onChange, mark }: {
   minutes: number | null
   /** The place has a map pin: Automatic has something to work from. */
   hasPin: boolean
@@ -118,19 +120,13 @@ export function TravelRow({ minutes, hasPin, onChange, mark, open, toggle }: Ope
   mark?: ReactNode
 }) {
   const value = eventTravel(minutes)
+  const options = TRAVEL_CHOICES.map(m => ({
+    value: m === null ? 'auto' : String(m), label: travelLabel(m),
+    hint: m === null ? (hasPin ? "Time to Leave, from the place's map pin" : 'Needs a place on the map (Location)') : undefined,
+  }))
   return (
-    <>
-      <TapRow label="Travel Time" mark={mark} value={travelLabel(value)} open={open === 'travel'} onClick={() => toggle('travel')} />
-      {open === 'travel' && (
-        <Panel label="Travel Time">
-          {TRAVEL_CHOICES.map(m => (
-            <ChoiceRow key={m ?? 'auto'} label={travelLabel(m)} chosen={value === m}
-              hint={m === null ? (hasPin ? "Time to Leave, from the place's map pin" : 'Needs a place on the map (Location)') : undefined}
-              onClick={() => { onChange(m); toggle(null) }} />
-          ))}
-        </Panel>
-      )}
-    </>
+    <SelectRow label="Travel Time" mark={mark} value={value === null ? 'auto' : String(value)} options={options}
+      onChange={k => onChange(k === 'auto' ? null : Number(k))} />
   )
 }
 

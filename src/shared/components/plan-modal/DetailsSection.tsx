@@ -21,14 +21,13 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'rea
 import { Combobox, ComboboxInput, ComboboxOption } from '@headlessui/react'
 import { Plus, User, X } from 'lucide-react'
 import { SegmentedControl, Truncate } from '../../ui'
-import { ChoiceRow, LINE, Panel, Row, TapRow } from './ItemRows'
-import { ChipSelect } from './fields'
+import { LINE, Row, SelectRow } from './ItemRows'
+import { SelectChip } from './SelectChip'
 import { typingHints } from './fieldStyles'
 import { FieldOptions } from '../FieldOptions'
 import { CATEGORY_LABELS } from './planModal.config'
 import { withCategory, withDetails, withMediaType, type DetailsForm, type PendingTitle, type PlanForm } from './planForm'
 import { PlaceRow } from './PlaceRow'
-import type { PanelKey } from './TimeSection'
 import {
   cleanNames, cleanText, DETAIL_CURRENCIES, DETAIL_LIMITS, detailFields, detailsOf, earlierValues, readAmount, suggestionsFor,
   type DetailCurrency, type MediaType,
@@ -39,6 +38,8 @@ import { useLinkedThing } from '../../../features/items/usePlanThis'
 import { useEarlierCinemas, useEarlierDetails } from '../../../features/items/useItemDetails'
 import { useMovies } from '../../../features/media/hooks/useMovies'
 import { useTVSeries } from '../../../features/media/hooks/useTVSeries'
+import { useNextEpisode } from '../../../features/media/hooks/useNextEpisode'
+import { episodeCleared, episodeDefault, rememberEpisodeCleared } from '../../../features/items/episodeDefault'
 import { useSearchTitles } from '../../../features/media/hooks/useTMDB'
 import { useAllGames, useLibraryGames } from '../../../features/games/hooks/useGames'
 import type { TimeBlockCategory } from '../../../features/daily/types'
@@ -47,35 +48,27 @@ import type { TMDBSearchMovie, TMDBSearchTV } from '../../../features/media/type
 const CATEGORIES = Object.keys(CATEGORY_LABELS) as TimeBlockCategory[]
 const INPUT = 'input-bare min-w-0 pb-0 text-right text-lead'
 
-/** The Category row (the title card's second line) and its choices, opened under it. */
-export function CategoryRow({ form, patch, open, toggle, mark }: {
+const CATEGORY_CHOICES = CATEGORIES.map(c => ({ value: c, label: CATEGORY_LABELS[c] }))
+
+/** The Category row (the title card's second line): its choices in the shared field list under it. */
+export function CategoryRow({ form, patch, mark }: {
   form: PlanForm
   patch: (p: Partial<PlanForm>) => void
-  open: PanelKey | null
-  toggle: (k: PanelKey | null) => void
   mark?: ReactNode
 }) {
-  function pick(category: TimeBlockCategory) {
-    patch(withCategory(form, category))
-    toggle(null)
-  }
   return (
-    <>
-      <TapRow label="Category" mark={mark} value={CATEGORY_LABELS[form.category]} open={open === 'category'} onClick={() => toggle('category')} />
-      {open === 'category' && (
-        <Panel label="Category">
-          {CATEGORIES.map(c => <ChoiceRow key={c} label={CATEGORY_LABELS[c]} chosen={c === form.category} onClick={() => pick(c)} />)}
-        </Panel>
-      )}
-    </>
+    <SelectRow<TimeBlockCategory> label="Category" mark={mark} value={form.category} options={CATEGORY_CHOICES}
+      onChange={c => patch(withCategory(form, c))} />
   )
 }
 
 /** The category's own section (nothing for a category without add-on fields). */
-export function DetailsSection({ form, patch, mark, placeMark }: {
+export function DetailsSection({ form, patch, mark, placeMark, itemKey = null }: {
   form: PlanForm
   patch: (p: Partial<PlanForm>) => void
   mark?: ReactNode
+  /** The saved item (its task, else its slot), so a cleared episode stays cleared when it opens again. */
+  itemKey?: string | null
   /** Where a cinema trip's Cinema goes: its slot's place (Apple Calendar's location), or only the app without a slot. */
   placeMark?: ReactNode
 }) {
@@ -108,7 +101,7 @@ export function DetailsSection({ form, patch, mark, placeMark }: {
           onPick={picked => ('link' in picked ? setLink(picked.link) : setLink(null, picked.pending))} onClear={() => setLink(null)} />
       )}
       {fields.includes('thing') && linkKind === 'tv' && link && (
-        <EpisodeRow link={link} mark={mark} onChange={setLink} />
+        <ShowEpisode key={link.id} link={link} mark={mark} itemKey={itemKey} onChange={setLink} />
       )}
       {fields.includes('cinema') && (
         // The item's one place (its slot's — Location shows only Travel Time then — or by name without a slot).
@@ -282,10 +275,55 @@ function SearchCombo({ label, autoFocus, onPick, onClose, query, setQuery, setFo
   )
 }
 
+/**
+ * A show's episode, filled with its next one by default (owner, 28.11.2026: "when I select the tv serie it should by
+ * default bring next episode") — the app's one rule (useNextEpisode: Daily's Watch next, the Media page), only when it
+ * is one to fill (episodeDefault: not all watched, aired, TMDB's data there). Filled once per show and only while no
+ * episode is set: an episode the owner set is never replaced, and one the owner clears stays cleared — on this visit,
+ * and for a saved item when it opens again (episodeDefault's memory). Filled or typed, it is saved the same way: the
+ * plan becomes that episode's plan.
+ */
+function ShowEpisode({ link, mark, itemKey, onChange }: {
+  link: { kind: ItemLinkKind; id: string; season?: number; episode?: number }
+  mark?: ReactNode
+  itemKey: string | null
+  onChange: (l: ItemLink) => void
+}) {
+  const shows = useTVSeries()
+  const entry = shows.data?.find(e => e.id === link.id) ?? null
+  const memoryKey = itemKey ? `${itemKey}:${link.id}` : null
+  const [decided, setDecided] = useState(() => (link.season != null && link.episode != null) || (!!memoryKey && episodeCleared(memoryKey)))
+  const next = useNextEpisode(decided ? null : link.id, entry?.tv_series.tmdb_id ?? null, entry?.tv_series.number_of_episodes ?? null)
+  const [filled, setFilled] = useState<{ season: number; episode: number } | null>(null)
+  // The answer lands: taken once (state set while rendering, React's way to follow a value), then sent to the form.
+  const fill = decided ? null : episodeDefault(next.data)
+  if (fill) {
+    setDecided(true)
+    setFilled(fill)
+  }
+  useEffect(() => {
+    if (filled) onChange({ kind: 'tv', id: link.id, season: filled.season, episode: filled.episode })
+  }, [filled]) // eslint-disable-line react-hooks/exhaustive-deps -- sent once per fill
+  const own = (l: ItemLink) => {
+    setDecided(true)
+    const cleared = !('season' in l) || l.season == null
+    if (memoryKey) rememberEpisodeCleared(memoryKey, cleared)
+    onChange(l)
+  }
+  // Remounted by a fill, so its two fields start from the episode filled in.
+  return <EpisodeRow key={filled ? 'filled' : 'own'} link={link} initial={filled ?? link} mark={mark} onChange={own} />
+}
+
 /** A show's one episode (optional): S and E, both or neither (210). */
-function EpisodeRow({ link, mark, onChange }: { link: { kind: ItemLinkKind; id: string; season?: number; episode?: number }; mark?: ReactNode; onChange: (l: ItemLink) => void }) {
-  const [s, setS] = useState(link.season != null ? String(link.season) : '')
-  const [e, setE] = useState(link.episode != null ? String(link.episode) : '')
+function EpisodeRow({ link, initial, mark, onChange }: {
+  link: { kind: ItemLinkKind; id: string; season?: number; episode?: number }
+  /** What its fields start with (the link, or the episode just filled in). */
+  initial: { season?: number; episode?: number }
+  mark?: ReactNode
+  onChange: (l: ItemLink) => void
+}) {
+  const [s, setS] = useState(initial.season != null ? String(initial.season) : '')
+  const [e, setE] = useState(initial.episode != null ? String(initial.episode) : '')
   const send = (season: string, episode: string) => {
     const sn = /^\d{1,3}$/.test(season) ? Number(season) : null
     const en = /^\d{1,4}$/.test(episode) ? Number(episode) : null
@@ -445,7 +483,7 @@ function CostRow({ cost, currency, mark, onCost, onCurrency }: {
       <input {...typingHints('cost', 'none')} aria-label="Cost: what it cost — kept with the plan, never counted as spending" title={problem ?? 'Cost: kept with the plan, never counted as spending'}
         inputMode="decimal" maxLength={12} value={cost} placeholder="0" onChange={e => onCost(e.target.value)}
         data-tone={problem ? 'danger' : undefined} className={`${INPUT} w-20 tabular-nums ${problem ? 'tone-text' : ''}`} />
-      <ChipSelect<DetailCurrency> label="Currency" value={currency} options={DETAIL_CURRENCIES.map(c => ({ value: c, label: c }))} onChange={onCurrency} />
+      <SelectChip<DetailCurrency> label="Currency" value={currency} options={DETAIL_CURRENCIES.map(c => ({ value: c, label: c }))} onChange={onCurrency} />
     </Row>
   )
 }

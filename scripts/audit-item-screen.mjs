@@ -11,6 +11,8 @@
 //   HOLDER   a field whose placeholder doesn't fit ("Add a nam");
 //   OUTSIDE  anything past the screen's sides (sideways scrolling) or a list over the screen's top or bottom;
 //   WHEEL    a time wheel whose band, value and bold row disagree (also with the page zoomed);
+//   DROPDOWN every choice list on the screen, opened: the shared field list, under its button, inside the screen
+//            (owner, 28.11.2026: every dropdown on the item screen is the Show / Movie search's list);
 //   KEYBOARD the movie search's list with the keyboard up (the window shortened to what it leaves): it must open under
 //            its field, inside the screen — not above it over the title (owner, 27.11.2026).
 // Each phone size runs at the app's Display scale 100 %, 80 % and 125 % too (Settings: the root font size). At 80 % the
@@ -18,7 +20,7 @@
 // running into the time pill.
 // Exit 1 when it finds anything. Needs the app on the mock (scripts/harness/README.md):
 //   node scripts/audit-item-screen.mjs --harness scripts/harness [--base http://127.0.0.1:5371/Project_Daily]
-//        [--sizes 375x812,402x874] [--scales 100,80,125] [--shots <dir>] [--only edit,new,wheel]
+//        [--sizes 375x812,402x874] [--scales 100,80,125] [--shots <dir>] [--only edit,apple,new,wheel]
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -34,7 +36,7 @@ if (!harness || !fs.existsSync(path.join(harness, 'mock-server.cjs'))) {
 const BASE = opt('base', 'http://127.0.0.1:5371/Project_Daily')
 const SIZES = opt('sizes', '375x812,402x874,430x932,874x402,1469x680').split(',').map(s => s.split('x').map(Number))
 const SHOTS = opt('shots', null)
-const ONLY = opt('only', 'edit,new,wheel').split(',')
+const ONLY = opt('only', 'edit,apple,new,wheel').split(',')
 const SCALES = opt('scales', '100,80,125').split(',').map(Number)
 const { installMocks, SESSION } = require(path.resolve(harness, 'mock-server.cjs'))
 const { chromium } = require(path.resolve('node_modules/playwright'))
@@ -180,6 +182,44 @@ function wheels() {
   return issues
 }
 
+/**
+ * Every choice list on the screen now (owner, 28.11.2026: every dropdown is the Show / Movie search's list): each
+ * button that opens a listbox is opened, its list must be the shared field list (FieldSelect: data-field-list), open
+ * under its button and inside the screen, and the screen is looked at with it open; then it is closed by its button.
+ */
+async function dropdowns(page, label, found, shots) {
+  const count = await sheet(page).locator('button[aria-haspopup="listbox"]').count()
+  for (let i = 0; i < count; i++) {
+    const b = sheet(page).locator('button[aria-haspopup="listbox"]').nth(i)
+    if (!(await b.isVisible())) continue
+    const name = (await b.getAttribute('aria-label')) ?? `#${i}`
+    await b.scrollIntoViewIfNeeded()
+    await page.waitForTimeout(150)
+    await b.click()
+    await page.waitForTimeout(500)
+    // A list it didn't open (the click landed while the last one was still closing): one more try before it counts.
+    if (!(await page.locator('[role=listbox]').count())) { await b.click(); await page.waitForTimeout(500) }
+    const r = await page.evaluate(() => {
+      const l = document.querySelector('[role=listbox]')
+      const f = document.querySelector('button[aria-haspopup="listbox"][aria-expanded="true"]')
+      if (!l || !f) return null
+      const a = l.getBoundingClientRect(), b = f.getBoundingClientRect()
+      return { shared: l.hasAttribute('data-field-list'), top: a.top, bottom: a.bottom, field: b.bottom, H: innerHeight }
+    })
+    if (!r) found(`${label}: DROPDOWN ${name} opened no list`)
+    else {
+      if (!r.shared) found(`${label}: DROPDOWN ${name} is not the shared field list`)
+      if (r.top < r.field - 0.5) found(`${label}: DROPDOWN ${name} opened above its button (${Math.round(r.top)}–${Math.round(r.bottom)}, button ends at ${Math.round(r.field)})`)
+      if (r.bottom > r.H + 0.5 || r.top < -0.5) found(`${label}: DROPDOWN ${name} runs outside the screen (${Math.round(r.top)}–${Math.round(r.bottom)} of ${r.H})`)
+      for (const x of await page.evaluate(inspect)) found(`${label} ${name} open: ${x}`)
+      if (shots) await page.screenshot({ path: `${shots}-${i}.png` })
+    }
+    await b.click({ force: true })
+    await page.waitForFunction(() => !document.querySelector('[role=listbox]'), null, { timeout: 3000 }).catch(() => {})
+    await page.waitForTimeout(150)
+  }
+}
+
 /** The movie search with the keyboard up: Chromium can only shorten the window, which stands in for the visual viewport. */
 async function keyboardList(page, w, h, found) {
   await openEdit(page, 'Movie night')
@@ -213,12 +253,16 @@ const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/6
 const LONG_TITLE = 'Dinner with Kari and Ola Nordmann at the new place by Jernbanetorget before the late film'
 const LONG_NOTES = 'Bring the tickets.\nAsk about the parking.\n' + 'A long line of notes that runs on and on without a break to see whether it wraps inside its box '.repeat(3)
 
-async function newContext(browser, w, h, phone, scale) {
+async function newContext(browser, w, h, phone, scale, apple = false) {
   const context = await browser.newContext({
     viewport: { width: w, height: h }, deviceScaleFactor: phone ? 3 : 1, isMobile: phone, hasTouch: phone, userAgent: phone ? UA : undefined,
     timezoneId: 'Europe/Oslo', locale: 'en-GB', serviceWorkers: 'block',
   })
-  await installMocks(context)
+  // `apple`: the Personal area on Apple Calendar and iCloud connected, so the Calendar row (and its list) shows.
+  await installMocks(context, apple ? {
+    tables: { calendar_prefs: [{ user_id: SESSION.user.id, prefs: { areas: { personal: { enabled: true } } } }] },
+    functions: { 'icloud-calendar': () => ({ connected: true, readBack: {}, notSent: null }) },
+  } : {})
   await context.addInitScript(s => localStorage.setItem('sb-mock-auth-token', JSON.stringify(s)), SESSION)
   // The app's Display scale (Settings; index.html sets the root font size from it before the first paint).
   await context.addInitScript(sc => localStorage.setItem('theme-preference', JSON.stringify({ state: { theme: 'light', accent: 'blue', scale: sc }, version: 1 })), scale)
@@ -238,8 +282,12 @@ async function openDaily(page) {
 }
 async function openEdit(page, title) {
   await openDaily(page)
-  await page.locator('[role=button]', { hasText: title }).first().click()
-  await page.getByText('Edit Item').first().waitFor()
+  // The agenda's row, not the day's "Next: …" line above it (a cut line that opens its full text).
+  await page.locator('[role=button]').filter({ hasText: title }).filter({ hasNotText: /Next:/ }).first().click()
+  await page.getByText('Edit Item').first().waitFor().catch(async e => {
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/FAILED-open-${title.replace(/\W+/g, '-')}.png` })
+    throw e
+  })
   await page.waitForTimeout(900)
 }
 async function openNew(page) {
@@ -271,6 +319,13 @@ async function sweep(page, label, found, shots) {
   }
 }
 
+/** Repeat's kind, from its chip's list (the Repeat row's panel open). */
+async function pickRepeat(page, label) {
+  await sheet(page).getByRole('button', { name: /^Repeat:/ }).last().click()
+  await page.getByRole('option', { name: label, exact: true }).click()
+  await page.waitForTimeout(400)
+}
+
 async function tap(page, locator) {
   await locator.scrollIntoViewIfNeeded()
   await locator.click()
@@ -278,7 +333,8 @@ async function tap(page, locator) {
 }
 async function pickCategory(page, label) {
   await tap(page, sheet(page).getByRole('button', { name: /^Category/ }).first())
-  await tap(page, sheet(page).getByRole('menuitemradio', { name: label, exact: true }).first())
+  await page.getByRole('option', { name: label, exact: true }).first().click()
+  await page.waitForTimeout(350)
 }
 
 async function run() {
@@ -297,9 +353,11 @@ async function run() {
     if (ONLY.includes('edit')) {
       await openEdit(page, 'Movie night')
       await sweep(page, 'edit movie', found, shot('edit-movie'))
+      await dropdowns(page, 'edit movie', found, shot('dropdown-edit-movie'))
       for (const type of ['TV', 'Cinema', 'Movie']) {
         await tap(page, sheet(page).getByRole('tab').filter({ hasText: new RegExp(`^${type}$`) }).first())
         await sweep(page, `edit type ${type}`, found, type === 'Cinema' ? shot('edit-cinema') : null)
+        if (type === 'Cinema') await dropdowns(page, 'edit cinema', found, shot('dropdown-cinema'))
       }
       // With: names and its field; the searches open.
       const withField = sheet(page).getByRole('combobox', { name: /^With/ })
@@ -321,8 +379,20 @@ async function run() {
       // Repeat on, then all-day.
       await openEdit(page, 'Coffee with Kari')
       await sweep(page, 'edit place', found, shot('edit-place'))
+      await dropdowns(page, 'edit place', found, null)
       await tap(page, sheet(page).getByRole('switch', { name: 'All-day' }))
       await sweep(page, 'edit all-day', found, shot('edit-allday'))
+    }
+
+    if (ONLY.includes('apple')) {
+      const appleContext = await newContext(browser, w, h, phone, scale, true)
+      const applePage = await appleContext.newPage()
+      await openEdit(applePage, 'Coffee with Kari')
+      const calendarRow = await sheet(applePage).getByRole('button', { name: /^Calendar/ }).count()
+      if (!calendarRow) found('apple: the Calendar row did not show with an area on Apple Calendar')
+      await sweep(applePage, 'apple edit', found, shot('apple-edit'))
+      await dropdowns(applePage, 'apple edit', found, shot('dropdown-apple'))
+      await appleContext.close()
     }
 
     if (ONLY.includes('wheel')) {
@@ -360,10 +430,13 @@ async function run() {
       await notes.scrollIntoViewIfNeeded(); await notes.fill(LONG_NOTES)
       await sweep(page, 'new long', found, shot('new-long'))
       await tap(page, sheet(page).getByRole('button', { name: /^Repeat/ }).first())
-      await sheet(page).getByRole('combobox', { name: 'Repeat' }).selectOption('weekly')
-      await page.waitForTimeout(400)
+      await pickRepeat(page, 'Weekly')
       await sweep(page, 'new repeat', found, shot('new-repeat'))
-      await sheet(page).getByRole('combobox', { name: 'Repeat' }).selectOption('none')
+      await dropdowns(page, 'new repeat', found, shot('dropdown-repeat'))
+      // Custom → Every…: the unit's list too.
+      await pickRepeat(page, 'Custom')
+      await dropdowns(page, 'new custom repeat', found, null)
+      await pickRepeat(page, 'No repeat')
       await tap(page, sheet(page).getByRole('switch', { name: 'All-day' }))
       await sweep(page, 'new all-day', found, null)
       await tap(page, sheet(page).getByRole('switch', { name: 'Date' }))

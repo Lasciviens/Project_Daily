@@ -8,10 +8,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, type ReactNode } from 'react'
-import { Check, ChevronRight } from 'lucide-react'
+import { ChevronRight, ChevronsUpDown } from 'lucide-react'
 import { cx, Switch, Truncate } from '../../ui'
 import { useMotion } from '../../hooks/useMotion'
 import { FilledMark } from './FillMark'
+import { FieldSelect, type FieldChoice } from '../FieldSelect'
 import { CardBanner, CardMarksScope } from './FieldMark'
 import { MarkRowContext, useCardMarks, type CardMark, type RegisterMark } from './cardMarks'
 
@@ -99,6 +100,40 @@ export function TapRow({ label, mark, value, open, onClick, disabled, tone }: {
   )
 }
 
+/**
+ * A row whose value is one of a list (Category, Travel Time, Alert, Calendar, List, Time Zone, End Repeat): the whole
+ * row opens the shared field list under it (FieldSelect — the Show / Movie search's list, owner 28.11.2026), never a
+ * list of its own in the group. ⇕ says it is a list; `value` draws the value when it is more than the choice's words.
+ */
+export function SelectRow<T extends string>({ label, mark, value, options, onChange, shown, tone, footer, openOnMount }: {
+  label: string
+  mark?: ReactNode
+  value: T
+  options: readonly FieldChoice<T>[]
+  onChange: (value: T) => void
+  /** The value as the row shows it, when not the choice's words (the Calendar row's mark). */
+  shown?: ReactNode
+  /** The value as a status (a refused send, an end that can't be saved). */
+  tone?: 'danger' | 'warn'
+  footer?: ReactNode
+  openOnMount?: boolean
+}) {
+  return (
+    <FieldSelect label={label} value={value} options={options} onChange={onChange} footer={footer} openOnMount={openOnMount}
+      buttonClassName={cx(ROW, 'text-left transition-colors hover:bg-surface-hover active:bg-surface-hover data-[open]:bg-surface-hover')}>
+      {(choice, open) => (
+        <>
+          <Label mark={mark}>{label}</Label>
+          <span data-tone={tone} className={cx('flex min-w-0 max-w-[60%] items-center justify-end gap-1.5 tabular-nums', tone ? 'tone-text' : open ? 'text-accent-600' : 'text-fg-muted')}>
+            {shown ?? <Truncate className="min-w-0">{choice?.label ?? ''}</Truncate>}
+          </span>
+          <ChevronsUpDown aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />
+        </>
+      )}
+    </FieldSelect>
+  )
+}
+
 export function ToggleRow({ label, mark, on, onChange, note, disabled }: {
   label: string
   mark?: ReactNode
@@ -160,28 +195,6 @@ export function Pill({ children, label, open, onClick, wide, bad, disabled }: {
         'disabled:text-fg-muted disabled:hover:bg-surface-2',
       )}>
       {children}
-    </button>
-  )
-}
-
-/** One choice of a list opened in a row (the Calendar row's destinations, Time Zone, Category). */
-export function ChoiceRow({ label, hint, chosen, disabled, icon, onClick }: {
-  label: ReactNode
-  hint?: ReactNode
-  chosen: boolean
-  disabled?: boolean
-  icon?: ReactNode
-  onClick: () => void
-}) {
-  return (
-    <button type="button" role="menuitemradio" aria-checked={chosen} disabled={disabled} onClick={onClick}
-      className="flex min-h-10 w-full items-center gap-2.5 border-t border-line py-1.5 text-left text-body first:border-t-0 disabled:opacity-50">
-      {icon}
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="text-fg">{label}</span>
-        {hint && <span className="text-meta text-fg-muted">{hint}</span>}
-      </span>
-      <Check aria-hidden className={cx('h-4 w-4 shrink-0 text-accent-600', chosen ? 'visible' : 'invisible')} />
     </button>
   )
 }

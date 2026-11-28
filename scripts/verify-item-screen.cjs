@@ -270,7 +270,7 @@ console.log('\n== 8. Step 2: the calendar fields\' rows (193) ==')
     ['alerts', 'showAs', 'url', 'travelMinutes'].every(k => form.includes(`withCalendarField(form, '${k}'`)) && time.includes("withCalendarField(form, 'repeatEnd'"))
   check('Travel Time, Alert, Second Alert, Show As and URL show only where a slot or a repeat keeps them; End Repeat only under a repeat',
     (form.match(/\{slotFields && \(/g) || []).length === 3 && /\{repeating && \(\s*<EndRepeatRows/.test(time))
-  check('the choices and words are itemCalendarFields\' (Apple\'s lists)', /alertChoices\(allDay\)/.test(rows) && /TRAVEL_CHOICES\.map/.test(rows) && /alertsOf\(next\)/.test(rows) && /repeatEndLabel\(end\)/.test(end))
+  check('the choices and words are itemCalendarFields\' (Apple\'s lists)', /alertChoices\(allDay\)/.test(rows) && /TRAVEL_CHOICES\.map/.test(rows) && /alertsOf\(\{/.test(rows) && /repeatEndLabel\(end\)/.test(end))
   check('the link opened is only openableUrl\'s, in a new tab without the opener or referrer, after its address shows',
     /const href = openableUrl\(url\)/.test(rows) && /<a href=\{href\} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer"/.test(rows)
     && rows.indexOf('hostOf(href)') < rows.indexOf('<a href={href}') && (rows.match(/<a /g) || []).length === 1)
@@ -426,7 +426,9 @@ console.log('\n== 10. Step 3: one screen for everything ==')
   check('the List row opens only where the screen shows it: a task on Google Tasks, Google here',
     R.opensListRow({ google_target: 'tasks' }, true) && R.opensListRow({ google_target: 'both' }, true) && R.opensListRow({ google_target: null, google_sync_enabled: true }, true)
     && !R.opensListRow({ google_target: 'tasks' }, false) && !R.opensListRow({ google_target: 'calendar' }, true) && !R.opensListRow({ google_target: 'none' }, true))
-  check('the screen opens at the row it was asked for (config.openRow)', /useState<PanelKey \| null>\(config\?\.openRow \?\? null\)/.test(src('src/shared/components/plan-modal/ItemForm.tsx')))
+  check('the screen opens at the row it was asked for (config.openRow: an editor, or the List row\'s own list)',
+    /useState<PanelKey \| null>\(config\?\.openRow && config\.openRow !== 'list' \? config\.openRow : null\)/.test(src('src/shared/components/plan-modal/ItemForm.tsx'))
+    && /openOnMount=\{config\?\.openRow === 'list'\}/.test(src('src/shared/components/plan-modal/ItemForm.tsx')))
 
   // The Google event editor went with Google Calendar (25.11.2026): nothing opens or edits a Google Calendar event.
   check('no Google Calendar event editor is left', !require('fs').existsSync(require('path').join(__dirname, '../src/features/calendar/components/EditCalendarEventModal.tsx'))
@@ -448,8 +450,9 @@ console.log('\n== 11. The category at the top and its add-on fields (owner, 27.1
     && /const showCategory = !isScheduleFieldHidden\('category', config\)/.test(form) && !/const showCategory = !!form\.time/.test(form))
   check('…and only there: Planning has no Category of its own (moved, never copied)',
     !/Category/.test(planning.replace(/\/\/.*$/gm, '')) && (form.match(/<CategoryRow /g) || []).length === 1)
-  check('…one line: a TapRow with its choices opened under it (8 categories)',
-    /<TapRow label="Category" mark=\{mark\} value=\{CATEGORY_LABELS\[form\.category\]\}/.test(det) && /CATEGORIES\.map\(c => <ChoiceRow/.test(det))
+  check('…one line: a row whose 8 categories open in the shared field list under it (owner, 28.11.2026)',
+    /<SelectRow<TimeBlockCategory> label="Category" mark=\{mark\} value=\{form\.category\} options=\{CATEGORY_CHOICES\}/.test(det)
+    && /const CATEGORY_CHOICES = CATEGORIES\.map\(c => \(\{ value: c, label: CATEGORY_LABELS\[c\] \}\)\)/.test(det))
   check('the category\'s add-on fields come right after it (the next card), from the registry, never for a repeat\'s rule',
     form.indexOf('{details && (') > titleEnd && form.indexOf('{details && (') < form.indexOf('{slotFields && (')
     && /const details = showCategory && !\(repeating && !day\) \? detailsOf\(form\.category\) : null/.test(form))
@@ -552,7 +555,7 @@ console.log('\n== 12. The screen\'s look on a phone (owner, 27.11.2026: "Things 
 
   // A field's list: under its field, sized to what the keyboard leaves; above only when even three rows don't fit.
   const vis = { top: 0, bottom: 520, safeTop: 59 }
-  const fo = src('src/shared/components/FieldOptions.tsx')
+  const fo = src('src/shared/components/FieldOptions.tsx') + src('src/shared/components/useOptionsRoom.ts')
   check('a list under a field with room for three rows stays under it, sized to the room above the keyboard',
     O.optionsMaxHeight({ top: 300, bottom: 340 }, vis, 8) === 520 - 12 - 348 - 4 && O.optionsMaxHeight({ top: 100, bottom: 140 }, vis, 8) === O.OPTIONS_CAP)
   check('…with less room under it than three rows, the larger side — above it, never into the status bar',
@@ -561,11 +564,14 @@ console.log('\n== 12. The screen\'s look on a phone (owner, 27.11.2026: "Things 
   check('…with too little room under it the field is scrolled up just enough for three rows, never past the status bar',
     O.optionsLift({ top: 300, bottom: 340 }, { ...vis, bottom: 400 }, 8) === 340 + 8 + O.OPTIONS_FLOOR + 12 + 4 - 400
     && O.optionsLift({ top: 100, bottom: 140 }, vis, 8) === 0 && O.optionsLift({ top: 80, bottom: 120 }, { ...vis, bottom: 200 }, 8) === 80 - 59 - 12)
-  check('…FieldOptions scrolls the field up (at most twice) before it sizes the list', /const lift = optionsLift\(/.test(fo) && /lift > 0 && lifted < 2 \? scrollerOf\(el\) : null/.test(fo))
+  check('…FieldOptions scrolls the field up (at most twice) before it sizes the list', /const lift = optionsLift\(\{ top: r\.top, bottom: r\.bottom \}, visible, gap, want\)/.test(fo) && /lift > 0 && lifted < 2 \? scrollerOf\(el\) : null/.test(fo))
+  check('…a list that wants more (a select\'s choices) moves its row up enough for them, still at most OPTIONS_CAP',
+    O.optionsLift({ top: 300, bottom: 340 }, { ...vis, bottom: 600 }, 8, 260) === 340 + 8 + 260 + 12 + 4 - 600
+    && O.optionsLift({ top: 300, bottom: 340 }, { ...vis, bottom: 600 }, 8, 9999) === 340 + 8 + O.OPTIONS_CAP + 12 + 4 - 600)
   const listSites = ['DetailsSection.tsx', 'PlaceRow.tsx', 'LabelsRow.tsx'].map(f => src(`src/shared/components/plan-modal/${f}`)).join('\n')
   check('…every list on the screen is a FieldOptions (no anchored ComboboxOptions of its own); it sets --anchor-max-height and its own max-height (Headless UI freezes the var into px) and reads the safe area at each measure',
     !/<ComboboxOptions/.test(listSites) && (listSites.match(/<FieldOptions field=\{field\}/g) || []).length === 5
-    && /\{ \['--anchor-max-height' as string\]: `\$\{room\}px`, maxHeight: `\$\{room\}px` \}/.test(fo)
+    && /\{ \['--anchor-max-height' as string\]: `\$\{room\}px`, maxHeight: `\$\{room\}px` \}/.test(fo) && /style=\{roomStyle\(room\)\}/.test(fo)
     && !/let safeTop/.test(fo) && /safeTop: readSafeTop\(\)/.test(fo))
 
   // The phone's typing hints: no contact AutoFill on any typed field of the screen.
@@ -606,6 +612,79 @@ console.log('\n== 12. The screen\'s look on a phone (owner, 27.11.2026: "Things 
   check('…its browser audit exists (clipped, overlapping, covered, cut placeholders, outside the screen, the wheel)',
     fs.existsSync(path.join(__dirname, 'audit-item-screen.mjs')) && /function inspect\(\)/.test(src('scripts/audit-item-screen.mjs')) && /function wheels\(\)/.test(src('scripts/audit-item-screen.mjs'))
     && /function keyboardList\(/.test(src('scripts/audit-item-screen.mjs')))
+}
+
+
+console.log('\n== 13. Every dropdown on the item screen is the shared field list (owner, 28.11.2026: "apply that to all dropdowns in task screen") ==')
+{
+  const pm = n => src(`src/shared/components/plan-modal/${n}`)
+  const fs_ = require('fs')
+  const screenFiles = fs_.readdirSync(path.join(__dirname, '../src/shared/components/plan-modal')).filter(f => f.endsWith('.tsx'))
+    .map(f => [`plan-modal/${f}`, pm(f)]).concat([['todo/components/ParentPicker.tsx', src('src/features/todo/components/ParentPicker.tsx')]])
+  const raw = screenFiles.filter(([f, c]) => f !== 'plan-modal/fields.tsx' && /<(ComboboxOptions|ListboxOptions|MenuItems|Listbox|Menu|select)\b|ChoiceRow|<ChipSelect\b/.test(c)).map(([f]) => f)
+  check('no item-screen file draws a list of its own: no raw ComboboxOptions / ListboxOptions / Menu / native select / in-group choice rows', raw.length === 0, raw.join(', '))
+  const fields = pm('fields.tsx')
+  check('…RecurrenceField\'s chips are the field list on the item screen (lists), a native select only on other screens',
+    /lists \? <SelectChip<T> \{\.\.\.props\} \/> : <ChipSelect<T> \{\.\.\.props\} \/>/.test(fields) && (fields.match(/<ChoiceSelect lists=\{lists\}/g) || []).length === 2
+    && /alwaysPreview end=\{form\.repeatEnd\} lists/.test(pm('TimeSection.tsx')))
+  const rowsOf = [['Category', 'DetailsSection.tsx'], ['Travel Time', 'CalendarFieldRows.tsx'], ['Alert', 'CalendarFieldRows.tsx'], ['Second Alert', 'CalendarFieldRows.tsx'],
+    ['Calendar', 'OptionsSection.tsx'], ['List', 'OptionsSection.tsx'], ['Time Zone', 'TimeSection.tsx'], ['End Repeat', 'EndRepeatRows.tsx']]
+  const missing = rowsOf.filter(([l, f]) => !new RegExp(`<SelectRow(<[A-Za-z]+>)? label="${l}"`).test(pm(f))).map(([l]) => l)
+  check('…Category, Travel Time, Alert, Second Alert, Calendar, List, Time Zone and End Repeat are SelectRows', missing.length === 0, missing.join(', '))
+  check('…a cost\'s currency is a SelectChip; the Parent search\'s matches a FieldOptions', /<SelectChip<DetailCurrency> label="Currency"/.test(pm('DetailsSection.tsx'))
+    && /<FieldOptions field=\{field\} align="start"/.test(src('src/features/todo/components/ParentPicker.tsx')))
+  const fsel = src('src/shared/components/FieldSelect.tsx'), rows = pm('ItemRows.tsx')
+  check('FieldSelect is a Headless UI Listbox in the shared list: the same room (useOptionsRoom), look (FIELD_LIST) and anchor as FieldOptions',
+    /<Listbox value=\{value\} onChange=\{onChange\}/.test(fsel) && /<ListboxOptions static modal=\{false\} aria-label=\{label\} anchor=\{\{ to: `bottom \$\{align\}`, gap: 6, padding: OPTIONS_MARGIN \}\}/.test(fsel)
+    && /data-field-list="" style=\{roomStyle\(room\)\} className=\{cx\(FIELD_LIST/.test(fsel) && /data-field-list="" style=\{roomStyle\(room\)\} className=\{cx\(FIELD_LIST, className\)\}/.test(src('src/shared/components/FieldOptions.tsx'))
+    && /const room = useOptionsRoom\(button, 6, want\)/.test(fsel))
+  check('…a row\'s list says it is a list (⇕) and opens from the whole row; "Move to list…" opens the List row\'s list',
+    /<ChevronsUpDown aria-hidden/.test(rows) && /export function SelectRow</.test(rows) && /openOnMount=\{config\?\.openRow === 'list'\}/.test(pm('ItemForm.tsx')))
+
+  // App-wide (owner, 28.11.2026: "Also make sure it is on design md so this is our default from now on"): a raw choice list
+  // only where one is today (THEME §8's migration backlog); new code uses FieldOptions / FieldSelect.
+  const TODAY_RAW = [
+    'src/features/devRequests/components/PropertyPills.tsx', 'src/features/games/test-game/components/TgDropdown.tsx',
+    'src/features/games/test-game/components/TgMultiDropdown.tsx', 'src/features/home/components/CurrencyConverter.tsx',
+    'src/features/home/components/ruter/StopSearchInput.tsx', 'src/features/recipes/components/AssignMealModal.tsx',
+    'src/features/recipes/components/LibraryTabFilters.tsx', 'src/features/recipes/components/RecipeModalFoodLink.tsx',
+    'src/features/recipes/components/foodLogKit.tsx', 'src/features/supplements/components/WhatField.tsx',
+    'src/features/training/components/ExerciseProgressChart.tsx', 'src/features/training/components/RelativeStrengthChart.tsx',
+    'src/features/training/components/RoutineFormParts.tsx', 'src/shared/components/CommandPalette.tsx',
+    'src/shared/components/FieldOptions.tsx', 'src/shared/components/FieldSelect.tsx',
+  ]
+  const found = require('child_process').execSync("grep -rlE '<(ComboboxOptions|ListboxOptions)\\b' src --include=*.tsx || true", { cwd: path.join(__dirname, '..') })
+    .toString().trim().split('\n').filter(Boolean)
+  const added = found.filter(f => !TODAY_RAW.includes(f))
+  check('no new raw ComboboxOptions / ListboxOptions anywhere (today\'s are THEME\'s backlog; new ones use FieldOptions / FieldSelect)', added.length === 0, added.join(', '))
+  const theme = src('docs/design/THEME.md'), ui = src('.claude/rules/ui.md')
+  check('…THEME says it is the default, quoting the owner, and lists the backlog; ui.md carries the rule',
+    theme.includes('Also make sure it is on design md so this is our default from now on') && theme.includes('I almodt want everything to use that type dropdown')
+    && TODAY_RAW.filter(f => !/FieldOptions|FieldSelect/.test(f)).every(f => theme.includes(path.basename(f, '.tsx'))) && /FieldSelect/.test(ui))
+}
+
+console.log('\n== 14. A show\'s next episode by default (owner, 28.11.2026: "when I select the tv serie it should by default bring next episode") ==')
+{
+  const E = require('../src/features/items/episodeDefault')
+  const next = { caughtUp: false, season: 2, episode: 6, episodeTitle: 'x', airDate: '2024-01-01', released: true, watchedCount: 13, totalEpisodes: 24, lastWatched: { season: 2, episode: 5 } }
+  check('the next episode fills in when it is one: not all watched, aired, TMDB\'s data there', same(E.episodeDefault(next), { season: 2, episode: 6 }))
+  check('…never when all is watched, nothing has aired, TMDB\'s data is missing, or there is no answer',
+    E.episodeDefault({ ...next, caughtUp: true, season: null, episode: null }) === null && E.episodeDefault({ ...next, released: false }) === null
+    && E.episodeDefault({ ...next, airDate: null }) === null && E.episodeDefault(undefined) === null && E.episodeDefault(null) === null)
+  const store = new Map()
+  global.localStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k) }
+  E.rememberEpisodeCleared('task-1:show-1', true)
+  check('a cleared episode is remembered for that item and show, and forgotten once an episode is set again',
+    E.episodeCleared('task-1:show-1') && !E.episodeCleared('task-1:show-2') && (E.rememberEpisodeCleared('task-1:show-1', false), !E.episodeCleared('task-1:show-1')))
+  const det = src('src/shared/components/plan-modal/DetailsSection.tsx')
+  check('…the screen asks the app\'s one rule (useNextEpisode), fills only while no episode is set and the owner hasn\'t cleared it, once per show',
+    /useNextEpisode\(decided \? null : link\.id, entry\?\.tv_series\.tmdb_id \?\? null, entry\?\.tv_series\.number_of_episodes \?\? null\)/.test(det)
+    && /useState\(\(\) => \(link\.season != null && link\.episode != null\) \|\| \(!!memoryKey && episodeCleared\(memoryKey\)\)\)/.test(det)
+    && /<ShowEpisode key=\{link\.id\}/.test(det) && /if \(memoryKey\) rememberEpisodeCleared\(memoryKey, cleared\)/.test(det))
+  check('…filled, it is saved as a picked episode (the link\'s season and episode: the plan becomes that episode\'s)',
+    /onChange\(\{ kind: 'tv', id: link\.id, season: filled\.season, episode: filled\.episode \}\)/.test(det))
+  check('…the memory is this account\'s: sign-out clears it (the same key in accountState)',
+    src('src/security/accountState.ts').includes(`const EPISODE_CLEARED_KEY = '${E.EPISODE_CLEARED_KEY}'`) && /localStorage\.removeItem\(EPISODE_CLEARED_KEY\)/.test(src('src/security/accountState.ts')))
 }
 
 console.log(`\n${passed} passed, ${failed} failed`)

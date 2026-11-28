@@ -20,7 +20,7 @@ import { AllDayBand, DayTimeline } from './DayTimeline'
 import { EndRepeatRows } from './EndRepeatRows'
 import { TimeWheel } from './TimeWheel'
 import { FieldMark } from './FieldMark'
-import { ChoiceRow, NoteRow, Panel, Pill, Row, TapRow, ToggleRow } from './ItemRows'
+import { NoteRow, Panel, Pill, Row, SelectRow, TapRow, ToggleRow } from './ItemRows'
 import { chipClass } from './fieldStyles'
 import { sectionForItem } from '../../../features/items/sheetRules'
 import { addDaysIso } from '../../../features/daily/recurrence'
@@ -36,10 +36,10 @@ import { END_PROBLEM_TEXT, endOf, endOnWheel, minutesOf, timeOfMinutes, type Fie
 import type { TaskSection } from '../../../features/todo/types'
 import type { PlanModalConfig } from './planModal.types'
 
+/** An editor opened in the list under its row (a choice from a list is a SelectRow's own list, not a panel). */
 export type PanelKey =
-  | 'sDate' | 'sTime' | 'eDate' | 'eTime' | 'zone' | 'repeat'
-  | 'calendar' | 'list' | 'category' | 'deadline' | 'dTime' | 'window'
-  | 'repeatEnd' | 'alert' | 'alert2' | 'travel' | 'link' | 'waiting' | 'parent'
+  | 'sDate' | 'sTime' | 'eDate' | 'eTime' | 'repeat' | 'deadline' | 'dTime' | 'window'
+  | 'repeatEnd' | 'link' | 'waiting' | 'parent'
 
 const SECTION_LABEL = { inbox: 'Inbox', today: 'Today', backlog: 'Backlog' } as const
 
@@ -219,17 +219,11 @@ export function TimeSection({
           )}
 
           {zone && (
-            <>
-              <TapRow label="Time Zone" mark={clockMark} value={`${zoneCity(zone.current)} time`} open={open === 'zone'} onClick={() => toggle('zone')} />
-              {open === 'zone' && (
-                <Panel label="Time zone">
-                  {zone.choices.map(c => (
-                    <ChoiceRow key={c} label={`${zoneCity(c)} time${c === zone.phone ? ' · this phone' : ''}`} chosen={sameClock(c, zone.current)}
-                      onClick={() => { patch({ timeZone: c }); toggle(null) }} />
-                  ))}
-                </Panel>
-              )}
-            </>
+            <SelectRow label="Time Zone" mark={clockMark} value={zone.choices.find(c => sameClock(c, zone.current)) ?? zone.current}
+              options={[...zone.choices, ...(zone.choices.some(c => sameClock(c, zone.current)) ? [] : [zone.current])].map(c => ({
+                value: c, label: `${zoneCity(c)} time`, hint: c === zone.phone ? 'This phone' : undefined,
+              }))}
+              onChange={timeZone => patch({ timeZone })} />
           )}
 
           {(canRepeat || repeating) && !day && (
@@ -240,7 +234,7 @@ export function TimeSection({
               {open === 'repeat' && (
                 <Panel label="Repeat">
                   <RecurrenceField
-                    value={form} onChange={onRepeat} start={date} exceptDates={exceptDates} alwaysPreview end={form.repeatEnd}
+                    value={form} onChange={onRepeat} start={date} exceptDates={exceptDates} alwaysPreview end={form.repeatEnd} lists
                     options={savedKind === 'repeat' ? RECURRING_EDIT_OPTIONS : RECURRENCE_OPTIONS}
                   />
                 </Panel>

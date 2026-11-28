@@ -46,7 +46,7 @@ eq(/const showLabels = !repeating && !day && !hideTask\('labels'\)/.test(sheet) 
   'the item screen shows the Labels row for a task, never for a repeat\'s rule or a repeat\'s day ("This day" opens without its task\'s labels)')
 eq(/onBlur=\{\(\) => \{ if \(typed && !has\(value, typed\)\) onChange/.test(src('src/shared/components/plan-modal/LabelsRow.tsx')), true,
   'a label typed and never Entered is added when the field is left (Save), never dropped without a word')
-eq(/<GoogleListRow\b/.test(sheet) && /label="New list…"/.test(src('src/shared/components/plan-modal/OptionsSection.tsx')), true,
+eq(/<GoogleListRow\b/.test(sheet) && /label: 'New list…'/.test(src('src/shared/components/plan-modal/OptionsSection.tsx')), true,
   'a Google Task\'s list is a value with a menu of the lists (owner: "+Google List … did nothing")')
 eq(/answer\.labels === null/.test(src('src/features/items/useItems.ts')), true,
   'a save to a database without migration 180 says the labels weren\'t kept, never silently')

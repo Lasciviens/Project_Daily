@@ -19,6 +19,7 @@ import { MetaLine, cx } from '../../ui'
 import { SegmentedControl } from '../SegmentedControl'
 import { DateCalendar } from '../DateCalendar'
 import { choiceClass, chipClass } from './fieldStyles'
+import { SelectChip } from './SelectChip'
 import type { CustomRepeatKind, RecurrenceMode } from './planModal.types'
 import type { RepeatEnd } from '../../../features/items/itemTypes'
 
@@ -260,8 +261,13 @@ const CUSTOM_KINDS: { value: CustomRepeatKind; label: string }[] = [
   { value: 'dates', label: 'Dates' },
 ]
 
+/** A chip's choice, as the screen draws them: the item screen's field list (`lists`), or a native select elsewhere. */
+function ChoiceSelect<T extends string>({ lists, ...props }: Parameters<typeof ChipSelect<T>>[0] & { lists: boolean }) {
+  return lists ? <SelectChip<T> {...props} /> : <ChipSelect<T> {...props} />
+}
+
 export function RecurrenceField({
-  value, onChange, start, exceptDates, locked, options = RECURRENCE_OPTIONS, alwaysPreview = false, end = null,
+  value, onChange, start, exceptDates, locked, options = RECURRENCE_OPTIONS, alwaysPreview = false, end = null, lists = false,
 }: {
   value: RepeatFormFields
   onChange: (p: Partial<RepeatFormFields>) => void
@@ -279,6 +285,9 @@ export function RecurrenceField({
   alwaysPreview?: boolean
   /** End Repeat (193): the next dates stop at it. */
   end?: RepeatEnd | null
+  /** The item screen: its choices open the shared field list (FieldSelect, owner 28.11.2026), not the phone's picker —
+   *  other screens keep the native select until the app-wide move. */
+  lists?: boolean
 }) {
   const picker = dayPickerFor(value)
   const circles = picker && (
@@ -294,7 +303,7 @@ export function RecurrenceField({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
-        <ChipSelect
+        <ChoiceSelect lists={lists}
           label="Repeat" icon={<Repeat aria-hidden />} value={value.recurrence} options={options} disabled={locked}
           onChange={mode => onChange(pickRecurrence(value, mode, weekdayOfIso(start)))}
         />
@@ -312,7 +321,7 @@ export function RecurrenceField({
               onChange={e => onChange({ repeatEvery: e.target.value })} aria-label="Repeat every"
               className="input input-sm w-14 text-center tabular-nums disabled:opacity-60"
             />
-            <ChipSelect
+            <ChoiceSelect lists={lists}
               label="Unit" value={value.repeatUnit} disabled={locked}
               options={REPEAT_UNIT_OPTIONS.map(u => ({ value: u.value, label: every === 1 ? u.one : u.many }))}
               onChange={repeatUnit => onChange({ repeatUnit })}

@@ -116,8 +116,9 @@ export function ItemForm({
   urlIssue, endIssue, savedSection, taskId, fill,
 }: Props) {
   const titleId = useId()
-  // A menu's "Set parent…", "Move to list…" or a Waiting chip opens the screen at that row (config.openRow).
-  const [open, setOpen] = useState<PanelKey | null>(config?.openRow ?? null)
+  // A menu's "Set parent…" or a Waiting chip opens the screen at that row's editor (config.openRow); "Move to list…"
+  // opens the List row's own list (GoogleListRow openOnMount).
+  const [open, setOpen] = useState<PanelKey | null>(config?.openRow && config.openRow !== 'list' ? config.openRow : null)
   const toggle = (k: PanelKey | null) => setOpen(o => (k === null || o === k ? null : k))
   const hideTask = (f: Parameters<typeof isTaskFieldHidden>[0]) => isTaskFieldHidden(f, config)
   const shape = shapeOf(form)
@@ -158,13 +159,13 @@ export function ItemForm({
           </div>
           {fill?.panel}
           {parse && <div className="px-3.5 pb-2"><ReadAsLine parse={parse} start={form.date ?? today} onKeepText={onKeepText} /></div>}
-          {showCategory && <CategoryRow form={form} patch={patch} open={open} toggle={toggle} mark={<FieldMark goes={goes('own')} />} />}
+          {showCategory && <CategoryRow form={form} patch={patch} mark={<FieldMark goes={goes('own')} />} />}
         </Section>
 
         {details && (
           // No heading of its own: the Category row right above names it. Its marks join the title card's.
           <Section marksTo={titleMarks.register}>
-            <DetailsSection form={form} patch={patch} mark={<FieldMark goes={goes('own')} />}
+            <DetailsSection form={form} patch={patch} itemKey={taskId ?? own.blockId ?? own.scheduleBlockId ?? null} mark={<FieldMark goes={goes('own')} />}
               placeMark={<FieldMark goes={goes(slotFields ? 'place' : 'own')} row="Cinema" />} />
           </Section>
         )}
@@ -173,7 +174,7 @@ export function ItemForm({
           <Section title="Location" carried={titleMarks.marks}>
             {!cinema && <PlaceRow value={form.place} onChange={place => patch({ place, placeTouched: true })}
               mark={<><FilledMark row="Location" /><FieldMark goes={goes('place')} row="Location" /></>} />}
-            <TravelRow minutes={form.travelMinutes} hasPin={hasPin} open={open} toggle={toggle} mark={<FieldMark goes={goes('travel')} />}
+            <TravelRow minutes={form.travelMinutes} hasPin={hasPin} mark={<FieldMark goes={goes('travel')} />}
               onChange={travelMinutes => patch(withCalendarField(form, 'travelMinutes', travelMinutes))} />
           </Section>
         )}
@@ -190,11 +191,11 @@ export function ItemForm({
           <Section title="Options">
             {showGoogle && (
               <CalendarRow shape={shape} target={target} app={calendarApp} dated={!!form.date || repeating} refused={refused}
-                open={open} toggle={toggle} onPick={googlePick => patch({ googlePick })} />
+                onPick={googlePick => patch({ googlePick })} />
             )}
             {showList && (
               <GoogleListRow
-                value={form.googleListTitle} typing={form.shown.includes('list')} open={open} toggle={toggle}
+                value={form.googleListTitle} typing={form.shown.includes('list')} openOnMount={config?.openRow === 'list'}
                 mark={<FieldMark goes={goes('list')} />}
                 onPick={googleListTitle => patch({ googleListTitle, shown: form.shown.filter(r => r !== 'list') })}
                 onNew={() => patch({ googleListTitle: '', shown: [...form.shown.filter(r => r !== 'list'), 'list'] })}
@@ -204,7 +205,7 @@ export function ItemForm({
             )}
             {slotFields && (
               <>
-                <AlertRows alerts={form.alerts} allDay={!form.time} defaultHint={DEFAULT_ALERT_HINT[goes('alerts')]} open={open} toggle={toggle}
+                <AlertRows alerts={form.alerts} allDay={!form.time} defaultHint={DEFAULT_ALERT_HINT[goes('alerts')]}
                   mark={<FieldMark goes={goes('alerts')} />} onChange={alerts => patch(withCalendarField(form, 'alerts', alerts))} />
                 <ShowAsRow showAs={form.showAs} timedWithLength={!!form.time && !!form.duration} mark={<FieldMark goes={goes('showAs')} />}
                   onChange={showAs => patch(withCalendarField(form, 'showAs', showAs))} />

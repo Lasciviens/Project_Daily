@@ -1,6 +1,9 @@
-import { Combobox, ComboboxInput, ComboboxOptions, ComboboxOption } from '@headlessui/react'
+import { useRef } from 'react'
+import { Combobox, ComboboxInput, ComboboxOption } from '@headlessui/react'
 import { X } from 'lucide-react'
-import { Button, Skeleton } from '../../../shared/ui'
+import { Button, Skeleton, Truncate } from '../../../shared/ui'
+import { FieldOptions } from '../../../shared/components/FieldOptions'
+import { typingHints } from '../../../shared/components/plan-modal/fieldStyles'
 import { useAllTasks, useSetParentTask } from '../hooks/useTodos'
 import { isOpenTask } from '../taskRules'
 import type { Task } from '../types'
@@ -15,7 +18,9 @@ import type { Task } from '../types'
 //    its own children a grandchild layer. Gated entirely via hasSubtasks:
 //    the picker doesn't render at all in that case (see below).
 // The item screen's Parent row (TaskRows.tsx): mounted only while the row is
-// open, so the list of every task is read then, not by every task row.
+// open, so the list of every task is read then, not by every task row. Its
+// matches open in the shared field list under the search (FieldOptions —
+// owner, 28.11.2026: every list on the item screen is that one).
 export function ParentPicker({ task, hasSubtasks, query, onQuery, onClose, className = 'p-4' }: {
   task: Task
   hasSubtasks: boolean
@@ -27,6 +32,7 @@ export function ParentPicker({ task, hasSubtasks, query, onQuery, onClose, class
 }) {
   const { data: tasks = [], isLoading } = useAllTasks()
   const setParent = useSetParentTask()
+  const field = useRef<HTMLInputElement>(null)
 
   const childIds = new Set(tasks.filter(t => t.parent_task_id === task.id).map(t => t.id))
   // Once a task is actually synced to Google (has its own google_task_id),
@@ -63,29 +69,28 @@ export function ParentPicker({ task, hasSubtasks, query, onQuery, onClose, class
           nesting, so it can't also become a subtask of another task.
         </p>
       ) : (
-        <Combobox onChange={(id: string | null) => id && choose(id)}>
+        <Combobox onChange={(id: string | null) => id && choose(id)} immediate>
           <ComboboxInput
+            ref={field}
             className="input"
-            placeholder="Search tasks…"
+            placeholder="Search"
+            aria-label="Parent: search your open tasks"
             onChange={e => onQuery(e.target.value)}
+            {...typingHints('q-parent', 'search')}
             autoFocus
           />
-          <ComboboxOptions className="mt-2 max-h-64 overflow-y-auto rounded-row border border-line p-1">
+          <FieldOptions field={field} align="start" className="min-w-[15rem]">
             {/* While every task loads: a few rows at a row's height, so the list doesn't grow under the field. */}
-            {isLoading && [0, 1, 2].map(i => <Skeleton key={i} rounded="rounded-row" className="my-0.5 h-10" />)}
+            {isLoading && [0, 1, 2].map(i => <Skeleton key={i} rounded="rounded-row" className="my-0.5 h-9" />)}
             {candidates.length === 0 && !isLoading && (
-              <p className="px-3 py-2 text-body text-fg-muted">No matching tasks</p>
+              <p className="px-3 py-2 text-meta text-fg-muted">No matching tasks</p>
             )}
             {candidates.map(t => (
-              <ComboboxOption
-                key={t.id}
-                value={t.id}
-                className="row cursor-pointer text-body text-fg-2 data-[focus]:bg-surface-hover data-[focus]:text-fg"
-              >
-                {t.title}
+              <ComboboxOption key={t.id} value={t.id} className="menu-item cursor-pointer data-[focus]:bg-surface-hover">
+                <bdi className="min-w-0 flex-1"><Truncate>{t.title}</Truncate></bdi>
               </ComboboxOption>
             ))}
-          </ComboboxOptions>
+          </FieldOptions>
         </Combobox>
       )}
     </div>
