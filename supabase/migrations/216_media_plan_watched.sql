@@ -456,3 +456,43 @@ create trigger trg_tasks_link_effects
   after update of status on public.tasks
   for each row when (old.status is distinct from new.status and (old.status = 'done' or new.status = 'done'))
   execute function public.tasks_link_effects();
+
+-- ── C. A watch closes a show's plan with no slot of its episode (owner, 28.11.2026) ──
+-- Asked "should a Trakt watch also complete whole-show items, and episode items with no date?", the owner: "Yes it
+-- should complete that task as well." 155's rule closes an episode plan only through its slot; this closes, for a
+-- watch from the Media page or a Trakt pull (never the tick's own — plan_tick_task()), the user's open plan of that
+-- exact episode with no slot, and the open plan of the whole show, at the watch's time: the movie's day rule (211) —
+-- on or after the plan's day, an undated plan counting from the day it was made, a watch from before the plan was made
+-- closing nothing, and a Trakt watch with no date closing nothing (149's media_watch_plan_day). Closing is not a tick:
+-- no watch and no ledger row is written — the plan's tick effect sees another trigger's write (pg_trigger_depth() > 1)
+-- and stays out, so a reopen has nothing to undo. Every query is the watch's own user's.
+create or replace function public.media_watch_closes_show_plans()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_entry uuid;
+  v_day   date := public.media_watch_plan_day(new.watched_at);
+  v_at    timestamptz := case when new.watched_at >= timestamptz '1971-01-01 00:00:00+00' then new.watched_at end;
+begin
+  if v_day is null or public.plan_tick_task() is not null then return null; end if;
+  select e.id into v_entry from public.user_tv_entries e
+   where e.user_id = new.user_id and e.tv_series_id = new.tv_series_id;
+  if v_entry is null then return null; end if;
+  update public.tasks t set status = 'done', completed_at = coalesce(v_at, now())
+   where t.user_id = new.user_id and t.tv_entry_id = v_entry and t.status in ('open', 'in_progress', 'waiting')
+     and ((t.link_season is null and t.link_episode is null)
+          or (t.link_season = new.season_number and t.link_episode = new.episode_number
+              and not exists (select 1 from public.time_blocks b where b.task_id = t.id and b.user_id = t.user_id)))
+     and (v_at is null or v_at >= t.created_at)
+     and case when public.task_plan_day(t.id) is null then (t.created_at at time zone 'Europe/Oslo')::date <= v_day
+              else public.task_plan_day(t.id) <= v_day end;
+  return null;
+end
+$$;
+revoke all on function public.media_watch_closes_show_plans() from public, anon, authenticated;
+drop trigger if exists trg_media_watch_closes_show_plans on public.media_watches;
+create trigger trg_media_watch_closes_show_plans after insert on public.media_watches
+  for each row when (new.kind = 'episode') execute function public.media_watch_closes_show_plans();

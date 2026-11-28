@@ -794,7 +794,10 @@ select mt_ok((select count(*) from public.media_watches) = (select n from public
 set role authenticated;
 select mt_show_plan('slow', 'c1000000-0000-0000-0000-000000000010');
 insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at) values
-  ('00000000-0000-0000-0000-000000000001', 'episode', 'c0000000-0000-0000-0000-000000000010', 1, 1, now());
+  ('00000000-0000-0000-0000-000000000001', 'episode', 'c0000000-0000-0000-0000-000000000010', 1, 1, date_trunc('second', now()) + interval '2 seconds');
+-- (Since the owner's second answer that watch closes the plan by itself; reopened, the tick writes nothing either.)
+select mt_ok((mt_task(mt_id('slow'))).status = 'done', 'WS6 setup: the Media page''s watch closed the whole-show plan (section SC)');
+select mt_set(mt_id('slow'), 'open');
 select mt_set(mt_id('slow'), 'done');
 select mt_ok((select count(*) from public.media_watches where kind = 'episode' and tv_series_id = 'c0000000-0000-0000-0000-000000000010') = 1
         and (mt_ep_effect(mt_id('slow'))).task_id is null,
@@ -813,3 +816,76 @@ reset role;
 select mt_ok(not has_function_privilege('authenticated', 'public.show_next_episode(uuid, uuid)', 'execute')
         and (select count(*) from public.show_next_episode('c1000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000002')) = 0,
   'WS8 the next-episode helper is not the browser''s, and answers only for the show''s own user');
+
+-- ═══ SC. A watch closes a show's plan with no slot of its episode (owner, 28.11.2026: "Yes it should complete that
+--        task as well") ═══
+insert into public.tv_series (id, tmdb_id, title) values
+  ('c0000000-0000-0000-0000-000000000012', 4260, 'Dexter'),
+  ('c0000000-0000-0000-0000-000000000013', 4261, 'Lupin');
+insert into public.user_tv_entries (id, user_id, title, tv_series_id, status) values
+  ('c1000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-000000000001', 'Dexter', 'c0000000-0000-0000-0000-000000000012', 'watching'),
+  ('c1000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-000000000001', 'Lupin', 'c0000000-0000-0000-0000-000000000013', 'watching'),
+  ('c1000000-0000-0000-0000-000000000014', '00000000-0000-0000-0000-000000000002', 'Lupin (user 2)', 'c0000000-0000-0000-0000-000000000013', 'watching');
+create or replace function public.mt_plan_on(p_k text, p_link jsonb, p_date date) returns uuid language plpgsql as $$
+declare r jsonb;
+begin
+  r := public.app_save_item(jsonb_build_object('title', 'Show plan', 'domain', 'personal', 'priority', 'medium', 'google', 'none', 'today', '2026-11-25')
+         || case when p_date is null then '{}'::jsonb else jsonb_build_object('date', p_date::text, 'time', '21:00', 'durationMinutes', 50) end,
+       p_link);
+  insert into public.mt_keep values (p_k, r) on conflict (k) do update set v = excluded.v;
+  return (r ->> 'taskId')::uuid;
+end $$;
+grant execute on function public.mt_plan_on(text, jsonb, date) to authenticated;
+set role authenticated;
+select mt_plan_on('dex_ep', '{"kind":"tv","id":"c1000000-0000-0000-0000-000000000012","season":1,"episode":1}', null);
+select mt_ok(mt_slots(mt_id('dex_ep')) = 0 and (mt_task(mt_id('dex_ep'))).due_date is null, 'SC setup: an episode plan with no date and no slot');
+reset role;
+begin;
+set local app.trakt_sync = 'on';
+insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at, trakt_history_id, source) values
+  ('00000000-0000-0000-0000-000000000001', 'episode', 'c0000000-0000-0000-0000-000000000012', 1, 1, date_trunc('second', now()) + interval '2 seconds', 9101, 'trakt');
+commit;
+select mt_ok((mt_task(mt_id('dex_ep'))).status = 'done'
+        and (mt_task(mt_id('dex_ep'))).completed_at = (select watched_at from mt_ep_watches('c0000000-0000-0000-0000-000000000012', 1, 1))
+        and (select count(*) from mt_ep_watches('c0000000-0000-0000-0000-000000000012', 1, 1)) = 1
+        and (mt_ep_effect(mt_id('dex_ep'))).task_id is null,
+  'SC1 a Trakt watch closes the undated episode plan with no slot, at the watch''s time — no second watch, no ledger row');
+set role authenticated;
+select mt_plan_on('dex_show', '{"kind":"tv","id":"c1000000-0000-0000-0000-000000000012"}', (now() at time zone 'Europe/Oslo')::date);
+insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at) values
+  ('00000000-0000-0000-0000-000000000001', 'episode', 'c0000000-0000-0000-0000-000000000012', 1, 2, date_trunc('second', now()) + interval '2 seconds');
+select mt_ok((mt_task(mt_id('dex_show'))).status = 'done'
+        and (select count(*) from public.media_watches where kind = 'episode' and tv_series_id = 'c0000000-0000-0000-0000-000000000012') = 2
+        and (mt_ep_effect(mt_id('dex_show'))).task_id is null,
+  'SC2 a Media page watch of any episode closes the whole-show plan — the tick effect stays out (another trigger''s write): no next episode marked, no ledger row');
+reset role;
+select mt_clear();
+set role authenticated;
+select mt_set(mt_id('dex_show'), 'open');
+reset role;
+select mt_ok((mt_task(mt_id('dex_show'))).status = 'open'
+        and (select count(*) from public.media_watches where kind = 'episode' and tv_series_id = 'c0000000-0000-0000-0000-000000000012') = 2
+        and not exists (select 1 from public.trakt_outbox),
+  'SC3 the owner reopens the plan the watch closed: no watch removed, nothing to Trakt (it was never the tick''s)');
+-- Before the plan's day; an undated Trakt watch; another account's watch.
+set role authenticated;
+select mt_plan_on('lupin', '{"kind":"tv","id":"c1000000-0000-0000-0000-000000000013"}', (now() at time zone 'Europe/Oslo')::date + 3);
+insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at) values
+  ('00000000-0000-0000-0000-000000000001', 'episode', 'c0000000-0000-0000-0000-000000000013', 1, 1, date_trunc('second', now()) + interval '2 seconds');
+select mt_ok((mt_task(mt_id('lupin'))).status = 'open', 'SC4 a watch dated before the plan''s day closes nothing');
+reset role;
+begin;
+set local app.trakt_sync = 'on';
+insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at, trakt_history_id, source) values
+  ('00000000-0000-0000-0000-000000000001', 'episode', 'c0000000-0000-0000-0000-000000000013', 1, 2, '1970-01-01 00:00:00+00', 9102, 'trakt');
+commit;
+select mt_ok((mt_task(mt_id('lupin'))).status = 'open', 'SC5 a Trakt watch with no date (the epoch) closes nothing');
+set role authenticated;
+select mt_set(mt_id('lupin'), 'cancelled');
+select mt_plan_on('lupin2', '{"kind":"tv","id":"c1000000-0000-0000-0000-000000000013"}', (now() at time zone 'Europe/Oslo')::date);
+set test.uid = '00000000-0000-0000-0000-000000000002';
+insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at) values
+  ('00000000-0000-0000-0000-000000000002', 'episode', 'c0000000-0000-0000-0000-000000000013', 1, 3, date_trunc('second', now()) + interval '2 seconds');
+reset test.uid;
+select mt_ok((mt_task(mt_id('lupin2'))).status = 'open', 'SC6 another account''s watch of the same series closes none of the owner''s plans');
+reset role;
