@@ -362,19 +362,26 @@ begin
            and w.watched_at is not distinct from (e.after ->> 'watched_at')::timestamptz
          for update;
         if v_watch is not null then
-          -- The show exactly as the tick left it (status and dates), or the owner's since.
+          -- The show exactly as the tick left it (status and dates, compared as times — never as text, which follows
+          -- the session's time zone), or the owner's since.
           select (s.status is not distinct from (e.after ->> 'status')
-                  and coalesce(to_jsonb(s.started_at), 'null'::jsonb) = coalesce(e.after -> 'started_at', 'null'::jsonb)
-                  and coalesce(to_jsonb(s.finished_at), 'null'::jsonb) = coalesce(e.after -> 'finished_at', 'null'::jsonb))
+                  and s.started_at is not distinct from (e.after ->> 'started_at')::timestamptz
+                  and s.finished_at is not distinct from (e.after ->> 'finished_at')::timestamptz)
             into v_restore
             from public.user_tv_entries s where s.id = e.target_id and s.user_id = e.user_id
            for update;
-          -- The watch goes first, so 161's guard never reads the show put back on Watching as a finished one.
           delete from public.media_watches where id = v_watch and user_id = e.user_id;
           if coalesce(v_restore, false)
              and (e.before ->> 'status' is distinct from e.after ->> 'status'
-                  or coalesce(e.before -> 'started_at', 'null'::jsonb) is distinct from coalesce(e.after -> 'started_at', 'null'::jsonb)
-                  or coalesce(e.before -> 'finished_at', 'null'::jsonb) is distinct from coalesce(e.after -> 'finished_at', 'null'::jsonb)) then
+                  or (e.before ->> 'started_at')::timestamptz is distinct from (e.after ->> 'started_at')::timestamptz
+                  or (e.before ->> 'finished_at')::timestamptz is distinct from (e.after ->> 'finished_at')::timestamptz) then
+            -- Completed → Watching / Paused / Dropped through Paused, as the movie's: when the tick's watch was not the
+            -- episode's only one every aired episode still has a watch, and 161's guard would read Completed → Watching
+            -- as a new rewatch round.
+            if e.after ->> 'status' = 'completed' and e.before ->> 'status' in ('watching', 'paused', 'dropped') then
+              update public.user_tv_entries s set status = 'paused'
+               where s.id = e.target_id and s.user_id = e.user_id and s.status <> 'paused';
+            end if;
             update public.user_tv_entries s
                set status = e.before ->> 'status',
                    rewatch_round = (e.before ->> 'rewatch_round')::integer,

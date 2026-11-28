@@ -680,3 +680,41 @@ update public.tasks set status = 'done', completed_at = '1969-07-20 20:17+00' wh
 select mt_ok(not exists (select 1 from mt_ep_watches('c0000000-0000-0000-0000-000000000004', 1, 1)),
   'DT3 the same floor for an episode');
 reset role;
+
+-- ═══ RW. A re-watched episode's untick; the session's time zone ══════════════
+insert into public.tv_series (id, tmdb_id, title, metadata_json) values
+  ('c0000000-0000-0000-0000-000000000006', 4254, 'Mare of Easttown',
+   '{"status": "Ended", "seasons": [{"season_number": 1, "episode_count": 2}], "last_episode_to_air": {"season_number": 1, "episode_number": 2}}'),
+  ('c0000000-0000-0000-0000-000000000007', 4255, 'Ripley', '{}');
+insert into public.user_tv_entries (id, user_id, title, tv_series_id, status, started_at) values
+  ('c1000000-0000-0000-0000-000000000006', '00000000-0000-0000-0000-000000000001', 'Mare of Easttown', 'c0000000-0000-0000-0000-000000000006', 'watching', '2026-10-01 20:00+02'),
+  ('c1000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000001', 'Ripley', 'c0000000-0000-0000-0000-000000000007', 'wishlist', null);
+insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at) values
+  ('00000000-0000-0000-0000-000000000001', 'episode', 'c0000000-0000-0000-0000-000000000006', 1, 1, '2026-10-01 21:00+02'),
+  ('00000000-0000-0000-0000-000000000001', 'episode', 'c0000000-0000-0000-0000-000000000006', 1, 2, '2026-10-02 21:00+02');
+update public.user_tv_entries set status = 'watching', rewatch_round = null where id = 'c1000000-0000-0000-0000-000000000006';
+set role authenticated;
+select mt_ep_plan('mare', 'c1000000-0000-0000-0000-000000000006', 1, 2);
+select mt_set(mt_id('mare'), 'done');
+select mt_ok((mt_show('c1000000-0000-0000-0000-000000000006')).status = 'completed'
+        and (select count(*) from mt_ep_watches('c0000000-0000-0000-0000-000000000006', 1, 2)) = 2,
+  'RW1 an ended show with every aired episode watched: a rewatch of S1E2 ticked — a second watch, Completed');
+select mt_set(mt_id('mare'), 'open');
+select mt_ok((mt_show('c1000000-0000-0000-0000-000000000006')).status = 'watching'
+        and (mt_show('c1000000-0000-0000-0000-000000000006')).rewatch_round is null
+        and (select count(*) from mt_ep_watches('c0000000-0000-0000-0000-000000000006', 1, 2)) = 1,
+  'RW1 a re-watched episode''s untick invents no rewatch round: Watching again, round none, the first watch kept');
+-- Ticked under UTC, unticked under Oslo time: the dates compare as times, not as text.
+select mt_ep_plan('ripley', 'c1000000-0000-0000-0000-000000000007', 1, 1);
+set timezone = 'UTC';
+select mt_set(mt_id('ripley'), 'done');
+select mt_ok((mt_show('c1000000-0000-0000-0000-000000000007')).status = 'watching'
+        and (mt_show('c1000000-0000-0000-0000-000000000007')).started_at is not null,
+  'TZ1 ticked in a UTC session: Watching, started');
+set timezone = 'Europe/Oslo';
+select mt_set(mt_id('ripley'), 'open');
+select mt_ok((mt_show('c1000000-0000-0000-0000-000000000007')).status = 'wishlist'
+        and (mt_show('c1000000-0000-0000-0000-000000000007')).started_at is null,
+  'TZ1 unticked in an Oslo session: back on Wishlist, no start date (the time zone doesn''t change what "as the tick left it" means)');
+reset timezone;
+reset role;

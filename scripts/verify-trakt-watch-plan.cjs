@@ -294,8 +294,10 @@ ok(sameSecond('2026-01-01T12:00:00.900Z', '2026-01-01T12:00:00.000Z'), true, 'th
     && /ids = ids\.filter\(id => !check\.later\.has\(String\(id\)\)\)/.test(fn), true,
     'the drain counts the reads in its call budget, sends every add but the held-back ones, and leaves the unchecked ones for the next run')
   ok(/byTitle\.set\(title/.test(helper) && /if \(Date\.now\(\) >= deadline\) \{ for \(const r of list\) out\.later\.add/.test(helper)
-    && /if \(e instanceof TraktError && e\.status === 401\) throw e\s*continue/.test(helper), true,
-    'one history read per title, none after the deadline, and a failed read sends the add as before (only a dead sign-in stops)')
+    && /if \(e instanceof TraktError && e\.status === 401\) throw e\s*continue/.test(helper)
+    && /traktIdOf\(db, token, type as 'movie' \| 'show', Number\(tmdb\), \(\) => \{ out\.reads\+\+ \}\)/.test(helper)
+    && /if \(known > 0\) return known\s*\/\/[^\n]*\n\s*onTraktCall\?\.\(\)\s*const found = \(await get\(/.test(fn), true,
+    'one history read per title (its Trakt id lookup counted too), none after the deadline, and a failed read sends the add as before (only a dead sign-in stops)')
 }
 
 console.log(`verify-trakt-watch-plan: ${n} assertions passed`)

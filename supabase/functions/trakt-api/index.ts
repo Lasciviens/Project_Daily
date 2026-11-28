@@ -2591,11 +2591,13 @@ function pickBatch(rows: AnyRec[]): AnyRec[] {
 }
 
 /** A title's Trakt id: the catalogue's, else Trakt's ID lookup by TMDB id (then kept on the catalogue row). */
-async function traktIdOf(db: Db, token: string, type: 'movie' | 'show', tmdb: number): Promise<number | null> {
+async function traktIdOf(db: Db, token: string, type: 'movie' | 'show', tmdb: number, onTraktCall?: () => void): Promise<number | null> {
   const table = type === 'movie' ? 'movies' : 'tv_series'
   const { data } = await db.from(table).select('trakt_id').eq('tmdb_id', tmdb).maybeSingle()
   const known = Number((data as AnyRec | null)?.trakt_id)
   if (known > 0) return known
+  // A caller that budgets its Trakt calls counts this lookup (216's drain check).
+  onTraktCall?.()
   const found = (await get(`/search/tmdb/${tmdb}?type=${type}`, token)).data as AnyRec[] | null
   const hit = (found ?? []).find(r => r?.type === type)
   const trakt = Number(((hit?.[type] as AnyRec | undefined)?.ids as AnyRec | undefined)?.trakt)
@@ -2669,7 +2671,7 @@ async function playIdsToRemove(db: Db, userId: string, token: string, rows: AnyR
 
 /** What the drain does with a run of adds (216): `skip` — a tick's add Trakt already has a play of that day (not sent);
  *  `later` — a tick's add not checked before the run's deadline (stays in the outbox for the next run); `reads` — the
- *  history reads made (counted in the run's call budget). */
+ *  Trakt calls made for it, history reads and Trakt id lookups (counted in the run's call budget). */
 interface TickAddCheck { skip: Set<string>; later: Set<string>; reads: number }
 
 /**
@@ -2708,7 +2710,7 @@ async function tickAddsOnTrakt(db: Db, userId: string, token: string, rows: AnyR
     const [type, tmdb] = title.split(':')
     let plays: KeyedPlay[]
     try {
-      const trakt = await traktIdOf(db, token, type as 'movie' | 'show', Number(tmdb))
+      const trakt = await traktIdOf(db, token, type as 'movie' | 'show', Number(tmdb), () => { out.reads++ })
       if (!trakt) continue
       out.reads++
       plays = (await readHistory(`/sync/history/${type === 'movie' ? 'movies' : 'shows'}/${trakt}`, token, picks)).plays
