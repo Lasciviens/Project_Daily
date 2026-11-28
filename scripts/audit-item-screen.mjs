@@ -282,8 +282,8 @@ async function openDaily(page) {
 }
 async function openEdit(page, title) {
   await openDaily(page)
-  // The agenda's row, not the day's "Next: …" line above it (a cut line that opens its full text).
-  await page.locator('[role=button]').filter({ hasText: title }).filter({ hasNotText: /Next:/ }).first().click()
+  // The agenda's row, not the day's "Next: …" / "Now: …" line above it (a cut line that opens its full text).
+  await page.locator('[role=button]').filter({ hasText: title }).filter({ hasNotText: /(Next|Now):/ }).first().click()
   await page.getByText('Edit Item').first().waitFor().catch(async e => {
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/FAILED-open-${title.replace(/\W+/g, '-')}.png` })
     throw e
