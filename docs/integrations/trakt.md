@@ -95,8 +95,8 @@ accounts) and it only changes Trakt's progress view (`reset_at`); rewatch rounds
   ordinary watches.
 - **Trakt doesn't check duplicates** on add; a watch added and removed (or deleted and put back by Undo)
   before the drain cancels out in the outbox instead of being sent twice.
-- **A done movie or episode plan's watch (216).** The database writes it when a movie plan, or a plan of one episode,
-  is ticked (no new endpoint: the outbox's `history_add`, an episode in the shows / seasons / episodes shape). Two
+- **A done movie or episode plan's watch (216).** The database writes it when a movie plan, a plan of one episode, or
+  a plan of a whole show (its next episode) is ticked (no new endpoint: the outbox's `history_add`, an episode in the shows / seasons / episodes shape). Two
   duplicates are guarded. (1) The film or episode already has a watch on the tick's day here (marked on the Media page,
   or on Trakt and pulled): no watch is written. (2) Marked on Trakt and not pulled yet: before the
   drain sends an add, `tickAddsOnTrakt` checks whether it is a tick's watch — from the ledger `task_link_effects`

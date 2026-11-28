@@ -115,7 +115,7 @@ check('a routine: its link; a session without one is still a training session (n
   && free.source.sourceType === 'training_session' && !free.source.link && free.defaults.title === 'Training')
 
 console.log('\n== 3. A task\'s link is its columns ==')
-const { taskLinkOf, LINK_KINDS, planClosedBy } = require('../src/features/items/linkKinds')
+const { taskLinkOf, LINK_KINDS } = require('../src/features/items/linkKinds')
 check('a movie column', JSON.stringify(taskLinkOf({ movie_entry_id: 'm1' })) === JSON.stringify({ kind: 'movie', id: 'm1' }))
 check('an episode: the show with its numbers', JSON.stringify(taskLinkOf({ tv_entry_id: 's1', link_season: 1, link_episode: 2 })) === JSON.stringify({ kind: 'tv', id: 's1', season: 1, episode: 2 }))
 check('a label is never a link (source_type / source_id alone)', taskLinkOf({ source_type: 'movie', source_id: 'm1' }) === null)
@@ -126,9 +126,9 @@ check('the registry names every link kind', kinds === Object.keys(LINK_KINDS).so
 check('who closes each plan follows the owner\'s rule (synced kinds by the sync, app-owned by the tick, football by hand; a movie and an episode by the tick since 28.11.2026)',
   ['game', 'book', 'training'].every(k => LINK_KINDS[k].closedBy === 'sync') && ['shop_item', 'wish', 'movie', 'tv'].every(k => LINK_KINDS[k].closedBy === 'tick') && LINK_KINDS.football.closedBy === 'hand')
 
-check('a show plan: one episode is ticked into a watch, a whole show is still the sync\'s (no episode guessed)',
-  planClosedBy({ kind: 'tv', id: 's1', season: 1, episode: 3 }) === 'tick' && planClosedBy({ kind: 'tv', id: 's1' }) === 'sync'
-  && planClosedBy({ kind: 'movie', id: 'm1' }) === 'tick' && planClosedBy({ kind: 'book', id: 'b1' }) === 'sync')
+check('a show plan is a tick (216): its episode, or for a whole show the next one the database picks — no helper of the browser\'s decides it',
+  LINK_KINDS.tv.closedBy === 'tick' && !/planClosedBy/.test(read('src/features/items/linkKinds.ts'))
+  && /t\.movie_entry_id \|\| t\.tv_entry_id\)/.test(read('src/features/todo/hooks/taskEffects.ts')))
 
 console.log('\n== 4. The tick says what it did ==')
 const { doneMessage, reopenMessage } = require('../src/features/items/tickMessage')
@@ -146,6 +146,9 @@ check('reopened: "watch removed" when the tick\'s watch went, "your watch kept" 
   reopenMessage([{ ...movieTick, now: { title: 'Dune', status: 'wishlist', watchLeft: false } }]) === 'Task reopened · watch removed'
   && reopenMessage([{ ...movieTick, now: { title: 'Dune', status: 'completed', watchLeft: true } }]) === 'Task reopened · your watch kept')
 const epTick = { effect: { effect: 'episode_watched', target_id: 's', before: { status: 'watching' }, after: { watch_id: 'w2', season: 1, episode: 3 } } }
+const nextTick = { effect: { effect: 'episode_watched', target_id: 's', before: { status: 'watching' }, after: { watch_id: 'w3', season: 2, episode: 4, next: true } } }
+check('a whole-show plan ticked: "Task done · S02E04 marked watched" (the episode the database recorded)',
+  doneMessage([{ ...nextTick, now: { title: 'Shogun', status: 'watching', watchLeft: true } }]) === 'Task done · S02E04 marked watched')
 check('a done episode plan (216): "Task done · S01E03 marked watched"; reopened: "watch removed" / "your watch kept"',
   doneMessage([{ ...epTick, now: { title: 'Severance', status: 'watching', watchLeft: true } }]) === 'Task done · S01E03 marked watched'
   && reopenMessage([{ ...epTick, now: { title: 'Severance', status: 'watching', watchLeft: false } }]) === 'Task reopened · watch removed'
@@ -165,7 +168,7 @@ check('Undo of a removed watch ticks again at the tick\'s own time; none when ke
 const todos = read('src/features/todo/hooks/useTodos.ts')
 const effects = read('src/features/todo/hooks/taskEffects.ts')
 check('one helper for the tick, the reopen and the cancel: it reads a movie or episode plan\'s effect and sends its watch to Trakt soon',
-  /t\.movie_entry_id\s*\|\| \(t\.tv_entry_id && t\.link_episode != null\)\)/.test(effects)
+  /t\.movie_entry_id \|\| t\.tv_entry_id\)/.test(effects)
   && /void import\('\.\.\/\.\.\/media\/trakt\/traktAutoSync'\)\.then\(m => m\.scheduleTraktSync\(qc\)/.test(effects)
   && (todos.match(/sendWatchesSoon\(qc, r\.outcomes\)/g) || []).length === 3
   && /export function useCancelTask\(\)[\s\S]*?useUntickReport\('Task cancelled'\)/.test(todos)

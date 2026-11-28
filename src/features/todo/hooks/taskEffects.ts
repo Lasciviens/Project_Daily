@@ -9,9 +9,8 @@ import type { Task, TaskStatus } from '../types'
 export interface StatusChange { task: Task; outcomes: TickOutcome[] }
 
 /** Only a task that plans an app-owned thing can have an effect (a wishlist thing, a wish, a project phase; 216: a
- *  movie, one episode of a show). */
-const mayHaveEffect = (t: Task) => !!(t.shop_item_id || t.wish_item_id || t.project_phase_id || t.movie_entry_id
-  || (t.tv_entry_id && t.link_episode != null))
+ *  movie, an episode of a show — its own, or the show's next one for a plan of the whole show). */
+const mayHaveEffect = (t: Task) => !!(t.shop_item_id || t.wish_item_id || t.project_phase_id || t.movie_entry_id || t.tv_entry_id)
 
 /**
  * The status write and what it did: the effects are read BEFORE an untick (the database forgets an undone one) and

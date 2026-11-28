@@ -1,8 +1,9 @@
 -- 216 · A done movie or episode plan is a watch (owner, 28.11.2026: "A task is linke to a movie and with is marked as
 -- completed than movie will be watched No?" — "Yes build it, and send to Trakt too"; then "Tv episodes too!! Make the
 -- development there as well"). For movies and single episodes this reverses part of the owner's decision of 25.11.2026
--- (211: "the sync closes the plan and the app never writes a fake record"); a plan of a whole show (no episode) only
--- closes, and games, books and training stay as 211 left them. docs/features/tasks.md → "Linked plans".
+-- (211: "the sync closes the plan and the app never writes a fake record"); a plan of a whole show marks the show's
+-- next episode (owner, asked "should ticking a whole-show plan mark the show's next episode watched?": "Yes"); games,
+-- books and training stay as 211 left them. docs/features/tasks.md → "Linked plans".
 --
 -- A. 211's A3 ledger gains two app-owned effects, movie_watched and episode_watched. Ticking a task that plans a movie (tasks.movie_entry_id)
 --    — from any writer: Daily, the item screen, the phone, a Google Tasks pull, Undo — writes ONE watch of that movie
@@ -19,7 +20,10 @@
 --        play that day — docs/integrations/trakt.md);
 --      · the Trakt sync is writing (trakt_sync_writing()), or another trigger closed the plan (pg_trigger_depth() > 1:
 --        a watch closed it through 211's close_linked_plans, so the watch is already there).
---    An episode (tasks.tv_entry_id + link_season + link_episode; 210) is the same effect, episode_watched: one
+--    An episode (tasks.tv_entry_id + link_season + link_episode; 210) is the same effect, episode_watched — for a plan
+--    of the whole show (no episode) the show's next episode, decided at the tick by show_next_episode() and recorded in
+--    the ledger (the untick never works it out again; none → nothing is written, the plan just closes; and nothing when
+--    any episode of the show already has a watch on the tick's day — that watch is the evening's record): one
 --    media_watches row of that episode (kind episode — 149 makes its user_tv_episodes row on a first watch), dated at the
 --    tick, which is what the Media page's checkbox (a first watch) and Watched again (one more) end up writing; 149's
 --    cache keeps the episode's date and plays, 050's trigger the show's next-episode pointer, and the outbox sends
@@ -147,6 +151,44 @@ end;
 $$;
 revoke all on function public.cleanup_block_on_episode_watched() from public, anon, authenticated;
 
+-- ── A show's next episode (a plan of the whole show) ─────────────────────────
+
+-- The episode the app shows as next up (useNextEpisode's rule), from the server's own data: the first aired regular
+-- episode by the stored TMDB data (161's media_aired_episodes: seasons 1 … the last aired, so the season rolls over)
+-- after 050's pointer (current_season / current_episode — the latest watched; 0 = none yet, so S1E1) that has no watch;
+-- in a rewatch round, the first aired one with no watch since the round started (149's rule). None (no row) when every
+-- aired episode is watched, nothing aired yet, or the show has no stored TMDB data — never a guess. Only the given user's
+-- show; not the browser's to call.
+create or replace function public.show_next_episode(p_entry uuid, p_user uuid)
+returns table (season_number integer, episode_number integer)
+language plpgsql
+stable
+security invoker
+set search_path = ''
+as $$
+declare
+  e public.user_tv_entries;
+begin
+  select * into e from public.user_tv_entries s where s.id = p_entry and s.user_id = p_user;
+  if e.id is null or e.tv_series_id is null or not public.media_tmdb_known(e.tv_series_id) then return; end if;
+  return query
+    select a.season_number, a.episode_number
+      from public.media_aired_episodes(e.tv_series_id) a
+     where case when e.rewatch_round is not null and e.rewatch_started_at is not null then true
+                when coalesce(e.current_episode, 0) <= 0 then true
+                else (a.season_number, a.episode_number) > (e.current_season, e.current_episode) end
+       and not exists (select 1 from public.media_watches w
+                        where w.user_id = p_user and w.kind = 'episode' and w.tv_series_id = e.tv_series_id
+                          and w.season_number = a.season_number and w.episode_number = a.episode_number
+                          and (e.rewatch_round is null or e.rewatch_started_at is null
+                               or w.watched_at >= e.rewatch_started_at
+                               or (w.source = 'app' and w.created_at >= e.rewatch_started_at)))
+     order by a.season_number, a.episode_number
+     limit 1;
+end
+$$;
+revoke all on function public.show_next_episode(uuid, uuid) from public, anon, authenticated;
+
 -- ── The effects (211's function; the movie and episode parts are 216's) ──────
 
 create or replace function public.tasks_link_effects()
@@ -163,6 +205,8 @@ declare
   v_movie   public.user_movie_entries;
   v_show    public.user_tv_entries;
   v_tick    timestamptz;
+  v_season  integer;
+  v_episode integer;
   v_watch   uuid;
   v_watched timestamptz;
   v_status  text;
@@ -255,23 +299,30 @@ begin
       end if;
     end if;
 
-    -- 216 · One episode of a show: watched, dated at the tick — the movie's rules. Its own slot stays (plan_tick_task).
-    if new.tv_entry_id is not null and new.link_season is not null and new.link_episode is not null
-       and pg_trigger_depth() = 1 and not public.trakt_sync_writing()
+    -- 216 · One episode of a show — the plan's own, or for a plan of the whole show the show's next episode, decided now
+    -- and recorded (owner: "Yes") — watched, dated at the tick: the movie's rules. Its own slot stays (plan_tick_task).
+    if new.tv_entry_id is not null and pg_trigger_depth() = 1 and not public.trakt_sync_writing()
        and not exists (select 1 from public.task_link_effects x where x.task_id = new.id and x.effect = 'episode_watched') then
       v_tick := date_trunc('second', least(coalesce(new.completed_at, now()), now()));
       select * into v_show from public.user_tv_entries s
        where s.id = new.tv_entry_id and s.user_id = new.user_id
        for update;
+      v_season := new.link_season;
+      v_episode := new.link_episode;
+      if v_show.id is not null and v_season is null and v_episode is null then
+        select n.season_number, n.episode_number into v_season, v_episode from public.show_next_episode(v_show.id, new.user_id) n;
+      end if;
       if v_show.id is not null and v_show.tv_series_id is not null and v_tick >= timestamptz '1971-01-02 00:00:00+00'
+         and v_season is not null and v_episode is not null
          and not exists (select 1 from public.media_watches w
                           where w.user_id = new.user_id and w.kind = 'episode' and w.tv_series_id = v_show.tv_series_id
-                            and w.season_number = new.link_season and w.episode_number = new.link_episode
+                            -- A whole-show plan: any episode of the show watched that day is the evening's record.
+                            and (new.link_season is null or (w.season_number = v_season and w.episode_number = v_episode))
                             and w.watched_at >= timestamptz '1971-01-01 00:00:00+00'
                             and (w.watched_at at time zone 'Europe/Oslo')::date = (v_tick at time zone 'Europe/Oslo')::date) then
         perform set_config('app.plan_tick', new.id::text || ':' || txid_current()::text, true);
         insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at)
-        values (new.user_id, 'episode', v_show.tv_series_id, new.link_season, new.link_episode, v_tick)
+        values (new.user_id, 'episode', v_show.tv_series_id, v_season, v_episode, v_tick)
         returning id, watched_at into v_watch, v_watched;
         perform set_config('app.plan_tick', '', true);
         -- The show moves on as the Trakt sync would set it (traktSyncPlan's statusFor), so the app and Trakt agree:
@@ -293,7 +344,7 @@ begin
                                   'started_at', to_jsonb(v_show.started_at), 'finished_at', to_jsonb(v_show.finished_at)),
                jsonb_build_object('watch_id', v_watch, 'watched_at', v_watched, 'status', s.status,
                                   'started_at', to_jsonb(s.started_at), 'finished_at', to_jsonb(s.finished_at),
-                                  'season', new.link_season, 'episode', new.link_episode)
+                                  'season', v_season, 'episode', v_episode, 'next', new.link_season is null)
           from public.user_tv_entries s where s.id = v_show.id and s.user_id = new.user_id
         on conflict (task_id, effect) do nothing;
       end if;

@@ -559,7 +559,7 @@ select mt_set(mt_id('show'), 'done');
 reset role;
 select mt_ok((select count(*) from public.media_watches) = (select n from public.mt_n2)
         and not exists (select 1 from public.task_link_effects where task_id = mt_id('show')),
-  'EP8 a plan of a whole show (no episode) ticked: it only closes — no episode is guessed');
+  'EP8 a plan of a whole show with no stored TMDB data ticked: no next episode is known, so it only closes — never a guess');
 -- Activity's Undo of an episode tick.
 set role authenticated;
 select mt_ep_plan('s1e7', 'c1000000-0000-0000-0000-000000000001', 1, 7);
@@ -718,3 +718,98 @@ select mt_ok((mt_show('c1000000-0000-0000-0000-000000000007')).status = 'wishlis
   'TZ1 unticked in an Oslo session: back on Wishlist, no start date (the time zone doesn''t change what "as the tick left it" means)');
 reset timezone;
 reset role;
+
+-- ═══ WS. A plan of the whole show marks its NEXT episode (owner, 28.11.2026: "Yes") ═══
+insert into public.tv_series (id, tmdb_id, title, metadata_json) values
+  ('c0000000-0000-0000-0000-000000000008', 4256, 'Shogun',
+   '{"status": "Returning Series", "seasons": [{"season_number": 0, "episode_count": 4}, {"season_number": 1, "episode_count": 2}, {"season_number": 2, "episode_count": 3}],
+     "last_episode_to_air": {"season_number": 2, "episode_number": 3}}'),
+  ('c0000000-0000-0000-0000-000000000010', 4257, 'Slow Horses',
+   '{"seasons": [{"season_number": 1, "episode_count": 3}], "last_episode_to_air": {"season_number": 1, "episode_number": 3}}'),
+  ('c0000000-0000-0000-0000-000000000011', 4258, 'Show of user 2 with data',
+   '{"seasons": [{"season_number": 1, "episode_count": 2}], "last_episode_to_air": {"season_number": 1, "episode_number": 2}}');
+insert into public.user_tv_entries (id, user_id, title, tv_series_id, status, started_at) values
+  ('c1000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000001', 'Shogun', 'c0000000-0000-0000-0000-000000000008', 'watching', '2026-10-01 20:00+02'),
+  ('c1000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001', 'Slow Horses', 'c0000000-0000-0000-0000-000000000010', 'watching', '2026-10-01 20:00+02'),
+  ('c1000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000002', 'Show of user 2 with data', 'c0000000-0000-0000-0000-000000000011', 'watching', null);
+insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at) values
+  ('00000000-0000-0000-0000-000000000001', 'episode', 'c0000000-0000-0000-0000-000000000008', 1, 1, '2026-10-01 21:00+02');
+create or replace function public.mt_show_plan(p_k text, p_entry uuid) returns uuid language plpgsql as $$
+declare r jsonb;
+begin
+  r := public.app_save_item(jsonb_build_object('title', 'Watch the show', 'domain', 'personal', 'priority', 'medium',
+         'date', '2026-11-28', 'time', '21:00', 'durationMinutes', 50, 'google', 'none', 'today', '2026-11-25'),
+       jsonb_build_object('kind', 'tv', 'id', p_entry::text));
+  insert into public.mt_keep values (p_k, r) on conflict (k) do update set v = excluded.v;
+  return (r ->> 'taskId')::uuid;
+end $$;
+grant execute on function public.mt_show_plan(text, uuid) to authenticated;
+select mt_clear();
+set role authenticated;
+select mt_show_plan('shogun', 'c1000000-0000-0000-0000-000000000008');
+select mt_ok((mt_task(mt_id('shogun'))).link_season is null and (mt_task(mt_id('shogun'))).tv_entry_id = 'c1000000-0000-0000-0000-000000000008',
+  'WS setup: a plan of the whole show (its link names no episode)');
+select mt_set(mt_id('shogun'), 'done');
+select mt_ok((select count(*) from mt_ep_watches('c0000000-0000-0000-0000-000000000008', 1, 2)) = 1
+        and (mt_ep_effect(mt_id('shogun'))).after ->> 'season' = '1' and (mt_ep_effect(mt_id('shogun'))).after ->> 'episode' = '2'
+        and (mt_ep_effect(mt_id('shogun'))).after ->> 'next' = 'true'
+        and (mt_show('c1000000-0000-0000-0000-000000000008')).current_episode = 2,
+  'WS1 a whole-show plan ticked: the next episode after the last watched (S01E02, not a special) is watched and recorded');
+reset role;
+select mt_ok((select count(*) from public.trakt_outbox where op = 'history_add' and item_key = 'ep:4256:1:2') = 1,
+  'WS1 Trakt gets that episode''s play');
+set role authenticated;
+select mt_set(mt_id('shogun'), 'open');
+select mt_ok(not exists (select 1 from mt_ep_watches('c0000000-0000-0000-0000-000000000008', 1, 2))
+        and (mt_show('c1000000-0000-0000-0000-000000000008')).current_episode = 1,
+  'WS2 unticked: that one watch goes, the pointer steps back');
+-- The season rolls over: S1E2 watched on the Media page another day, the next is S2E1.
+insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at) values
+  ('00000000-0000-0000-0000-000000000001', 'episode', 'c0000000-0000-0000-0000-000000000008', 1, 2, '2026-10-02 21:00+02');
+select mt_set(mt_id('shogun'), 'done');
+select mt_ok((select count(*) from mt_ep_watches('c0000000-0000-0000-0000-000000000008', 2, 1)) = 1
+        and (mt_ep_effect(mt_id('shogun'))).after ->> 'season' = '2' and (mt_ep_effect(mt_id('shogun'))).after ->> 'episode' = '1',
+  'WS3 the last episode of a season watched: the tick marks the next season''s first (S02E01)');
+-- Another episode watched in between (another day): the untick still removes only the recorded one.
+insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at) values
+  ('00000000-0000-0000-0000-000000000001', 'episode', 'c0000000-0000-0000-0000-000000000008', 2, 2, '2026-10-03 21:00+02');
+select mt_set(mt_id('shogun'), 'open');
+select mt_ok(not exists (select 1 from mt_ep_watches('c0000000-0000-0000-0000-000000000008', 2, 1))
+        and (select count(*) from mt_ep_watches('c0000000-0000-0000-0000-000000000008', 2, 2)) = 1
+        and (select count(*) from mt_ep_watches('c0000000-0000-0000-0000-000000000008', 1, 2)) = 1,
+  'WS4 an episode watched in between: the untick removes the recorded S02E01 only — "next" is never worked out again');
+-- Every aired episode watched: nothing to mark.
+insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at) values
+  ('00000000-0000-0000-0000-000000000001', 'episode', 'c0000000-0000-0000-0000-000000000008', 2, 1, '2026-10-03 22:00+02'),
+  ('00000000-0000-0000-0000-000000000001', 'episode', 'c0000000-0000-0000-0000-000000000008', 2, 3, '2026-10-04 21:00+02');
+reset role;
+create table public.mt_n3 as select count(*) as n from public.media_watches;
+set role authenticated;
+select mt_set(mt_id('shogun'), 'done');
+reset role;
+select mt_ok((select count(*) from public.media_watches) = (select n from public.mt_n3)
+        and not exists (select 1 from public.task_link_effects where task_id = mt_id('shogun')),
+  'WS5 every aired episode watched (the next one hasn''t aired): no next episode — nothing written, the plan just closes');
+-- An episode of the show already watched today (the Media page): that is the evening's record.
+set role authenticated;
+select mt_show_plan('slow', 'c1000000-0000-0000-0000-000000000010');
+insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at) values
+  ('00000000-0000-0000-0000-000000000001', 'episode', 'c0000000-0000-0000-0000-000000000010', 1, 1, now());
+select mt_set(mt_id('slow'), 'done');
+select mt_ok((select count(*) from public.media_watches where kind = 'episode' and tv_series_id = 'c0000000-0000-0000-0000-000000000010') = 1
+        and (mt_ep_effect(mt_id('slow'))).task_id is null,
+  'WS6 an episode of the show already watched today: the whole-show tick writes nothing (no second episode for one evening)');
+-- Another account.
+select mt_ok(mt_refused($$select public.app_save_item('{"title":"x","domain":"personal","priority":"medium","google":"none","today":"2026-11-25"}', '{"kind":"tv","id":"c1000000-0000-0000-0000-000000000011"}')$$) like 'IT011%',
+  'WS7 the owner can''t plan another account''s show');
+set test.uid = '00000000-0000-0000-0000-000000000002';
+select mt_show_plan('u2show', 'c1000000-0000-0000-0000-000000000011');
+select mt_set(mt_id('u2show'), 'done');
+select mt_ok((select count(*) from public.media_watches where kind = 'episode' and tv_series_id = 'c0000000-0000-0000-0000-000000000011' and season_number = 1 and episode_number = 1) = 1
+        and (select count(*) from public.media_watches where kind = 'episode' and tv_series_id = 'c0000000-0000-0000-0000-000000000008') = 0,
+  'WS7 user 2''s whole-show tick marks user 2''s own next episode (S01E01) and sees none of the owner''s');
+reset test.uid;
+reset role;
+select mt_ok(not has_function_privilege('authenticated', 'public.show_next_episode(uuid, uuid)', 'execute')
+        and (select count(*) from public.show_next_episode('c1000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000002')) = 0,
+  'WS8 the next-episode helper is not the browser''s, and answers only for the show''s own user');
