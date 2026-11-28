@@ -91,6 +91,7 @@ function syncSummary(r: TraktRunResult): string {
   if (a?.removed) parts.push(`${a.removed} removed`)
   if (r.heldBack) parts.push(`${r.heldBack} removals waiting for you`)
   if (r.watches?.wholeHistory && !r.watches.finished) parts.push('watch dates still coming in from Trakt')
+  if (r.drained?.alreadyOnTrakt) parts.push(`${r.drained.alreadyOnTrakt} planned watch${r.drained.alreadyOnTrakt === 1 ? '' : 'es'} already on Trakt`)
   if (r.drained?.waitingForIds) parts.push(`${r.drained.waitingForIds} removed watch${r.drained.waitingForIds === 1 ? '' : 'es'} waiting for Trakt's play ids`)
   if (r.notes?.fromTrakt) parts.push(`${r.notes.fromTrakt} note${r.notes.fromTrakt === 1 ? '' : 's'} from Trakt`)
   if (r.notes?.refused) parts.push(`${r.notes.refused} note${r.notes.refused === 1 ? '' : 's'} not taken by Trakt`)

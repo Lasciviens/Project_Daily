@@ -123,8 +123,8 @@ check('every kind has a one-word label and a column', Object.values(LINK_KINDS).
 const types = read('src/features/items/itemTypes.ts')
 const kinds = [...(types.match(/export type ItemLinkKind = ([^\n]+)/)[1]).matchAll(/'(\w+)'/g)].map(m => m[1]).sort().join(',')
 check('the registry names every link kind', kinds === Object.keys(LINK_KINDS).sort().join(','))
-check('who closes each plan follows the owner\'s rule (synced kinds by the sync, app-owned by the tick, football by hand)',
-  ['movie', 'tv', 'game', 'book', 'training'].every(k => LINK_KINDS[k].closedBy === 'sync') && ['shop_item', 'wish'].every(k => LINK_KINDS[k].closedBy === 'tick') && LINK_KINDS.football.closedBy === 'hand')
+check('who closes each plan follows the owner\'s rule (synced kinds by the sync, app-owned by the tick, football by hand; a movie and an episode by the tick since 28.11.2026)',
+  ['game', 'book', 'training'].every(k => LINK_KINDS[k].closedBy === 'sync') && ['shop_item', 'wish', 'movie', 'tv'].every(k => LINK_KINDS[k].closedBy === 'tick') && LINK_KINDS.football.closedBy === 'hand')
 
 console.log('\n== 4. The tick says what it did ==')
 const { doneMessage, reopenMessage } = require('../src/features/items/tickMessage')
@@ -136,6 +136,21 @@ check('no effect: plain "Task done" / "Task reopened"', doneMessage([]) === 'Tas
 check('reopened: "back on the wishlist" when undone, "your purchase kept" when the owner changed it',
   reopenMessage([{ ...shop, now: { title: 'Kettle', status: 'wishlist' } }]) === 'Task reopened · back on the wishlist'
   && reopenMessage([{ ...shop, now: { title: 'Kettle', status: 'bought' } }]) === 'Task reopened · your purchase kept')
+const movieTick = { effect: { effect: 'movie_watched', target_id: 'm', before: { status: 'wishlist' }, after: { watch_id: 'w1' } } }
+check('a done movie plan (216): "Task done · Dune marked watched"', doneMessage([{ ...movieTick, now: { title: 'Dune', status: 'completed', watchLeft: true } }]) === 'Task done · Dune marked watched')
+check('reopened: "watch removed" when the tick\'s watch went, "your watch kept" when the owner had changed it',
+  reopenMessage([{ ...movieTick, now: { title: 'Dune', status: 'wishlist', watchLeft: false } }]) === 'Task reopened · watch removed'
+  && reopenMessage([{ ...movieTick, now: { title: 'Dune', status: 'completed', watchLeft: true } }]) === 'Task reopened · your watch kept')
+const epTick = { effect: { effect: 'episode_watched', target_id: 's', before: { status: 'watching' }, after: { watch_id: 'w2', season: 1, episode: 3 } } }
+check('a done episode plan (216): "Task done · S01E03 marked watched"; reopened: "watch removed" / "your watch kept"',
+  doneMessage([{ ...epTick, now: { title: 'Severance', status: 'watching', watchLeft: true } }]) === 'Task done · S01E03 marked watched'
+  && reopenMessage([{ ...epTick, now: { title: 'Severance', status: 'watching', watchLeft: false } }]) === 'Task reopened · watch removed'
+  && reopenMessage([{ ...epTick, now: { title: 'Severance', status: 'watching', watchLeft: true } }]) === 'Task reopened · your watch kept')
+check('the toggle reads a movie or episode plan\'s effect and sends its watch to Trakt soon', (() => {
+  const todos = read('src/features/todo/hooks/useTodos.ts')
+  return /task\.movie_entry_id\s*\|\| \(task\.tv_entry_id && task\.link_episode != null\)\)/.test(todos) && /episode_watched'\)\) \{\s*void import\('\.\.\/\.\.\/media\/trakt\/traktAutoSync'\)\.then\(m => m\.scheduleTraktSync\(qc\)/.test(todos)
+})())
+check('a tick refreshes the movie and show lists (taskGraph names them)', /taskGraph: \[[^\]]*qk\.media\.movies, qk\.media\.tv, qk\.media\.watchedAll, qk\.media\.nextEpisodeAll, qk\.media\.recent\(\)\]/.test(read('src/shared/query/invalidate.ts')))
 check('the toggle reports through them', /successMessage: \(r, \{ isDone \}\) => \(isDone \? doneMessage\(r\.outcomes\) : reopenMessage\(r\.outcomes\)\)/.test(read('src/features/todo/hooks/useTodos.ts')))
 
 console.log(`\nverify-plan-this: ${passed} passed, ${failed} failed`)

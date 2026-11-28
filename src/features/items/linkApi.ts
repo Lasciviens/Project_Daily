@@ -95,19 +95,39 @@ export async function fetchLinkedThing(link: TaskLink): Promise<LinkedThing> {
 
 // ── What a tick did (211's ledger) ──────────────────────────────────────────
 
+const TICK_EFFECTS = new Set<TickEffect['effect']>(['shop_bought', 'wish_done', 'phase_done', 'movie_watched', 'episode_watched'])
+
 /** The effects a task's tick has in the ledger (the browser reads it; only the database writes it). None on a
  *  database before 211 (no table). */
 export async function fetchTickEffects(taskId: string): Promise<TickEffect[]> {
-  const { data, error } = await supabase.from('task_link_effects').select('effect, target_id, before').eq('task_id', taskId)
+  const { data, error } = await supabase.from('task_link_effects').select('effect, target_id, before, after').eq('task_id', taskId)
   if (error) {
     if (['42P01', 'PGRST205', 'PGRST202'].includes(error.code ?? '')) return []
     throw error
   }
-  return ((data ?? []) as TickEffect[]).filter(e => e.effect === 'shop_bought' || e.effect === 'wish_done' || e.effect === 'phase_done')
+  return ((data ?? []) as TickEffect[]).filter(e => TICK_EFFECTS.has(e.effect))
 }
 
-/** The thing an effect touched, as it is now: its title and status. */
+/** The thing an effect touched, as it is now: its title and status (a movie or episode: also whether the tick's watch is left). */
 export async function fetchEffectTarget(e: TickEffect): Promise<EffectTarget> {
+  if (e.effect === 'movie_watched') {
+    const watchId = e.after?.watch_id ?? null
+    const [movie, watch] = await Promise.all([
+      one<{ status: string | null; movie: { title: string } | null }>(
+        supabase.from('user_movie_entries').select('status, movie:movies(title)').eq('id', e.target_id).maybeSingle()),
+      watchId ? one<{ id: string }>(supabase.from('media_watches').select('id').eq('id', watchId).maybeSingle()) : Promise.resolve(null),
+    ])
+    return { title: movie?.movie?.title ?? null, status: movie?.status ?? null, watchLeft: !!watch }
+  }
+  if (e.effect === 'episode_watched') {
+    const watchId = e.after?.watch_id ?? null
+    const [show, watch] = await Promise.all([
+      one<{ status: string | null; tv_series: { title: string } | null }>(
+        supabase.from('user_tv_entries').select('status, tv_series:tv_series(title)').eq('id', e.target_id).maybeSingle()),
+      watchId ? one<{ id: string }>(supabase.from('media_watches').select('id').eq('id', watchId).maybeSingle()) : Promise.resolve(null),
+    ])
+    return { title: show?.tv_series?.title ?? null, status: show?.status ?? null, watchLeft: !!watch }
+  }
   const table = e.effect === 'shop_bought' ? 'shop_items' : e.effect === 'wish_done' ? 'wish_items' : 'project_phases'
   const name = e.effect === 'phase_done' ? 'name' : 'title'
   const { data, error } = await supabase.from(table).select(`${name}, status`).eq('id', e.target_id).maybeSingle()

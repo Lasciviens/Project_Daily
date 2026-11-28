@@ -164,6 +164,8 @@ select t_ok((select count(*) from public.task_link_effects where task_id = '7000
 -- ═══ Y. Synced kinds: the sync closes the plan; a hand tick writes no record ════
 set role authenticated;
 insert into public.t_keep values ('movie', public.app_save_item(public.t_item('Watch: Movie Two'), '{"kind":"movie","id":"10000000-0000-0000-0000-000000000002"}'));
+-- Y1 is 211's rule as it was; 216 (owner, 28.11.2026) makes a movie tick a watch — verify-db-media-tick runs these
+-- scenarios after 216 without Y1 and proves the new rule.
 select t_set(t_id('movie'), 'done');
 select t_ok(not exists (select 1 from public.media_watches where movie_entry_id = '10000000-0000-0000-0000-000000000002'),
   'Y1 a movie plan ticked by hand: the task closes, no watch is written (never a fake record)');

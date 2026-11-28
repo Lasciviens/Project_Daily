@@ -13,7 +13,7 @@ const assert = require('node:assert/strict')
 const {
   parseHistory, playsByKey, matchItem, buildWatchPlan, historyTargets, summaryKeys, playToRemove,
   cancelledOutboxRows, linkOnlyKeys, storedWatchedAt, sameSecond, watchKey, HISTORY_TARGET_MAX,
-  localPlays, summaryTitles, titlesAfter, titleItemKeys, watchRemovalsNeedConfirm,
+  localPlays, summaryTitles, titlesAfter, titleItemKeys, watchRemovalsNeedConfirm, tickPlayOnTrakt, osloWatchDay,
 } = require('../src/features/media/trakt/traktWatchPlan')
 
 let n = 0
@@ -250,6 +250,47 @@ ok(sameSecond('2026-01-01T12:00:00.900Z', '2026-01-01T12:00:00.000Z'), true, 'th
   ok(watchRemovalsNeedConfirm(plan(11), 50), true, 'more than max(10, 10 %) wait for a confirm')
   ok(watchRemovalsNeedConfirm(plan(200), 3000), false, '10 % of a big history is still allowed')
   ok(watchRemovalsNeedConfirm(plan(301), 3000), true, 'past it, they wait')
+}
+
+// ── A done movie plan's watch (216): the echo, and a play Trakt already has that day ──
+{
+  // The tick wrote a watch at 21:30 Oslo (20:30 UTC); its add reached Trakt; the pull reads it back (the echo).
+  const tick = '2026-11-28T20:30:00.000Z'
+  const echo = matchItem('movie', [w('old', D('2024-05-05'), 5001), w('t', tick)], [play(5001, D('2024-05-05')), play(7001, tick)])
+  ok(echo, { updates: [{ id: 't', watchedAt: tick, historyId: 7001, source: 'app' }], inserts: [], removes: [] },
+    'the echo of the tick\'s own play links that watch (same second): no second watch, its date kept, still the app\'s')
+  // The owner marked the film on Trakt at 18:00 Oslo the same day, then ticked the plan before a pull.
+  const owners = play(6001, '2026-11-28T17:00:00.000Z')
+  ok(osloWatchDay('2026-11-28T23:30:00.000Z'), '2026-11-29', 'the day is Oslo\'s (00:30 on the 29th there)')
+  ok(osloWatchDay(EPOCH), '', 'an unknown date has no day')
+  ok(tickPlayOnTrakt({ watchedAt: tick }, [owners], []), true, 'Trakt has a play of the film that day: the tick\'s add is not sent')
+  ok(tickPlayOnTrakt({ watchedAt: tick }, [play(6002, '2026-11-27T20:00:00.000Z')], []), false, 'a play the day before is another watch: sent')
+  ok(tickPlayOnTrakt({ watchedAt: tick }, [play(5001, D('2024-05-05')), owners], [{ historyId: 5001, watchedAt: D('2024-05-05') }]), true,
+    'a rewatch: the 2024 play is the old watch\'s; the one today is the owner\'s mark')
+  ok(tickPlayOnTrakt({ watchedAt: tick }, [owners], [{ historyId: 6001, watchedAt: owners.watchedAt }]), false,
+    'today\'s play already belongs to another watch here (linked): the tick\'s is a second one, sent')
+  ok(tickPlayOnTrakt({ watchedAt: tick }, [owners], [{ historyId: null, watchedAt: '2026-11-28T15:00:00.000Z' }]), false,
+    'an unlinked watch here that day accounts for that play: sent')
+  ok(tickPlayOnTrakt({ watchedAt: tick }, [play(7001, tick)], []), true, 'its own play already there (a retry after a lost answer): not sent twice')
+  ok(tickPlayOnTrakt({ watchedAt: null }, [owners], []), false, 'no date: never held back')
+  // An episode: the same rule over that episode's plays (keyed ep:<show>:<season>:<episode>, read per show).
+  const epPlays = parseHistory([{ id: 8001, watched_at: '2026-11-28T18:00:00.000Z', type: 'episode', episode: { season: 1, number: 3 }, show: { ids: { tmdb: 4242 } } }]).plays
+  ok(tickPlayOnTrakt({ watchedAt: tick }, epPlays.filter(x => x.key === 'ep:4242:1:3'), []), true, 'an episode marked on Trakt that day: the tick\'s add is not sent')
+  ok(tickPlayOnTrakt({ watchedAt: tick }, epPlays.filter(x => x.key === 'ep:4242:1:4'), []), false, 'another episode\'s play is not this one\'s')
+  // After the add is held back, the pull pairs the tick's watch with the owner's play: Trakt's date wins (so an untick keeps it).
+  const paired = matchItem('movie', [w('t', tick)], [owners])
+  ok(paired.updates, [{ id: 't', watchedAt: owners.watchedAt, historyId: 6001, source: 'app' }], 'the next pull links the tick\'s watch to the owner\'s play, at Trakt\'s time')
+}
+
+// The drain holds back only a tick's add, known from the ledger only the database writes (never a payload flag).
+{
+  const fn = require('node:fs').readFileSync(require('node:path').join(__dirname, '../supabase/functions/trakt-api/index.ts'), 'utf8')
+  const helper = fn.slice(fn.indexOf('async function tickAddsOnTrakt'), fn.indexOf('async function drainOutbox'))
+  ok(/from\('task_link_effects'\)\.select\('after'\)\.eq\('user_id', userId\)\.in\('effect', \['movie_watched', 'episode_watched'\]\)/.test(helper)
+    && /tickPlayOnTrakt\(/.test(helper) && !/\.(delete|update|insert|upsert)\(/.test(helper), true,
+    'tickAddsOnTrakt reads the ledger (the user\'s own movie / episode watch rows) and Trakt\'s history, and writes nothing')
+  ok(/const known = op === 'history_add' \? await tickAddsOnTrakt\(/.test(fn) && /outboxBody\(op, send\)/.test(fn), true,
+    'the drain sends every add but those, and removes the held-back rows with the batch')
 }
 
 console.log(`verify-trakt-watch-plan: ${n} assertions passed`)

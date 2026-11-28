@@ -216,8 +216,10 @@ export function useToggleTask() {
       syncGoogleTasksSoon({ taskId: id })
       // Its slot's Apple Calendar event gains or loses "✓ " (155): queued by the triggers, sent shortly.
       drainICloudSoon()
-      // Only a task that plans an app-owned thing can have one (a wishlist thing, a wish, a project phase).
-      const owned = !!(task.shop_item_id || task.wish_item_id || task.project_phase_id)
+      // Only a task that plans an app-owned thing can have one (a wishlist thing, a wish, a project phase; 216: a movie,
+      // one episode of a show).
+      const owned = !!(task.shop_item_id || task.wish_item_id || task.project_phase_id || task.movie_entry_id
+        || (task.tv_entry_id && task.link_episode != null))
       const effects = isDone ? (owned ? await fetchTickEffects(id).catch(() => []) : []) : before
       const outcomes = await Promise.all(effects.map(async e => ({ effect: e, now: await fetchEffectTarget(e).catch(() => ({ title: null, status: null })) })))
       return { task, outcomes }
@@ -229,7 +231,14 @@ export function useToggleTask() {
       mapRowsInCache<Task>(qc, qk.tasks.all, new Set([id]), t => applyTaskPatch(t, { status: isDone ? 'done' : 'open' }, now))
       return { snapshot }
     },
-    onSuccess: r => putRowsInCache(qc, qk.tasks.all, [r.task]),
+    onSuccess: r => {
+      putRowsInCache(qc, qk.tasks.all, [r.task])
+      // 216: a movie or episode plan's watch was added or removed — the outbox holds it for Trakt; send it soon, as the Media page
+      // does (loaded on use: the Trakt client stays out of every page's first load).
+      if (r.outcomes.some(o => o.effect.effect === 'movie_watched' || o.effect.effect === 'episode_watched')) {
+        void import('../../media/trakt/traktAutoSync').then(m => m.scheduleTraktSync(qc), () => undefined)
+      }
+    },
     onError: (_err, _vars, ctx) => { if (ctx) restoreCache(qc, ctx.snapshot) },
     // What the tick did to the thing it plans (211): "Task done · Kettle bought — check it in Shop".
     successMessage: (r, { isDone }) => (isDone ? doneMessage(r.outcomes) : reopenMessage(r.outcomes)),

@@ -63,8 +63,9 @@ export interface TraktRunResult {
   at: string
   busy?: boolean
   pulled?: boolean
-  /** `waitingForIds`: single-play removes waiting for a pull to link the title's watches (149); `dropped`: given up after 7 days. */
-  drained?: { sent: number; notFound: number; failed: number; left: number; waitingForIds?: number; dropped?: number; error: string | null }
+  /** `waitingForIds`: single-play removes waiting for a pull to link the title's watches (149); `dropped`: given up after 7 days;
+   *  `alreadyOnTrakt`: a done movie plan's watch not sent because Trakt had a play of the film that day (216). */
+  drained?: { sent: number; notFound: number; failed: number; left: number; waitingForIds?: number; dropped?: number; alreadyOnTrakt?: number; error: string | null }
   /** Each watch's own date (149): the titles read, watches linked/added/removed, removals held back, a whole-history read finished. */
   watches?: { read?: number; wholeHistory?: boolean; finished?: boolean; heldBack?: number; error?: string | null; applied?: { linked: number; added: number; removed: number } | null } | null
   applied?: { movies: number; shows: number; episodes: number; removed: number; skippedNew: number } | null
