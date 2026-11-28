@@ -31,7 +31,7 @@ function scrollerOf(el: HTMLElement): HTMLElement | null {
 
 /** The list's max height for the field now, kept current while the keyboard, the sheet or the page moves. Too little
  *  room under the field (the keyboard up on a small phone): the field is scrolled up first, so the list fits under it. */
-export function useOptionsRoom(field: RefObject<HTMLElement | null>, gap: number, want?: number): number | null {
+export function useOptionsRoom(field: RefObject<HTMLElement | null>, gap: number, want?: number, cap?: number): number | null {
   const [room, setRoom] = useState<number | null>(null)
   useEffect(() => {
     let frame = 0
@@ -45,7 +45,7 @@ export function useOptionsRoom(field: RefObject<HTMLElement | null>, gap: number
       const top = vv && !webkit() ? vv.offsetTop : 0
       const height = vv ? vv.height : window.innerHeight
       const visible = { top, bottom: top + height, safeTop: readSafeTop() }
-      const lift = optionsLift({ top: r.top, bottom: r.bottom }, visible, gap, want)
+      const lift = optionsLift({ top: r.top, bottom: r.bottom }, visible, gap, want, cap)
       const scroller = lift > 0 && lifted < 2 ? scrollerOf(el) : null
       if (scroller) {
         // At most twice (the keyboard may still be opening): never a fight with the owner's own scrolling.
@@ -54,7 +54,7 @@ export function useOptionsRoom(field: RefObject<HTMLElement | null>, gap: number
         soon()
         return
       }
-      setRoom(optionsMaxHeight({ top: r.top, bottom: r.bottom }, visible, gap))
+      setRoom(optionsMaxHeight({ top: r.top, bottom: r.bottom }, visible, gap, cap))
     }
     const soon = () => { if (!frame) frame = requestAnimationFrame(measure) }
     measure()
@@ -69,7 +69,7 @@ export function useOptionsRoom(field: RefObject<HTMLElement | null>, gap: number
       window.removeEventListener('resize', soon)
       window.removeEventListener('scroll', soon, true)
     }
-  }, [field, gap, want])
+  }, [field, gap, want, cap])
   return room
 }
 

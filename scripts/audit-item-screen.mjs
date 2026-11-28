@@ -362,9 +362,11 @@ async function sweep(page, label, found, shots) {
   }
 }
 
-/** Repeat's kind, from its chip's list (the Repeat row's panel open). */
+/** Repeat's kind, from its row's list. */
 async function pickRepeat(page, label) {
-  await sheet(page).getByRole('button', { name: /^Repeat:/ }).last().click()
+  const row = sheet(page).getByRole('button', { name: /^Repeat:/ }).first()
+  await row.scrollIntoViewIfNeeded()
+  await row.click()
   await page.getByRole('option', { name: label, exact: true }).click()
   await page.waitForTimeout(400)
 }
@@ -474,14 +476,21 @@ async function run() {
       const notes = sheet(page).getByRole('textbox', { name: 'Notes' })
       await notes.scrollIntoViewIfNeeded(); await notes.fill(LONG_NOTES)
       await sweep(page, 'new long', found, shot('new-long'))
-      await tap(page, sheet(page).getByRole('button', { name: /^Repeat/ }).first())
       await pickRepeat(page, 'Weekly')
       await sweep(page, 'new repeat', found, shot('new-repeat'))
       await dropdowns(page, 'new repeat', found, shot('dropdown-repeat'))
+      // An end in End Repeat's own row: a count, then a last day.
+      for (const end of ['After a number of times', 'On a day']) {
+        const endRow = sheet(page).getByRole('button', { name: /^End Repeat:/ }).first()
+        await endRow.scrollIntoViewIfNeeded(); await endRow.click()
+        await page.getByRole('option', { name: new RegExp(`^${end}`) }).first().click()
+        await page.waitForTimeout(400)
+        await sweep(page, `new repeat, end ${end}`, found, null)
+      }
       // Custom → Every…: the unit's list too.
       await pickRepeat(page, 'Custom')
       await dropdowns(page, 'new custom repeat', found, null)
-      await pickRepeat(page, 'No repeat')
+      await pickRepeat(page, 'Never')
       await tap(page, sheet(page).getByRole('switch', { name: 'All-day' }))
       await sweep(page, 'new all-day', found, null)
       await tap(page, sheet(page).getByRole('switch', { name: 'Date' }))

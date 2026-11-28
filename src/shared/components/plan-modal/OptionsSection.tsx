@@ -39,6 +39,7 @@ export function CalendarRow({ shape, target, app, dated, refused, onPick }: {
   return (
     <>
       <SelectRow<GoogleTarget> label="Calendar" value={target} options={options} onChange={onPick} tone={refused ? 'danger' : undefined}
+        spoken={[googleTargetLabel(shape, target, app), refused && `not sent — ${refused}`, warning?.level === 'warning' && warning.message].filter(Boolean).join('; ')}
         footer="Each area's calendar is turned on or off in Settings → Calendar."
         shown={<><Truncate className="min-w-0">{googleTargetLabel(shape, target, app)}</Truncate><FieldMark always goes={goesOf(target, app, dated)} refused={refused} /></>} />
       {refused && <NoteRow tone="danger">{refused}</NoteRow>}
@@ -89,6 +90,7 @@ export function GoogleListRow({ value, typing, onPick, onNew, onType, onDone, op
   const chosen = lists.find(l => l.title.toLowerCase() === name.toLowerCase())?.title ?? name
   return (
     <SelectRow label="List" mark={mark} value={chosen} options={options} openOnMount={openOnMount}
+      spoken={name ? `${name}${isNew ? ', new' : ''}` : 'Pick one'}
       shown={<Truncate className="min-w-0">{name ? `${name}${isNew ? ' · new' : ''}` : 'Pick one'}</Truncate>}
       footer={lists.length === 0 ? 'Your Google lists show here once Google Tasks has synced.' : undefined}
       onChange={v => (v === NEW_LIST ? onNew() : onPick(v))} />

@@ -41,11 +41,14 @@ async function withEpisode(tmdbId: number, season: number, episode: number) {
 }
 
 async function computeNextEpisode(
-  tvEntryId: string,
+  tvEntryId: string | null,
   tmdbId: number,
   totalEpisodes: number | null,
 ): Promise<NextEpisodeInfo> {
-  const [watched, rewatchOf] = await Promise.all([fetchWatchedEpisodes(tvEntryId), fetchRewatchRound(tvEntryId)])
+  // No library entry yet (a show just picked from TMDB's search): nothing watched, no rewatch — the same rule from S1E1.
+  const [watched, rewatchOf] = tvEntryId
+    ? await Promise.all([fetchWatchedEpisodes(tvEntryId), fetchRewatchRound(tvEntryId)])
+    : [[], null] as const
   const watchedCount = watched.length
 
   // Max watched (season, episode) — rows arrive sorted asc by season, episode.
@@ -103,6 +106,17 @@ async function computeNextEpisode(
     // title/air-date enrichment (better than an empty card).
     return { ...base, caughtUp: false, season: candSeason, episode: candEpisode, episodeTitle: null, airDate: null, released: true }
   }
+}
+
+/** The same rule for a show that isn't in the library yet (picked from TMDB's search on the item screen): nothing is
+ *  watched, so its first aired episode — S1E1 when it has aired. */
+export function useNextEpisodeOfNewShow(tmdbId: number | null) {
+  return useQuery({
+    queryKey: qk.media.nextEpisode(`tmdb-${tmdbId ?? ''}`),
+    queryFn:  () => computeNextEpisode(null, tmdbId!, null),
+    enabled:  !!tmdbId,
+    staleTime: STALE.short,
+  })
 }
 
 export function useNextEpisode(

@@ -51,7 +51,9 @@ export interface DetailsForm {
 
 /** A title picked from TMDB's search that isn't in the library yet: added through the library's own add inside the
  *  save (never on pick — a cancelled screen leaves nothing behind), then linked. */
-export interface PendingTitle { kind: 'movie' | 'tv'; tmdbId: number; title: string }
+/** A TMDB title picked on the screen, added to the library by the save; a show may carry its episode (its next one,
+ *  filled on the pick), which the save puts on the link it makes. */
+export interface PendingTitle { kind: 'movie' | 'tv'; tmdbId: number; title: string; season?: number; episode?: number }
 
 export interface PlanForm extends RepeatFormFields {
   /** What is saved as the title (quick add's words taken out; the field shows what was typed). */

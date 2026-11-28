@@ -740,13 +740,14 @@ in a calendar. It is drawn as iOS Calendar draws its event screen and renders `M
   take the room, the labels); `TapRow` is a whole-row button with the value muted and a chevron that turns
   down while its editor is open; `ToggleRow` a label and a `Switch size="sm"`; `NoteRow` a line of
   explanation or a warn / danger line. Editors open **inside the group** under their row (`Panel`, which
-  scrolls itself into view), one at a time: a month (`DateCalendar compact`), a time wheel, Repeat's days.
+  scrolls itself into view), one at a time: a month (`DateCalendar compact`), a time wheel.
   A row whose value is one of a list is a `SelectRow` (⇕ after the value): the whole row opens **the shared
   field list** under it (`FieldSelect`, below) — Category, Travel Time, Alert, Second Alert, Calendar, List,
-  Time Zone, End Repeat (an end's value is its own row: the last day's pill, the times' − and +); a choice
-  inside an editor is a `SelectChip` (Repeat's kind and unit, a cost's currency); the Parent search's matches
-  are a `FieldOptions`. Owner, 28.11.2026: "İ loved the dropdown from "Show"/"Movie" selecting... I almodt want
-  everything to use that type dropdown.." 
+  Time Zone, Repeat (the days, Custom and the next dates under it only for Weekly, Monthly and Custom), End
+  Repeat (an end's value in the same row, after the list's button: the last day's pill, or − count + times;
+  under it the next dates and the last, or the problem); a choice inside an editor is a `SelectChip` (Custom's
+  unit, a cost's currency); the Parent search's matches are a `FieldOptions`. Owner, 28.11.2026: "İ loved the dropdown from "Show"/"Movie" selecting... I almodt want
+  everything to use that type dropdown.."
 - **Fields have no box**: the title (`.input-bare`, `text-title` semibold, a normal-weight placeholder,
   growing with a long title), the URL, the notes, the location's search and the labels' field are the row
   itself. A field's problem is a danger `NoteRow` under it once the field is left (not while typing).
@@ -832,15 +833,17 @@ classes (and, on `/games`, the `tg-portal` class).
 (`shared/components/FieldOptions.tsx`) for a search, `FieldSelect` (`shared/components/FieldSelect.tsx`) for plain
 choices. One look and one behaviour (`useOptionsRoom.ts`): anchored under its row or field, the menu card
 (`FIELD_LIST`), one line per choice — its words, a short hint line when it needs one (or why it can't be picked),
-an icon before, ✓ after the one chosen; sized to what the keyboard leaves of the screen (`visualViewport`), the row
-first scrolled up when even three choices (or a select's own few) don't fit under it, a list that still can't fit
-goes above — never into the status bar (the Movie search's list covered the title and ran under the status bar,
+an icon before, ✓ after the one chosen; sized to what the keyboard leaves of the screen (`visualViewport`) — a
+search's list up to 18rem, a plain choice's to all the room there is, cut in the middle of a row where even that is
+too little, so it shows it scrolls — the row first scrolled up when its list doesn't fit under it, a list that still
+can't fit goes above — never into the status bar (the Movie search's list covered the title and ran under the status bar,
 27.11.2026). Headless UI keeps the keys and ARIA. Not dropdowns: segmented controls (Type Movie / TV / Cinema),
 switches, date pills and the time wheel. Action menus (⋯, `Menu`) are lists of actions, not choices: they keep
 `Menu` until the app-wide move is planned.
 
-The item screen uses it everywhere (`verify-item-screen` §13 checks it, and that no new raw `ComboboxOptions` /
-`ListboxOptions` appears anywhere). **Migration backlog** — today's screens move later ("We will do that an other
+The item screen uses it everywhere (`verify-item-screen` §13). `verify-dropdowns` holds the app to it: a raw
+`ComboboxOptions` / `ListboxOptions` or a native `<select>` only in today's files below — a new one anywhere fails,
+and a file that moves comes off its list. **Migration backlog** — today's screens move later ("We will do that an other
 time"):
 - raw `ComboboxOptions` / `ListboxOptions`: `StopSearchInput`, `WhatField`, `AssignMealModal`, `RecipeModalFoodLink`,
   `RoutineFormParts`, `CommandPalette` (#667's To do later), `PropertyPills` (Dev Requests' fixed-position list),

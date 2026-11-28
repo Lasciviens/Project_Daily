@@ -26,10 +26,13 @@
 //                    episode"; "apply that to all dropdowns in task screen").
 //                    A show picked in the Show search gets its next episode
 //                    from useNextEpisode, saved as a picked one — the plan
-//                    becomes that episode's; opening an item never fills it
-//                    (a whole-show plan stays one; nothing saves on open).
-//                    Every choice row is a SelectRow / SelectChip in the
-//                    shared field list (FieldSelect); no save path changes.
+//                    becomes that episode's; a TMDB title's pick keeps its
+//                    first aired episode on pendingTitle and withTitleAdded
+//                    puts it on the link it makes. Opening an item never
+//                    fills it (a whole-show plan stays one; nothing saves on
+//                    open). Every choice row is a SelectRow / SelectChip in
+//                    the shared field list (FieldSelect), Repeat and End
+//                    Repeat included.
 //  2026-11-27 · v33 · The look on a phone (owner, 27.11.2026, from the iPhone:
 //                    "Real visual issues as you can see.. Work until it is
 //                    perfect! Things dont stand where they have to, either
@@ -746,7 +749,7 @@ import { useSaveItem } from '../../../features/items/useItems'
 import { useSheetDelete } from '../../../features/items/useSheetDelete'
 import { parseQuickAdd, type QuickAddResult } from '../../../features/items/quickAdd'
 import { effectiveGoogleTarget, hasGoogleCalendar, hasGoogleTasks, itemFromRows, storedGoogleTarget } from '../../../features/items/sheetRules'
-import type { ItemInput, SavedItem } from '../../../features/items/itemTypes'
+import type { ItemInput, ItemLink, SavedItem } from '../../../features/items/itemTypes'
 import { ModalShell } from '../../modals/ModalShell'
 import { LinkedChip } from '../../../features/items/components/LinkedPlanChips'
 import { screenLinkOf, taskLinkOf } from '../../../features/items/linkKinds'
@@ -1057,7 +1060,8 @@ export function UnifiedPlanModal({
     if (!p) return f
     const id = await libraryEntry(p.kind, p.tmdbId, p.title)
     if (!id) return null
-    const next = { ...f, link: { kind: p.kind, id }, pendingTitle: null }
+    const link: ItemLink = p.kind === 'tv' && p.season != null && p.episode != null ? { kind: 'tv', id, season: p.season, episode: p.episode } : { kind: p.kind, id }
+    const next = { ...f, link, pendingTitle: null }
     // The screen holds the link from now on (a later save sends it, never a second add).
     setForm(cur => (cur.pendingTitle === p ? { ...cur, link: next.link, pendingTitle: null } : cur))
     return next

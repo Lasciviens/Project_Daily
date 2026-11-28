@@ -2,22 +2,23 @@
 //  End Repeat (migration 193), under Repeat on the item screen: Never, On a day
 //  (the last day it may happen, included) or After N times (1–999, counted as
 //  the database counts it — recurrence.countEndDay), picked in the shared field
-//  list (FieldSelect); an end's value is its own row (the last day's pill, the
-//  times' − and +), and why an end can't be saved is said under them
-//  (planForm.repeatEndIssue — the save refuses the same).
+//  list (FieldSelect), an end's value in the same row (the last day's pill, the
+//  times' − and +); under it the next dates and the last one (Repeat's own
+//  panel then leaves them out: said once), or why the end
+//  can't be saved (planForm.repeatEndIssue — the save refuses the same).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, type ReactNode } from 'react'
 import { Minus, Plus } from 'lucide-react'
-import { IconButton, Truncate } from '../../ui'
+import { IconButton, MetaLine } from '../../ui'
 import { DateCalendar } from '../DateCalendar'
 import { formatDate } from '../../utils/dateFormat'
 import { MAX_REPEAT_COUNT } from '../../../features/daily/recurrence'
 import { repeatEndLabel } from '../../../features/items/itemCalendarFields'
 import type { RepeatEnd } from '../../../features/items/itemTypes'
-import { NoteRow, Panel, Pill, Row, SelectRow } from './ItemRows'
+import { NoteRow, Panel, Pill, SelectRow } from './ItemRows'
 import { endRepeatDefaults } from './itemScreenRules'
-import { displayDate, repeatRowFromForm, repeatStart, type RepeatFormFields } from './planModal.config'
+import { displayDate, repeatPreview, repeatRowFromForm, repeatStart, type RepeatFormFields } from './planModal.config'
 import type { PanelKey } from './TimeSection'
 import { typingHints } from './fieldStyles'
 
@@ -29,9 +30,9 @@ const END_KINDS: { value: EndKind; label: string; hint?: string }[] = [
 ]
 
 /**
- * End Repeat: its kind in the shared field list (Never / On a day / After a number of times, as Apple's), then — for an
- * end — one row with its value: the last day as a date pill (a month opens under it) or the times with − and +. The
- * next dates and the last one show in Repeat's own panel (its preview stops at the end); a problem shows under the rows.
+ * End Repeat, one row: its kind in the shared field list (Never / On a day / After a number of times, as Apple's), and
+ * an end's value beside it in the same row — the last day as a date pill (a month opens under the row), or the times
+ * with − and +. Under it, an end's next dates and its last one, or why it can't be saved.
  */
 export function EndRepeatRows({ form, end, start, today, exceptDates, problem, onChange, mark, open, toggle }: {
   form: RepeatFormFields
@@ -54,6 +55,7 @@ export function EndRepeatRows({ form, end, start, today, exceptDates, problem, o
   // The tenth time from today (a saved repeat's past is never cut off by a default); the two choices agree.
   const first = () => endRepeatDefaults({ ...row, effective_from: from, except_dates: exceptDates }, today)
   const kind: EndKind = until !== null ? 'until' : count !== null ? 'count' : 'never'
+  const preview = end ? repeatPreview(form, start, today, exceptDates, end) : null
   const pick = (k: EndKind) => {
     if (k === kind) return
     if (k === 'never') { onChange(null); toggle(null); return }
@@ -63,14 +65,13 @@ export function EndRepeatRows({ form, end, start, today, exceptDates, problem, o
   return (
     <>
       <SelectRow<EndKind> label="End Repeat" mark={mark} value={kind} options={END_KINDS} onChange={pick} tone={problem ? 'danger' : undefined}
-        shown={<Truncate className="min-w-0">{repeatEndLabel(end)}</Truncate>} />
-      {until !== null && (
-        <Row label="Last day">
+        // An end's value is in the row (the pill, the count): its kind's words would only say it again.
+        shown={kind === 'never' ? undefined : null} spoken={repeatEndLabel(end)}
+        after={until !== null ? (
           <Pill wide label={`Last day ${formatDate(until)} — change it`} open={open === 'repeatEnd'} onClick={() => toggle('repeatEnd')} bad={!!problem}>
             {displayDate(until)}
           </Pill>
-        </Row>
-      )}
+        ) : count !== null ? <TimesField count={count} onChange={n => onChange({ count: n })} /> : undefined} />
       {until !== null && open === 'repeatEnd' && (
         <Panel label="The last day">
           <div className="flex justify-center">
@@ -78,12 +79,14 @@ export function EndRepeatRows({ form, end, start, today, exceptDates, problem, o
           </div>
         </Panel>
       )}
-      {count !== null && (
-        <Row label="Times">
-          <TimesField count={count} onChange={n => onChange({ count: n })} />
-        </Row>
+      {problem ? <NoteRow tone="danger">{problem}</NoteRow> : preview && (
+        <NoteRow>
+          <MetaLine as="span" items={[
+            preview.next.length ? `Next ${preview.next.map(d => formatDate(d)).join(', ')}` : 'No date ahead',
+            ...(preview.last ? [`Last ${formatDate(preview.last)}`] : []),
+          ]} />
+        </NoteRow>
       )}
-      {problem && <NoteRow tone="danger">{problem}</NoteRow>}
     </>
   )
 }
@@ -93,12 +96,12 @@ function TimesField({ count, onChange }: { count: number; onChange: (n: number) 
   const [text, setText] = useState(String(count))
   const set = (n: number) => { setText(String(n)); onChange(n) }
   return (
-    <div className="flex items-center gap-2 text-body text-fg-2">
-      <IconButton bordered label="One time fewer" disabled={count <= 1} onClick={() => set(Math.max(1, count - 1))}><Minus aria-hidden /></IconButton>
+    <div className="flex shrink-0 items-center gap-1.5 text-body text-fg-2">
+      <IconButton bordered label="One time fewer" disabled={count <= 1} onClick={() => set(Math.max(1, count - 1))} className="h-8 w-8"><Minus aria-hidden /></IconButton>
       <input {...typingHints('times', 'none')} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={3} value={text} aria-label="Times"
         onChange={e => { setText(e.target.value); onChange(/^\d{1,3}$/.test(e.target.value) ? Number(e.target.value) : 0) }}
-        className="input input-sm w-14 text-center tabular-nums" />
-      <IconButton bordered label="One time more" disabled={count >= MAX_REPEAT_COUNT} onClick={() => set(Math.min(MAX_REPEAT_COUNT, count + 1))}><Plus aria-hidden /></IconButton>
+        className="input input-sm w-[3em] px-1 text-center tabular-nums" />
+      <IconButton bordered label="One time more" disabled={count >= MAX_REPEAT_COUNT} onClick={() => set(Math.min(MAX_REPEAT_COUNT, count + 1))} className="h-8 w-8"><Plus aria-hidden /></IconButton>
       <span>{count === 1 ? 'time' : 'times'}</span>
     </div>
   )

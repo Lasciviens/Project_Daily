@@ -38,7 +38,7 @@ import { useLinkedThing } from '../../../features/items/usePlanThis'
 import { useEarlierCinemas, useEarlierDetails } from '../../../features/items/useItemDetails'
 import { useMovies } from '../../../features/media/hooks/useMovies'
 import { useTVSeries } from '../../../features/media/hooks/useTVSeries'
-import { useNextEpisode } from '../../../features/media/hooks/useNextEpisode'
+import { useNextEpisode, useNextEpisodeOfNewShow, type NextEpisodeInfo } from '../../../features/media/hooks/useNextEpisode'
 import { episodeDefault } from '../../../features/items/episodeDefault'
 import { useSearchTitles } from '../../../features/media/hooks/useTMDB'
 import { useAllGames, useLibraryGames } from '../../../features/games/hooks/useGames'
@@ -77,7 +77,7 @@ export function DetailsSection({ form, patch, mark, placeMark }: {
   const cinemas = useEarlierCinemas(fields.includes('cinema'))
   // A show picked in the search on this visit (each pick counted): only a pick fills its next episode — an item that
   // opens with a show and no episode stays a whole-show plan, and opening never writes anything by itself.
-  const [picked, setPicked] = useState<{ id: string; n: number } | null>(null)
+  const [picked, setPicked] = useState<{ id: string | null; tmdbId: number | null; n: number } | null>(null)
   if (!def) return null
   const set = (details: Partial<DetailsForm>) => patch(withDetails(form, { details }))
   const linkKind = def.linkKind?.(type) ?? null
@@ -102,13 +102,20 @@ export function DetailsSection({ form, patch, mark, placeMark }: {
           onPick={p => {
             if ('link' in p) {
               setLink(p.link)
-              if (p.link.kind === 'tv' && 'id' in p.link) setPicked(prev => ({ id: (p.link as { id: string }).id, n: (prev?.n ?? 0) + 1 }))
-            } else setLink(null, p.pending)
+              if (p.link.kind === 'tv' && 'id' in p.link) setPicked(prev => ({ id: (p.link as { id: string }).id, tmdbId: null, n: (prev?.n ?? 0) + 1 }))
+            } else {
+              setLink(null, p.pending)
+              // A show from TMDB's search: its next episode once it is known (now, or on the link the save makes).
+              if (p.pending.kind === 'tv') setPicked(prev => ({ id: null, tmdbId: p.pending.tmdbId, n: (prev?.n ?? 0) + 1 }))
+            }
           }} onClear={() => setLink(null)} />
       )}
+      {fields.includes('thing') && linkKind === 'tv' && !link && pending && (
+        <NewShowEpisode key={`${pending.tmdbId}:${picked?.n ?? 0}`} pending={pending} mark={mark} picked={picked?.tmdbId === pending.tmdbId}
+          onChange={ep => patch({ pendingTitle: { ...pending, ...ep }, linkTouched: true, detailsTouched: true })} />
+      )}
       {fields.includes('thing') && linkKind === 'tv' && link && (
-        <ShowEpisode key={`${link.id}:${picked?.id === link.id ? picked.n : 0}`} link={link} mark={mark}
-          fill={picked?.id === link.id} onChange={setLink} />
+        <ShowEpisode key={`${link.id}:${picked?.n ?? 0}`} link={link} mark={mark} picked={picked} onChange={setLink} />
       )}
       {fields.includes('cinema') && (
         // The item's one place (its slot's — Location shows only Travel Time then — or by name without a slot).
@@ -282,62 +289,92 @@ function SearchCombo({ label, autoFocus, onPick, onClose, query, setQuery, setFo
   )
 }
 
+type Episode = { season?: number; episode?: number }
+
 /**
- * A show's episode, filled with its next one when the owner picks the show in the search (owner, 28.11.2026: "when I
- * select the tv serie it should by default bring next episode") — the app's one rule (useNextEpisode: Daily's Watch
- * next, the Media page), only when it is one to fill (episodeDefault: not all watched, aired, TMDB's data there). Only
- * after a pick on this visit (`fill`): an item that opens with a show and no episode stays a whole-show plan, and
- * opening the screen writes nothing. Filled once per pick and only while no episode is set: one the owner sets or
- * clears is never refilled. Filled or typed, it is saved the same way: the plan becomes that episode's plan.
+ * A picked show's next episode as its default (owner, 28.11.2026: "when I select the tv serie it should by default
+ * bring next episode"): only when it is one (episodeDefault: not all watched, aired, TMDB's data there), once, and only
+ * while the owner hasn't set or cleared one. `next` is the app's one rule's answer (useNextEpisode); `eligible` is a
+ * pick on this visit — never an item that opens with a show and no episode (it stays a whole-show plan; opening writes
+ * nothing). The fill is sent once to the form; `decide` is the owner's own change.
  */
-function ShowEpisode({ link, mark, fill: pickedNow, onChange }: {
-  link: { kind: ItemLinkKind; id: string; season?: number; episode?: number }
-  mark?: ReactNode
-  /** The owner picked this show in the search on this visit. */
-  fill: boolean
-  onChange: (l: ItemLink) => void
-}) {
-  const shows = useTVSeries()
-  const entry = shows.data?.find(e => e.id === link.id) ?? null
-  const [decided, setDecided] = useState(() => !pickedNow || (link.season != null && link.episode != null))
-  const next = useNextEpisode(decided ? null : link.id, entry?.tv_series.tmdb_id ?? null, entry?.tv_series.number_of_episodes ?? null)
+function usePickedEpisode(eligible: boolean, hasEpisode: boolean, next: NextEpisodeInfo | undefined, send: (ep: { season: number; episode: number }) => void) {
+  const [decided, setDecided] = useState(hasEpisode)
   const [filled, setFilled] = useState<{ season: number; episode: number } | null>(null)
   // The answer lands: taken once (state set while rendering, React's way to follow a value), then sent to the form.
-  const fill = decided ? null : episodeDefault(next.data)
+  const fill = eligible && !decided ? episodeDefault(next) : null
   if (fill) {
     setDecided(true)
     setFilled(fill)
   }
   useEffect(() => {
-    if (filled) onChange({ kind: 'tv', id: link.id, season: filled.season, episode: filled.episode })
+    if (filled) send(filled)
   }, [filled]) // eslint-disable-line react-hooks/exhaustive-deps -- sent once per fill
-  const own = (l: ItemLink) => {
-    setDecided(true)
-    onChange(l)
+  return { asking: eligible && !decided, filled, decide: () => setDecided(true) }
+}
+
+/** A library show's episode: filled with its next one after a pick on this visit — of this show, or of the TMDB title
+ *  the save just added as this show. Filled or typed, it is saved the same way: the plan becomes that episode's plan. */
+function ShowEpisode({ link, mark, picked, onChange }: {
+  link: { kind: ItemLinkKind; id: string; season?: number; episode?: number }
+  mark?: ReactNode
+  picked: { id: string | null; tmdbId: number | null } | null
+  onChange: (l: ItemLink) => void
+}) {
+  const shows = useTVSeries()
+  const entry = shows.data?.find(e => e.id === link.id) ?? null
+  const eligible = !!picked && (picked.id === link.id || (picked.tmdbId != null && entry?.tv_series.tmdb_id === picked.tmdbId))
+  const hasEpisode = link.season != null && link.episode != null
+  const [asked, setAsked] = useState(false)
+  const nextQ = useNextEpisode(eligible && !hasEpisode && !asked ? link.id : null, entry?.tv_series.tmdb_id ?? null, entry?.tv_series.number_of_episodes ?? null)
+  const pick = usePickedEpisode(eligible, hasEpisode, nextQ.data, ep => onChange({ kind: 'tv', id: link.id, ...ep }))
+  const send = (ep: Episode) => {
+    pick.decide()
+    setAsked(true)
+    onChange(ep.season != null && ep.episode != null ? { kind: 'tv', id: link.id, season: ep.season, episode: ep.episode } : { kind: 'tv', id: link.id })
   }
   // Remounted by a fill, so its two fields start from the episode filled in.
-  return <EpisodeRow key={filled ? 'filled' : 'own'} link={link} initial={filled ?? link} mark={mark} onChange={own} />
+  return <EpisodeRow key={pick.filled ? 'filled' : 'own'} initial={pick.filled ?? link} shown={link} mark={mark} onChange={send} />
+}
+
+/** A show picked from TMDB's search, not in the library until the save: its first aired episode (the same rule, with
+ *  nothing watched — S1E1 once it has aired), kept on the pick and put on the link the save makes. */
+function NewShowEpisode({ pending, mark, picked, onChange }: {
+  pending: PendingTitle
+  mark?: ReactNode
+  picked: boolean
+  onChange: (ep: Episode) => void
+}) {
+  const hasEpisode = pending.season != null && pending.episode != null
+  const nextQ = useNextEpisodeOfNewShow(picked && !hasEpisode ? pending.tmdbId : null)
+  const pick = usePickedEpisode(picked, hasEpisode, nextQ.data, ep => onChange(ep))
+  const send = (ep: Episode) => {
+    pick.decide()
+    onChange(ep.season != null && ep.episode != null ? ep : { season: undefined, episode: undefined })
+  }
+  return <EpisodeRow key={pick.filled ? 'filled' : 'own'} initial={pick.filled ?? pending} shown={pending} mark={mark} onChange={send} />
 }
 
 /** A show's one episode (optional): S and E, both or neither (210). */
-function EpisodeRow({ link, initial, mark, onChange }: {
-  link: { kind: ItemLinkKind; id: string; season?: number; episode?: number }
-  /** What its fields start with (the link, or the episode just filled in). */
-  initial: { season?: number; episode?: number }
+function EpisodeRow({ initial, shown, mark, onChange }: {
+  /** What its fields start with (the saved episode, or the one just filled in). */
+  initial: Episode
+  /** The episode the form holds now (its tooltip). */
+  shown: Episode
   mark?: ReactNode
-  onChange: (l: ItemLink) => void
+  onChange: (ep: Episode) => void
 }) {
   const [s, setS] = useState(initial.season != null ? String(initial.season) : '')
   const [e, setE] = useState(initial.episode != null ? String(initial.episode) : '')
   const send = (season: string, episode: string) => {
     const sn = /^\d{1,3}$/.test(season) ? Number(season) : null
     const en = /^\d{1,4}$/.test(episode) ? Number(episode) : null
-    onChange(sn != null && en != null ? { kind: 'tv', id: link.id, season: sn, episode: en } : { kind: 'tv', id: link.id })
+    onChange(sn != null && en != null ? { season: sn, episode: en } : {})
   }
   const box = 'input-bare w-10 pb-0 text-center text-lead tabular-nums'
   return (
     <Row label="Episode" mark={mark}>
-      <span className="flex items-center gap-1 text-meta text-fg-muted" title={link.season != null && link.episode != null ? episodeCode(link.season, link.episode) : 'Episode: the whole show, or one episode'}>
+      <span className="flex items-center gap-1 text-meta text-fg-muted" title={shown.season != null && shown.episode != null ? episodeCode(shown.season, shown.episode) : 'Episode: the whole show, or one episode'}>
         S<input aria-label="Season" {...typingHints('season', 'none')} inputMode="numeric" maxLength={3} value={s} placeholder="–" className={box}
           onChange={ev => { setS(ev.target.value); send(ev.target.value, e) }} />
         E<input aria-label="Episode" {...typingHints('episode', 'none')} inputMode="numeric" maxLength={4} value={e} placeholder="–" className={box}

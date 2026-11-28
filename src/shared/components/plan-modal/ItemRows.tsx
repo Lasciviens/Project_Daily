@@ -105,7 +105,7 @@ export function TapRow({ label, mark, value, open, onClick, disabled, tone }: {
  * row opens the shared field list under it (FieldSelect — the Show / Movie search's list, owner 28.11.2026), never a
  * list of its own in the group. ⇕ says it is a list; `value` draws the value when it is more than the choice's words.
  */
-export function SelectRow<T extends string>({ label, mark, value, options, onChange, shown, tone, footer, openOnMount }: {
+export function SelectRow<T extends string>({ label, mark, value, options, onChange, shown, spoken, tone, footer, openOnMount, after }: {
   label: string
   mark?: ReactNode
   value: T
@@ -113,24 +113,43 @@ export function SelectRow<T extends string>({ label, mark, value, options, onCha
   onChange: (value: T) => void
   /** The value as the row shows it, when not the choice's words (the Calendar row's mark). */
   shown?: ReactNode
+  /** The value as it is spoken, when the words shown don't say it all ("Pick one", a refused send). */
+  spoken?: string
   /** The value as a status (a refused send, an end that can't be saved). */
   tone?: 'danger' | 'warn'
   footer?: ReactNode
   openOnMount?: boolean
+  /** Controls of the value in the same row, after the list's button (End Repeat's date pill, its − count +). */
+  after?: ReactNode
 }) {
-  return (
-    <FieldSelect label={label} value={value} options={options} onChange={onChange} footer={footer} openOnMount={openOnMount}
-      buttonClassName={cx(ROW, 'text-left transition-colors hover:bg-surface-hover active:bg-surface-hover data-[open]:bg-surface-hover')}>
-      {(choice, open) => (
-        <>
-          <Label mark={mark}>{label}</Label>
-          <span data-tone={tone} className={cx('flex min-w-0 max-w-[60%] items-center justify-end gap-1.5 tabular-nums', tone ? 'tone-text' : open ? 'text-accent-600' : 'text-fg-muted')}>
-            {shown ?? <Truncate className="min-w-0">{choice?.label ?? ''}</Truncate>}
-          </span>
-          <ChevronsUpDown aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />
-        </>
+  const inside = (choice: FieldChoice<T> | undefined, open: boolean) => (
+    <>
+      <Label mark={mark}>{label}</Label>
+      {shown !== null && (
+        <span data-tone={tone} className={cx('flex min-w-0 max-w-[60%] items-center justify-end gap-1.5 tabular-nums', tone ? 'tone-text' : open ? 'text-accent-600' : 'text-fg-muted')}>
+          {shown ?? <Truncate className="min-w-0">{choice?.label ?? ''}</Truncate>}
+        </span>
       )}
-    </FieldSelect>
+      <ChevronsUpDown aria-hidden className="h-4 w-4 shrink-0 text-fg-faint" />
+    </>
+  )
+  const hover = 'text-left transition-colors hover:bg-surface-hover active:bg-surface-hover data-[open]:bg-surface-hover'
+  if (!after) {
+    return (
+      <FieldSelect label={label} value={value} options={options} onChange={onChange} footer={footer} openOnMount={openOnMount} spoken={spoken}
+        buttonClassName={cx(ROW, hover)}>
+        {inside}
+      </FieldSelect>
+    )
+  }
+  return (
+    <div className={cx(ROW, 'pr-3.5')}>
+      <FieldSelect label={label} value={value} options={options} onChange={onChange} footer={footer} openOnMount={openOnMount} spoken={spoken} align="start"
+        buttonClassName={cx('-ml-3.5 flex min-w-0 flex-1 items-center gap-2.5 self-stretch rounded-r-control pl-3.5 pr-1', hover)}>
+        {inside}
+      </FieldSelect>
+      {after}
+    </div>
   )
 }
 

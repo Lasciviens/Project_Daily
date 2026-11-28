@@ -564,7 +564,7 @@ console.log('\n== 12. The screen\'s look on a phone (owner, 27.11.2026: "Things 
   check('…with too little room under it the field is scrolled up just enough for three rows, never past the status bar',
     O.optionsLift({ top: 300, bottom: 340 }, { ...vis, bottom: 400 }, 8) === 340 + 8 + O.OPTIONS_FLOOR + 12 + 4 - 400
     && O.optionsLift({ top: 100, bottom: 140 }, vis, 8) === 0 && O.optionsLift({ top: 80, bottom: 120 }, { ...vis, bottom: 200 }, 8) === 80 - 59 - 12)
-  check('…FieldOptions scrolls the field up (at most twice) before it sizes the list', /const lift = optionsLift\(\{ top: r\.top, bottom: r\.bottom \}, visible, gap, want\)/.test(fo) && /lift > 0 && lifted < 2 \? scrollerOf\(el\) : null/.test(fo))
+  check('…FieldOptions scrolls the field up (at most twice) before it sizes the list', /const lift = optionsLift\(\{ top: r\.top, bottom: r\.bottom \}, visible, gap, want, cap\)/.test(fo) && /lift > 0 && lifted < 2 \? scrollerOf\(el\) : null/.test(fo))
   check('…a list that wants more (a select\'s choices) moves its row up enough for them, still at most OPTIONS_CAP',
     O.optionsLift({ top: 300, bottom: 340 }, { ...vis, bottom: 600 }, 8, 260) === 340 + 8 + 260 + 12 + 4 - 600
     && O.optionsLift({ top: 300, bottom: 340 }, { ...vis, bottom: 600 }, 8, 9999) === 340 + 8 + O.OPTIONS_CAP + 12 + 4 - 600)
@@ -628,39 +628,38 @@ console.log('\n== 13. Every dropdown on the item screen is the shared field list
     /lists \? <SelectChip<T> \{\.\.\.props\} \/> : <ChipSelect<T> \{\.\.\.props\} \/>/.test(fields) && (fields.match(/<ChoiceSelect lists=\{lists\}/g) || []).length === 2
     && /alwaysPreview end=\{form\.repeatEnd\} lists/.test(pm('TimeSection.tsx')))
   const rowsOf = [['Category', 'DetailsSection.tsx'], ['Travel Time', 'CalendarFieldRows.tsx'], ['Alert', 'CalendarFieldRows.tsx'], ['Second Alert', 'CalendarFieldRows.tsx'],
-    ['Calendar', 'OptionsSection.tsx'], ['List', 'OptionsSection.tsx'], ['Time Zone', 'TimeSection.tsx'], ['End Repeat', 'EndRepeatRows.tsx']]
+    ['Calendar', 'OptionsSection.tsx'], ['List', 'OptionsSection.tsx'], ['Time Zone', 'TimeSection.tsx'], ['Repeat', 'TimeSection.tsx'], ['End Repeat', 'EndRepeatRows.tsx']]
   const missing = rowsOf.filter(([l, f]) => !new RegExp(`<SelectRow(<[A-Za-z]+>)? label="${l}"`).test(pm(f))).map(([l]) => l)
-  check('…Category, Travel Time, Alert, Second Alert, Calendar, List, Time Zone and End Repeat are SelectRows', missing.length === 0, missing.join(', '))
+  check('…Category, Travel Time, Alert, Second Alert, Calendar, List, Time Zone, Repeat and End Repeat are SelectRows', missing.length === 0, missing.join(', '))
+  const time = pm('TimeSection.tsx'), end = pm('EndRepeatRows.tsx'), opts = pm('OptionsSection.tsx')
+  check('…Repeat\'s kind is its row (one tap, ⇕); the days, Custom and the next dates show under it only for Weekly, Monthly and Custom (no kind chip there)',
+    /const REPEAT_EDITED: ReadonlySet<RecurrenceMode> = new Set\(\['weekly', 'monthly', 'custom'\]\)/.test(time)
+    && /\{repeating && REPEAT_EDITED\.has\(form\.recurrence\) && \(/.test(time) && /lists kind=\{false\}/.test(time) && !/TapRow label="Repeat"/.test(time)
+    && /\{kind && \(\n\s*<ChoiceSelect lists=\{lists\}/.test(fields))
+  check('…End Repeat is one row: its kind, and an end\'s value beside it (the date pill, or − count + said once), then the next dates and the last, or the problem',
+    /after=\{until !== null \? \(/.test(end) && /<TimesField count=\{count\}/.test(end) && /shown=\{kind === 'never' \? undefined : null\}/.test(end)
+    && /`Next \$\{preview\.next\.map/.test(end) && /\{problem \? <NoteRow tone="danger">\{problem\}<\/NoteRow> : preview && \(/.test(end) && !/<Row label="Times">|<Row label="Last day">/.test(end))
+  check('…a row\'s spoken value says what the eye reads: the List row "Pick one" when empty, the Calendar row its refused or warned state',
+    /spoken=\{name \? `\$\{name\}\$\{isNew \? ', new' : ''\}` : 'Pick one'\}/.test(opts) && /refused && `not sent — \$\{refused\}`/.test(opts)
+    && /aria-label=\{`\$\{label\}: \$\{spoken \?\? shown\?\.label \?\? value\}`\}/.test(src('src/shared/components/FieldSelect.tsx')))
   check('…a cost\'s currency is a SelectChip; the Parent search\'s matches a FieldOptions', /<SelectChip<DetailCurrency> label="Currency"/.test(pm('DetailsSection.tsx'))
     && /<FieldOptions field=\{field\} align="start"/.test(src('src/features/todo/components/ParentPicker.tsx')))
   const fsel = src('src/shared/components/FieldSelect.tsx'), rows = pm('ItemRows.tsx')
   check('FieldSelect is a Headless UI Listbox in the shared list: the same room (useOptionsRoom), look (FIELD_LIST) and anchor as FieldOptions',
     /<Listbox value=\{value\} onChange=\{onChange\}/.test(fsel) && /<ListboxOptions static modal=\{false\} aria-label=\{label\} anchor=\{\{ to: `bottom \$\{align\}`, gap: 6, padding: OPTIONS_MARGIN \}\}/.test(fsel)
-    && /data-field-list="" style=\{roomStyle\(room\)\} className=\{cx\(FIELD_LIST/.test(fsel) && /data-field-list="" style=\{roomStyle\(room\)\} className=\{cx\(FIELD_LIST, className\)\}/.test(src('src/shared/components/FieldOptions.tsx'))
-    && /const room = useOptionsRoom\(button, 6, want\)/.test(fsel))
+    && /ref=\{list\} data-field-list="" style=\{roomStyle\(height\)\} className=\{cx\(FIELD_LIST/.test(fsel) && /data-field-list="" style=\{roomStyle\(room\)\} className=\{cx\(FIELD_LIST, className\)\}/.test(src('src/shared/components/FieldOptions.tsx'))
+    && /const room = useOptionsRoom\(button, 6, want, Number\.POSITIVE_INFINITY\)/.test(fsel))
+  // Owner-critic, 28.11.2026: Category showed 6 of 8 and Alert 6 of 12, cut on a row's edge at 288px with no sign of more.
+  const O2 = require('../src/shared/components/fieldOptionsRoom')
+  const rowsAt = Array.from({ length: 8 }, (_, i) => ({ top: 7 + i * 44, height: 44 }))
+  check('…a plain choice\'s list grows to the room on the screen (no 18rem cap); one still too tall is cut in the middle of a row',
+    O2.optionsMaxHeight({ top: 100, bottom: 140 }, { top: 0, bottom: 874, safeTop: 0 }, 6, Number.POSITIVE_INFINITY) > O2.OPTIONS_CAP
+    && O2.midRowCut(400, rowsAt, 366) === 400 && O2.midRowCut(271, rowsAt, 366) === 7 + 5 * 44 + 22 && O2.midRowCut(290, rowsAt, 366) === 290
+    && O2.midRowCut(10, rowsAt, 366) === 29)
   check('…a row\'s list says it is a list (⇕) and opens from the whole row; "Move to list…" opens the List row\'s list',
     /<ChevronsUpDown aria-hidden/.test(rows) && /export function SelectRow</.test(rows) && /openOnMount=\{config\?\.openRow === 'list'\}/.test(pm('ItemForm.tsx')))
 
-  // App-wide (owner, 28.11.2026: "Also make sure it is on design md so this is our default from now on"): a raw choice list
-  // only where one is today (THEME §8's migration backlog); new code uses FieldOptions / FieldSelect.
-  const TODAY_RAW = [
-    'src/features/devRequests/components/PropertyPills.tsx', 'src/features/games/test-game/components/TgDropdown.tsx',
-    'src/features/games/test-game/components/TgMultiDropdown.tsx', 'src/features/home/components/CurrencyConverter.tsx',
-    'src/features/home/components/ruter/StopSearchInput.tsx', 'src/features/recipes/components/AssignMealModal.tsx',
-    'src/features/recipes/components/LibraryTabFilters.tsx', 'src/features/recipes/components/RecipeModalFoodLink.tsx',
-    'src/features/recipes/components/foodLogKit.tsx', 'src/features/supplements/components/WhatField.tsx',
-    'src/features/training/components/ExerciseProgressChart.tsx', 'src/features/training/components/RelativeStrengthChart.tsx',
-    'src/features/training/components/RoutineFormParts.tsx', 'src/shared/components/CommandPalette.tsx',
-    'src/shared/components/FieldOptions.tsx', 'src/shared/components/FieldSelect.tsx',
-  ]
-  const found = require('child_process').execSync("grep -rlE '<(ComboboxOptions|ListboxOptions)\\b' src --include=*.tsx || true", { cwd: path.join(__dirname, '..') })
-    .toString().trim().split('\n').filter(Boolean)
-  const added = found.filter(f => !TODAY_RAW.includes(f))
-  check('no new raw ComboboxOptions / ListboxOptions anywhere (today\'s are THEME\'s backlog; new ones use FieldOptions / FieldSelect)', added.length === 0, added.join(', '))
-  const theme = src('docs/design/THEME.md'), ui = src('.claude/rules/ui.md')
-  check('…THEME says it is the default, quoting the owner, and lists the backlog; ui.md carries the rule',
-    theme.includes('Also make sure it is on design md so this is our default from now on') && theme.includes('I almodt want everything to use that type dropdown')
-    && TODAY_RAW.filter(f => !/FieldOptions|FieldSelect/.test(f)).every(f => theme.includes(path.basename(f, '.tsx'))) && /FieldSelect/.test(ui))
+  check('…the app-wide rule (no new raw list or native select anywhere) is verify-dropdowns\' own', fs.existsSync(path.join(__dirname, 'verify-dropdowns.cjs')))
 }
 
 console.log('\n== 14. A picked show\'s next episode by default (owner, 28.11.2026: "when I select the tv serie it should by default bring next episode") ==')
@@ -672,14 +671,16 @@ console.log('\n== 14. A picked show\'s next episode by default (owner, 28.11.202
     E.episodeDefault({ ...next, caughtUp: true, season: null, episode: null }) === null && E.episodeDefault({ ...next, released: false }) === null
     && E.episodeDefault({ ...next, airDate: null }) === null && E.episodeDefault(undefined) === null && E.episodeDefault(null) === null)
   const det = src('src/shared/components/plan-modal/DetailsSection.tsx')
-  check('…only after a pick in the Show search on this visit: an item that opens with a show and no episode stays a whole-show plan (opening writes nothing)',
-    /if \(p\.link\.kind === 'tv' && 'id' in p\.link\) setPicked\(/.test(det) && /fill=\{picked\?\.id === link\.id\}/.test(det)
-    && /useState\(\(\) => !pickedNow \|\| \(link\.season != null && link\.episode != null\)\)/.test(det))
-  check('…from the app\'s one rule (useNextEpisode), once per pick, never over an episode the owner set or cleared',
-    /useNextEpisode\(decided \? null : link\.id, entry\?\.tv_series\.tmdb_id \?\? null, entry\?\.tv_series\.number_of_episodes \?\? null\)/.test(det)
-    && /key=\{`\$\{link\.id\}:\$\{picked\?\.id === link\.id \? picked\.n : 0\}`\}/.test(det) && /const own = \(l: ItemLink\) => \{\n\s*setDecided\(true\)/.test(det))
+  check('…only after a pick in the Show search on this visit — of a library show, or of a TMDB title (its first aired episode, kept on the pick, put on the link the save makes); an item that opens with a show and no episode stays a whole-show plan',
+    /if \(p\.link\.kind === 'tv' && 'id' in p\.link\) setPicked\(/.test(det) && /if \(p\.pending\.kind === 'tv'\) setPicked\(/.test(det)
+    && /const eligible = !!picked && \(picked\.id === link\.id \|\| \(picked\.tmdbId != null && entry\?\.tv_series\.tmdb_id === picked\.tmdbId\)\)/.test(det)
+    && /useNextEpisodeOfNewShow\(picked && !hasEpisode \? pending\.tmdbId : null\)/.test(det)
+    && /p\.kind === 'tv' && p\.season != null && p\.episode != null \? \{ kind: 'tv', id, season: p\.season, episode: p\.episode \}/.test(src('src/shared/components/plan-modal/UnifiedPlanModal.tsx')))
+  check('…from the app\'s one rule (useNextEpisode; for a show not in the library yet the same rule with nothing watched), once per pick, never over an episode the owner set or cleared',
+    /useNextEpisode\(eligible && !hasEpisode && !asked \? link\.id : null/.test(det) && /queryFn: {2}\(\) => computeNextEpisode\(null, tmdbId!, null\)/.test(src('src/features/media/hooks/useNextEpisode.ts'))
+    && /const fill = eligible && !decided \? episodeDefault\(next\) : null/.test(det) && /const \[decided, setDecided\] = useState\(hasEpisode\)/.test(det))
   check('…filled, it is saved as a picked episode (the link\'s season and episode: the plan becomes that episode\'s)',
-    /onChange\(\{ kind: 'tv', id: link\.id, season: filled\.season, episode: filled\.episode \}\)/.test(det))
+    /usePickedEpisode\(eligible, hasEpisode, nextQ\.data, ep => onChange\(\{ kind: 'tv', id: link\.id, \.\.\.ep \}\)\)/.test(det))
   check('…no device memory any more (nothing per item kept, nothing for sign-out to clear)',
     !/localStorage|episodeCleared/.test(src('src/features/items/episodeDefault.ts')) && !/episodeCleared/.test(src('src/security/accountState.ts')) && !/itemKey/.test(det))
   check('…the audit opens a whole-show plan and fails on any save it sends, then picks the show and wants S2 E6 saved',

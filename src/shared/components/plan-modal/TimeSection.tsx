@@ -20,25 +20,29 @@ import { AllDayBand, DayTimeline } from './DayTimeline'
 import { EndRepeatRows } from './EndRepeatRows'
 import { TimeWheel } from './TimeWheel'
 import { FieldMark } from './FieldMark'
-import { NoteRow, Panel, Pill, Row, SelectRow, TapRow, ToggleRow } from './ItemRows'
+import { LINE, NoteRow, Panel, Pill, Row, SelectRow, ToggleRow } from './ItemRows'
+import { cx, Truncate } from '../../ui'
 import { chipClass } from './fieldStyles'
 import { sectionForItem } from '../../../features/items/sheetRules'
-import { addDaysIso } from '../../../features/daily/recurrence'
+import { addDaysIso, weekdayOfIso } from '../../../features/daily/recurrence'
 import { itemTimeZone, SERVER_EVENT_TIME_ZONE } from '../../../features/calendar/calendarEventRules'
 import { phoneTimeZone, sameClock, zoneCity } from '../../utils/timeZone'
 import type { GoogleTarget } from '../../../features/items/itemTypes'
 import {
-  displayDate, isScheduleFieldHidden, recurrenceProblem, repeatAnchorOf, repeatPreview, withStartForRepeatChange,
+  displayDate, isScheduleFieldHidden, pickRecurrence, recurrenceProblem, repeatAnchorOf, repeatPreview, withStartForRepeatChange,
   RECURRENCE_OPTIONS, RECURRING_EDIT_OPTIONS, type RepeatAnchor,
 } from './planModal.config'
 import { withAllDaySwitch, withCalendarField, withDate, withEnd, type PlanForm } from './planForm'
 import { END_PROBLEM_TEXT, endOf, endOnWheel, minutesOf, timeOfMinutes, type FieldGoes, type ScreenField } from './itemScreenRules'
 import type { TaskSection } from '../../../features/todo/types'
-import type { PlanModalConfig } from './planModal.types'
+import type { PlanModalConfig, RecurrenceMode } from './planModal.types'
 
 /** An editor opened in the list under its row (a choice from a list is a SelectRow's own list, not a panel). */
+/** The kinds whose days (or Custom's rule) are set under the Repeat row; the others say it all in the row. */
+const REPEAT_EDITED: ReadonlySet<RecurrenceMode> = new Set(['weekly', 'monthly', 'custom'])
+
 export type PanelKey =
-  | 'sDate' | 'sTime' | 'eDate' | 'eTime' | 'repeat' | 'deadline' | 'dTime' | 'window'
+  | 'sDate' | 'sTime' | 'eDate' | 'eTime' | 'deadline' | 'dTime' | 'window'
   | 'repeatEnd' | 'link' | 'waiting' | 'parent'
 
 const SECTION_LABEL = { inbox: 'Inbox', today: 'Today', backlog: 'Backlog' } as const
@@ -111,6 +115,8 @@ export function TimeSection({
   const [heldDay, setHeldDay] = useState<Pick<PlanForm, 'date' | 'time' | 'duration' | 'googlePick'> | null>(null)
   const [heldTime, setHeldTime] = useState<Pick<PlanForm, 'duration' | 'alerts' | 'calendarTouched'> & { time: string } | null>(null)
 
+  // "Never" for no repeat, as Apple says it; a saved repeat can't turn into a one-off here.
+  const repeatChoices = (savedKind === 'repeat' ? RECURRING_EDIT_OPTIONS : RECURRENCE_OPTIONS).map(o => (o.value === 'none' ? { ...o, label: 'Never' } : o))
   const onRepeat = (p: Partial<PlanForm>) =>
     patch(savedRepeat && savedKind === 'repeat' ? withStartForRepeatChange(form, p, savedRepeat, today) : p)
 
@@ -228,16 +234,21 @@ export function TimeSection({
 
           {(canRepeat || repeating) && !day && (
             <>
-              <TapRow label="Repeat" mark={<FieldMark goes={goes('repeat')} />} open={open === 'repeat'} onClick={() => toggle('repeat')}
-                value={!repeating ? 'Never' : preview?.summary ?? recurrenceProblem(form) ?? 'Repeats'}
+              {/* Its kind in the shared field list (owner, 28.11.2026: "apply that to all dropdowns in task screen"); the days,
+                  Custom and the next dates under it only for a kind that has them (Weekly, Monthly, Custom). */}
+              <SelectRow<RecurrenceMode> label="Repeat" mark={<FieldMark goes={goes('repeat')} />}
+                value={repeating ? form.recurrence : 'none'} options={repeatChoices}
+                onChange={mode => onRepeat(pickRecurrence(form, mode, weekdayOfIso(date)))}
+                shown={<Truncate className="min-w-0">{!repeating ? 'Never' : preview?.summary ?? recurrenceProblem(form) ?? 'Repeats'}</Truncate>}
                 tone={repeating && !preview ? 'warn' : undefined} />
-              {open === 'repeat' && (
-                <Panel label="Repeat">
+              {repeating && REPEAT_EDITED.has(form.recurrence) && (
+                <div role="group" aria-label="Repeat: its days" className={cx(LINE, 'px-3.5 pb-3 pt-2')}>
                   <RecurrenceField
-                    value={form} onChange={onRepeat} start={date} exceptDates={exceptDates} alwaysPreview end={form.repeatEnd} lists
-                    options={savedKind === 'repeat' ? RECURRING_EDIT_OPTIONS : RECURRENCE_OPTIONS}
+                    value={form} onChange={onRepeat} start={date} exceptDates={exceptDates} alwaysPreview end={form.repeatEnd} lists kind={false}
+                    showPreview={!form.repeatEnd}
+                    options={repeatChoices}
                   />
-                </Panel>
+                </div>
               )}
               {repeating && (
                 <EndRepeatRows

@@ -267,7 +267,8 @@ function ChoiceSelect<T extends string>({ lists, ...props }: Parameters<typeof C
 }
 
 export function RecurrenceField({
-  value, onChange, start, exceptDates, locked, options = RECURRENCE_OPTIONS, alwaysPreview = false, end = null, lists = false,
+  value, onChange, start, exceptDates, locked, options = RECURRENCE_OPTIONS, alwaysPreview = false, end = null, lists = false, kind = true,
+  showPreview = true,
 }: {
   value: RepeatFormFields
   onChange: (p: Partial<RepeatFormFields>) => void
@@ -288,6 +289,11 @@ export function RecurrenceField({
   /** The item screen: its choices open the shared field list (FieldSelect, owner 28.11.2026), not the phone's picker —
    *  other screens keep the native select until the app-wide move. */
   lists?: boolean
+  /** Its kind's chip (Weekly ▾); the item screen picks the kind in its Repeat row instead (a SelectRow) and shows only
+   *  the days, Custom and the next dates here. */
+  kind?: boolean
+  /** Its next dates (off where End Repeat's row says them, so they aren't shown twice). */
+  showPreview?: boolean
 }) {
   const picker = dayPickerFor(value)
   const circles = picker && (
@@ -298,15 +304,17 @@ export function RecurrenceField({
   const problem = recurrenceProblem(value)
   // Every day / Weekdays / Weekly: the select and the circles already say it
   // all — a summary line would only repeat them (an extra line on a phone).
-  const preview = alwaysPreview || value.recurrence === 'monthly' || custom ? repeatPreview(value, start, todayStr(), exceptDates, end) : null
+  const preview = showPreview && (alwaysPreview || value.recurrence === 'monthly' || custom) ? repeatPreview(value, start, todayStr(), exceptDates, end) : null
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
-        <ChoiceSelect lists={lists}
-          label="Repeat" icon={<Repeat aria-hidden />} value={value.recurrence} options={options} disabled={locked}
-          onChange={mode => onChange(pickRecurrence(value, mode, weekdayOfIso(start)))}
-        />
+        {kind && (
+          <ChoiceSelect lists={lists}
+            label="Repeat" icon={<Repeat aria-hidden />} value={value.recurrence} options={options} disabled={locked}
+            onChange={mode => onChange(pickRecurrence(value, mode, weekdayOfIso(start)))}
+          />
+        )}
         {custom
           ? <SegmentedControl size="xs" options={CUSTOM_KINDS} value={value.customKind} onChange={k => onChange({ customKind: k })} />
           : circles}
