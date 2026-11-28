@@ -2706,7 +2706,7 @@ async function tickAddsOnTrakt(db: Db, userId: string, token: string, rows: AnyR
   for (const [title, list] of byTitle) {
     if (Date.now() >= deadline) { for (const r of list) out.later.add(String(r.id)); continue }
     const [type, tmdb] = title.split(':')
-    let plays: KeyedPlay[] = []
+    let plays: KeyedPlay[]
     try {
       const trakt = await traktIdOf(db, token, type as 'movie' | 'show', Number(tmdb))
       if (!trakt) continue
