@@ -109,6 +109,15 @@ accounts) and it only changes Trakt's progress view (`reset_at`); rewatch rounds
   The echo of a play we pushed is linked by the same second. An untick removes the play by the id only the sync
   writes (`trakt_history_id`), else the exact second — never a value the browser can write. Ticked first and marked
   on Trakt afterwards is the owner's own second play; nothing here removes it.
+  The drain reads each title's history once per run, counts those reads in its call budget, checks nothing after the
+  run's deadline (those adds wait in the outbox for the next run), and sends an add as before when its title's read
+  fails (only a dead sign-in stops the run).
+- **Two same-second edges of a held-back add (216).** (1) The owner's own Trakt play is at the very second of the tick:
+  the pull links the tick's watch to it without moving its date, so the ledger still sees "the tick's watch" and an
+  untick removes it — and with it the owner's Trakt play (by its id). (2) Unticked before any pull: the held-back add
+  was never sent, so the untick's single-play remove has no id; the drain removes a play only at that exact second when
+  no watch here accounts for it — the owner's play at another second is "gone already" and stays, one at the same second
+  would go. Both need the owner's mark and the tick in the same second; the rest of the time Trakt keeps the owner's play.
 - **Page counts.** `getAll` reads `X-Pagination-Page-Count`; a limit above the endpoint's maximum is clamped,
   not refused. More than 200 pages throws (a mirror reading half a list would remove the other half).
 - **Unknown dates** come back as the epoch; movies store NULL, episodes keep the epoch (NULL there means not

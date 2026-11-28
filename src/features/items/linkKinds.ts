@@ -24,6 +24,8 @@ export interface LinkKindDef {
 
 export const LINK_KINDS: Record<ItemLinkKind, LinkKindDef> = {
   movie:     { kind: 'movie', label: 'Movie', icon: Clapperboard, column: 'movie_entry_id', closedBy: 'tick' },
+  // One episode (link_season + link_episode) is ticked into a watch (216); a plan of a whole show is still closed by
+  // the sync (an episode watch) or by hand — `planClosedBy` says which for a task.
   tv:        { kind: 'tv', label: 'Show', icon: Tv, column: 'tv_entry_id', closedBy: 'tick' },
   shop_item: { kind: 'shop_item', label: 'Shop', icon: ShoppingBag, column: 'shop_item_id', closedBy: 'tick' },
   wish:      { kind: 'wish', label: 'Wish', icon: Sparkles, column: 'wish_item_id', closedBy: 'tick' },
@@ -63,4 +65,11 @@ export function episodeCode(season: number, episode: number): string {
 export function screenLinkOf(task: Partial<Task> | null | undefined, link: ItemLink | null | undefined): TaskLink | null {
   if (task) return taskLinkOf(task)
   return link && 'id' in link ? { kind: link.kind, id: link.id, season: link.season, episode: link.episode } : null
+}
+
+/** Who closes this plan: its kind's rule, except a plan of a whole show (no episode) — the sync's, never ticked into a
+ *  watch (216 marks one episode only; no episode is guessed). */
+export function planClosedBy(link: TaskLink): LinkKindDef['closedBy'] {
+  if (link.kind === 'tv' && (link.season == null || link.episode == null)) return 'sync'
+  return LINK_KINDS[link.kind].closedBy
 }

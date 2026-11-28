@@ -602,3 +602,81 @@ begin;
 select set_config('app.plan_tick', (select mt_id('s1e3'))::text || ':1', true);
 select mt_ok(public.plan_tick_task() is null, 'EP11 a marker stamped with another transaction''s id is ignored');
 commit;
+
+-- ═══ SP. The show moves on as the Trakt sync would set it (and back on untick) ═══
+insert into public.tv_series (id, tmdb_id, title, metadata_json) values
+  ('c0000000-0000-0000-0000-000000000002', 4250, 'Dark', '{}'),
+  ('c0000000-0000-0000-0000-000000000003', 4251, 'Chernobyl',
+   '{"status": "Ended", "seasons": [{"season_number": 1, "episode_count": 2}], "last_episode_to_air": {"season_number": 1, "episode_number": 2}}'),
+  ('c0000000-0000-0000-0000-000000000004', 4252, 'Lost', '{}'),
+  ('c0000000-0000-0000-0000-000000000005', 4253, 'Fargo', '{}');
+insert into public.user_tv_entries (id, user_id, title, tv_series_id, status, started_at) values
+  ('c1000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'Dark', 'c0000000-0000-0000-0000-000000000002', 'wishlist', null),
+  ('c1000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001', 'Chernobyl', 'c0000000-0000-0000-0000-000000000003', 'watching', '2026-11-01 20:00+01'),
+  ('c1000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000001', 'Lost', 'c0000000-0000-0000-0000-000000000004', 'paused', '2025-01-01 20:00+01'),
+  ('c1000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000001', 'Fargo', 'c0000000-0000-0000-0000-000000000005', 'dropped', null);
+insert into public.media_watches (user_id, kind, tv_series_id, season_number, episode_number, watched_at) values
+  ('00000000-0000-0000-0000-000000000001', 'episode', 'c0000000-0000-0000-0000-000000000003', 1, 1, '2026-11-01 21:00+01');
+set role authenticated;
+select mt_ep_plan('dark', 'c1000000-0000-0000-0000-000000000002', 1, 1);
+select mt_set(mt_id('dark'), 'done');
+select mt_ok((mt_show('c1000000-0000-0000-0000-000000000002')).status = 'watching'
+        and (mt_show('c1000000-0000-0000-0000-000000000002')).started_at = (select watched_at from mt_ep_watches('c0000000-0000-0000-0000-000000000002', 1, 1))
+        and (mt_show('c1000000-0000-0000-0000-000000000002')).finished_at is null,
+  'SP1 a Wishlist show''s episode ticked: Watching, started at the tick (the sync''s rule: aired unknown → Watching)');
+select mt_set(mt_id('dark'), 'open');
+select mt_ok((mt_show('c1000000-0000-0000-0000-000000000002')).status = 'wishlist' and (mt_show('c1000000-0000-0000-0000-000000000002')).started_at is null,
+  'SP1 unticked: back on Wishlist, no start date');
+select mt_ep_plan('lost', 'c1000000-0000-0000-0000-000000000004', 1, 1);
+select mt_set(mt_id('lost'), 'done');
+select mt_ok((mt_show('c1000000-0000-0000-0000-000000000004')).status = 'watching'
+        and (mt_show('c1000000-0000-0000-0000-000000000004')).started_at = '2025-01-01 20:00+01',
+  'SP2 a Paused show''s episode ticked: Watching again, its own start date kept');
+select mt_set(mt_id('lost'), 'cancelled');
+select mt_ok((mt_show('c1000000-0000-0000-0000-000000000004')).status = 'paused', 'SP2 cancelled: Paused again');
+select mt_ep_plan('chern', 'c1000000-0000-0000-0000-000000000003', 1, 2);
+select mt_set(mt_id('chern'), 'done');
+select mt_ok((mt_show('c1000000-0000-0000-0000-000000000003')).status = 'completed'
+        and (mt_show('c1000000-0000-0000-0000-000000000003')).finished_at = (select watched_at from mt_ep_watches('c0000000-0000-0000-0000-000000000003', 1, 2))
+        and (mt_show('c1000000-0000-0000-0000-000000000003')).started_at = '2026-11-01 20:00+01',
+  'SP3 the last aired episode (TMDB''s data) ticked: Completed, finished at the tick — as the Trakt sync would set it');
+select mt_set(mt_id('chern'), 'open');
+select mt_ok((mt_show('c1000000-0000-0000-0000-000000000003')).status = 'watching'
+        and (mt_show('c1000000-0000-0000-0000-000000000003')).finished_at is null
+        and (mt_show('c1000000-0000-0000-0000-000000000003')).rewatch_round is null,
+  'SP3 unticked: Watching again, no finish date — and not read as a new rewatch (161)');
+select mt_set(mt_id('chern'), 'done');
+update public.user_tv_entries set status = 'paused' where id = 'c1000000-0000-0000-0000-000000000003';
+select mt_set(mt_id('chern'), 'open');
+select mt_ok((mt_show('c1000000-0000-0000-0000-000000000003')).status = 'paused'
+        and not exists (select 1 from mt_ep_watches('c0000000-0000-0000-0000-000000000003', 1, 2)),
+  'SP4 the owner set Paused after the tick: the untick removes its watch and keeps the owner''s status');
+select mt_ep_plan('fargo', 'c1000000-0000-0000-0000-000000000005', 1, 1);
+select mt_set(mt_id('fargo'), 'done');
+select mt_ok((mt_show('c1000000-0000-0000-0000-000000000005')).status = 'dropped'
+        and (select count(*) from mt_ep_watches('c0000000-0000-0000-0000-000000000005', 1, 1)) = 1,
+  'SP5 a Dropped show: the episode is watched, the show stays Dropped (as the sync keeps it)');
+
+-- ═══ D. The tick's date: Undo puts the watch back at it; never before 1971, never ahead ═══
+select mt_set(mt_id('dune'), 'done');
+insert into public.mt_keep values ('dune_at', to_jsonb((mt_effect(mt_id('dune'))).after ->> 'watched_at'));
+select mt_set(mt_id('dune'), 'open');
+-- The reopen toast's Undo: ticked again with the tick's own time.
+update public.tasks set status = 'done', completed_at = (select (v #>> '{}')::timestamptz from public.mt_keep where k = 'dune_at') where id = mt_id('dune');
+select mt_ok((select count(*) from mt_watches('b1000000-0000-0000-0000-000000000001')) = 1
+        and (select watched_at from mt_watches('b1000000-0000-0000-0000-000000000001')) = (select (v #>> '{}')::timestamptz from public.mt_keep where k = 'dune_at'),
+  'DT1 Undo of the untick ticks again at the tick''s own time: the watch is back at its date');
+select mt_set(mt_id('dune'), 'open');
+update public.tasks set status = 'done', completed_at = now() + interval '3 days' where id = mt_id('dune');
+select mt_ok((select watched_at from mt_watches('b1000000-0000-0000-0000-000000000001')) <= now(),
+  'DT2 a close time ahead of now dates the watch now (never a future watch)');
+select mt_set(mt_id('dune'), 'open');
+update public.tasks set status = 'done', completed_at = '1960-06-01 12:00+00' where id = mt_id('dune');
+select mt_ok(not exists (select 1 from mt_watches('b1000000-0000-0000-0000-000000000001'))
+        and (mt_effect(mt_id('dune'))).task_id is null,
+  'DT3 a close time before 1971 writes no watch (Trakt''s unknown date is the epoch) and nothing to undo');
+select mt_set(mt_id('lost'), 'open');
+update public.tasks set status = 'done', completed_at = '1969-07-20 20:17+00' where id = mt_id('lost');
+select mt_ok(not exists (select 1 from mt_ep_watches('c0000000-0000-0000-0000-000000000004', 1, 1)),
+  'DT3 the same floor for an episode');
+reset role;

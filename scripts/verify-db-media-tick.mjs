@@ -39,8 +39,9 @@ const fail = msg => { console.error(`verify-db-media-tick: ${msg}`); process.exi
   }
   // Every query on a user table in the movie parts names the task's own user.
   const fn = sql.slice(sql.indexOf('create or replace function public.tasks_link_effects()'))
-  for (const q of fn.matchAll(/(?:update|delete from|from)\s+public\.(user_movie_entries|user_tv_entries|media_watches)\b[\s\S]*?(?:;|\bthen\b|\bloop\b)/g)) {
-    if (!/user_id = (new|e)\.user_id/.test(q[0])) problems.push(`a query on ${q[1]} not scoped to the task's user: ${q[0].slice(0, 80)}`)
+  // An update or delete up to its end; a read up to its statement's end or the THEN / LOOP it guards.
+  for (const q of fn.matchAll(/(?:\b(?:update|delete from)\s+public\.(user_movie_entries|user_tv_entries|media_watches)\b[\s\S]*?;)|(?:\bfrom\s+public\.(user_movie_entries|user_tv_entries|media_watches)\b[\s\S]*?(?:;|\bthen\b|\bloop\b))/g)) {
+    if (!/user_id = (new|e)\.user_id/.test(q[0])) problems.push(`a query on ${q[1] ?? q[2]} not scoped to the task's user: ${q[0].slice(0, 80)}`)
   }
   // 211's effects are carried over word for word (a later copy that dropped one would be a silent regression).
   const part = (s, a, b) => s.slice(s.indexOf(a), s.indexOf(b, s.indexOf(a)))

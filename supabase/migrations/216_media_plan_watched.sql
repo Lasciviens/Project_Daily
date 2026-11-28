@@ -23,8 +23,10 @@
 --    media_watches row of that episode (kind episode — 149 makes its user_tv_episodes row on a first watch), dated at the
 --    tick, which is what the Media page's checkbox (a first watch) and Watched again (one more) end up writing; 149's
 --    cache keeps the episode's date and plays, 050's trigger the show's next-episode pointer, and the outbox sends
---    history_add as one episode of the show (the shows / seasons / episodes shape). The show's status is not touched
---    (the checkbox doesn't touch it, nor started_at / finished_at); only 149's rule may end a rewatch round it finishes.
+--    history_add as one episode of the show (the shows / seasons / episodes shape). The show moves on as the Trakt sync
+--    would set it (traktSyncPlan's statusFor, so the app and Trakt agree): Completed once every aired regular episode by
+--    the stored TMDB data has a watch, else Watching (from Wishlist, Upcoming, Paused or Watching); started_at is set
+--    when empty, finished_at when Completed. Dropped, Completed and a rewatch round (149's cache ends it) stay.
 --    043/155's rule (a watch of a planned episode removes its slots dated on or before the watch) keeps the TICKED
 --    task's own slot: the plan is done, and its slot is its record of when it was planned (Daily shows it there; an
 --    untick finds it in place). The effect names its task in a transaction-local setting stamped with the transaction
@@ -37,7 +39,9 @@
 --    Watching / Paused / Dropped come back through Paused, so 161's guard never reads Completed → Watching as a new
 --    rewatch round; a rewatch round comes back with its own number and start. An episode's untick deletes its watch
 --    the same way (149: the episode row stays, not watched, when it was its last watch — never the whole episode's
---    Trakt remove) and puts back a show's rewatch round the tick finished, while the show is still as the tick left it.
+--    Trakt remove) and puts back the show's status, dates and rewatch round, only while the show still has exactly the
+--    status and dates the tick left. A close time before 1971 writes no watch (Trakt's "unknown date" is the epoch), and
+--    a tick put back by Undo with its own completed_at dates the watch there (capped at now).
 --
 -- Security (AGENTS.md → the warning): the movie or show id is input — checked for every writer by 210's trigger, and
 -- read here only as the task's own user's row. Nothing here calls outside the database. The ledger is written only by
@@ -228,7 +232,8 @@ begin
       select * into v_movie from public.user_movie_entries m
        where m.id = new.movie_entry_id and m.user_id = new.user_id
        for update;
-      if v_movie.id is not null
+      -- A close time before 1971 is no tick time (Trakt's "unknown date" is the epoch): no watch is pushed for it.
+      if v_movie.id is not null and v_at >= timestamptz '1971-01-02 00:00:00+00'
          and not exists (select 1 from public.media_watches w
                           where w.movie_entry_id = v_movie.id and w.user_id = new.user_id and w.kind = 'movie'
                             and w.watched_at >= timestamptz '1971-01-01 00:00:00+00'
@@ -258,7 +263,7 @@ begin
       select * into v_show from public.user_tv_entries s
        where s.id = new.tv_entry_id and s.user_id = new.user_id
        for update;
-      if v_show.id is not null and v_show.tv_series_id is not null
+      if v_show.id is not null and v_show.tv_series_id is not null and v_tick >= timestamptz '1971-01-02 00:00:00+00'
          and not exists (select 1 from public.media_watches w
                           where w.user_id = new.user_id and w.kind = 'episode' and w.tv_series_id = v_show.tv_series_id
                             and w.season_number = new.link_season and w.episode_number = new.link_episode
@@ -269,11 +274,25 @@ begin
         values (new.user_id, 'episode', v_show.tv_series_id, new.link_season, new.link_episode, v_tick)
         returning id, watched_at into v_watch, v_watched;
         perform set_config('app.plan_tick', '', true);
+        -- The show moves on as the Trakt sync would set it (traktSyncPlan's statusFor), so the app and Trakt agree:
+        -- Completed once every aired regular episode by the stored TMDB data has a watch (161's media_all_aired_watched),
+        -- else Watching (a Wishlist, Upcoming or Paused show too); started_at set when empty, finished_at when Completed.
+        -- Dropped, Completed and a rewatch round (149's cache ends it) are left as they are.
+        update public.user_tv_entries s
+           set status = t.target,
+               started_at = coalesce(s.started_at, v_tick),
+               finished_at = case when t.target = 'completed' then coalesce(s.finished_at, v_tick) else s.finished_at end
+          from (select case when public.media_all_aired_watched(v_show.id) then 'completed' else 'watching' end as target) t
+         where s.id = v_show.id and s.user_id = new.user_id
+           and s.status in ('wishlist', 'upcoming', 'paused', 'watching') and s.rewatch_round is null
+           and (s.status <> t.target or s.started_at is null or (t.target = 'completed' and s.finished_at is null));
         insert into public.task_link_effects (task_id, effect, user_id, target_id, before, after)
         select new.id, 'episode_watched', new.user_id, s.id,
                jsonb_build_object('status', v_show.status, 'rewatch_round', v_show.rewatch_round,
-                                  'rewatch_started_at', v_show.rewatch_started_at),
+                                  'rewatch_started_at', v_show.rewatch_started_at,
+                                  'started_at', to_jsonb(v_show.started_at), 'finished_at', to_jsonb(v_show.finished_at)),
                jsonb_build_object('watch_id', v_watch, 'watched_at', v_watched, 'status', s.status,
+                                  'started_at', to_jsonb(s.started_at), 'finished_at', to_jsonb(s.finished_at),
                                   'season', new.link_season, 'episode', new.link_episode)
           from public.user_tv_entries s where s.id = v_show.id and s.user_id = new.user_id
         on conflict (task_id, effect) do nothing;
@@ -343,16 +362,26 @@ begin
            and w.watched_at is not distinct from (e.after ->> 'watched_at')::timestamptz
          for update;
         if v_watch is not null then
-          select s.status into v_status from public.user_tv_entries s
-           where s.id = e.target_id and s.user_id = e.user_id
+          -- The show exactly as the tick left it (status and dates), or the owner's since.
+          select (s.status is not distinct from (e.after ->> 'status')
+                  and coalesce(to_jsonb(s.started_at), 'null'::jsonb) = coalesce(e.after -> 'started_at', 'null'::jsonb)
+                  and coalesce(to_jsonb(s.finished_at), 'null'::jsonb) = coalesce(e.after -> 'finished_at', 'null'::jsonb))
+            into v_restore
+            from public.user_tv_entries s where s.id = e.target_id and s.user_id = e.user_id
            for update;
+          -- The watch goes first, so 161's guard never reads the show put back on Watching as a finished one.
           delete from public.media_watches where id = v_watch and user_id = e.user_id;
-          if v_status is not distinct from (e.after ->> 'status') and (e.before ->> 'status') is distinct from v_status then
-            update public.user_tv_entries
+          if coalesce(v_restore, false)
+             and (e.before ->> 'status' is distinct from e.after ->> 'status'
+                  or coalesce(e.before -> 'started_at', 'null'::jsonb) is distinct from coalesce(e.after -> 'started_at', 'null'::jsonb)
+                  or coalesce(e.before -> 'finished_at', 'null'::jsonb) is distinct from coalesce(e.after -> 'finished_at', 'null'::jsonb)) then
+            update public.user_tv_entries s
                set status = e.before ->> 'status',
                    rewatch_round = (e.before ->> 'rewatch_round')::integer,
-                   rewatch_started_at = (e.before ->> 'rewatch_started_at')::timestamptz
-             where id = e.target_id and user_id = e.user_id;
+                   rewatch_started_at = (e.before ->> 'rewatch_started_at')::timestamptz,
+                   started_at = case when e.before ? 'started_at' then (e.before ->> 'started_at')::timestamptz else s.started_at end,
+                   finished_at = case when e.before ? 'finished_at' then (e.before ->> 'finished_at')::timestamptz else s.finished_at end
+             where s.id = e.target_id and s.user_id = e.user_id;
           end if;
         end if;
       end if;

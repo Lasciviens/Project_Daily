@@ -8,7 +8,7 @@ paths:
 Trakt is the online service that keeps the owner's film and series history; the app syncs with it both ways. Background: `docs/features/media.md`, API facts: `docs/trakt/REFERENCE.md`.
 
 - TV progress has one source: `user_tv_episodes`. The `current_season`/`current_episode` cache columns are written only by their trigger (050).
-- Marking an episode watched has one write path (`useMarkEpisodeWatched`, `again` = one more watch) and never overwrites an existing watch date.
+- Marking an episode watched has one app write path (`useMarkEpisodeWatched`, `again` = one more watch) and never overwrites an existing watch date; the database's 216 tick effect is the only other writer.
 - Every watch is a `media_watches` row with its own date (149). `watched_at`/`repeat_count` on episodes and movies are a cache the database keeps — new code writes watches, never the cache; a date change names the one watch it moves (`WatchPickSheet` when there are several); only the sync sets `trakt_history_id`/`source`.
 - Trakt gets one play per watch change (`history_add` / `history_remove_play`); a whole item's `history_remove` only for an explicit unmark — never "remove all + re-add" for a date, never for removing a last watch.
 - A done movie or episode plan is a watch (216): the database writes it (`trg_tasks_link_effects`) and 149's outbox sends it — no app or edge-function code writes a watch for a tick. Before sending a tick's add the drain checks Trakt's history for a play that day (`tickAddsOnTrakt` → `tickPlayOnTrakt`), knowing a tick's add only from the ledger `task_link_effects`, never from the payload.

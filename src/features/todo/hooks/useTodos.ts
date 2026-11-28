@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react'
-import { fetchEffectTarget, fetchTickEffects } from '../../items/linkApi'
-import { doneMessage, reopenMessage } from '../../items/tickMessage'
+import { doneMessage, removedWatchAt, reopenMessage } from '../../items/tickMessage'
+import { changeStatusWithEffects, sendWatchesSoon, type StatusChange } from './taskEffects'
 import { keepPreviousData, queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import {
@@ -16,7 +16,6 @@ import {
   fetchSubtasks,
   createTask,
   updateTask,
-  toggleTaskDone,
 } from '../api/tasksApi'
 import { drainGoogleTasksOutbox } from '../api/googleTasksOutbox'
 import { ensureValidCalendarToken } from '../../calendar/api/calendarTokenSync'
@@ -32,7 +31,7 @@ import { drainICloudSoon } from '../../calendar/areas/appleAreas'
 import { dayTasks, openOnDay, sectionForDay } from '../taskRules'
 import { todayStr } from '../../../shared/utils/dateUtils'
 import { applyTaskPatch, taskUpdateMessage } from '../taskWrites'
-import type { CreateTaskInput, UpdateTaskInput, Task } from '../types'
+import type { CreateTaskInput, UpdateTaskInput, Task, TaskStatus } from '../types'
 
 // Aggregated overview of every active task (+ recently done) — the Daily "Tasks"
 // tab groups these into Overdue / Today / Upcoming / No date / Done.
@@ -205,25 +204,46 @@ export function useUpdateTask({ report = true }: { report?: boolean } = {}) {
   })
 }
 
-export function useToggleTask() {
+/** Done, open or cancelled, with what it did to a linked plan's thing (211/216) and the background sends. */
+async function writeStatus(id: string, patch: { status: TaskStatus; completed_at?: string }, wasDone?: boolean): Promise<StatusChange> {
+  const r = await changeStatusWithEffects(id, patch, wasDone)
+  syncGoogleTasksSoon({ taskId: id })
+  // Its slot's Apple Calendar event gains or loses "✓ " (155): queued by the triggers, sent shortly.
+  drainICloudSoon()
+  return r
+}
+
+/** Undo of an untick or a cancel that removed a watch (216): ticked again at the tick's own time, so the watch comes
+ *  back at its date ("Task done · Dune marked watched"). */
+function useRetickTask() {
   const qc = useQueryClient()
   return useMutationWithFeedback({
-    action: 'toggle_task',
-    mutationFn: async ({ id, isDone }: { id: string; isDone: boolean }) => {
-      // A linked plan's effects (211): read before a reopen (the database forgets an undone one), after a tick.
-      const before = isDone ? [] : await fetchTickEffects(id).catch(() => [])
-      const task = await toggleTaskDone(id, isDone)
-      syncGoogleTasksSoon({ taskId: id })
-      // Its slot's Apple Calendar event gains or loses "✓ " (155): queued by the triggers, sent shortly.
-      drainICloudSoon()
-      // Only a task that plans an app-owned thing can have one (a wishlist thing, a wish, a project phase; 216: a movie,
-      // one episode of a show).
-      const owned = !!(task.shop_item_id || task.wish_item_id || task.project_phase_id || task.movie_entry_id
-        || (task.tv_entry_id && task.link_episode != null))
-      const effects = isDone ? (owned ? await fetchTickEffects(id).catch(() => []) : []) : before
-      const outcomes = await Promise.all(effects.map(async e => ({ effect: e, now: await fetchEffectTarget(e).catch(() => ({ title: null, status: null })) })))
-      return { task, outcomes }
+    action: 'retick_task',
+    mutationFn: ({ id, at }: { id: string; at: string }) => writeStatus(id, { status: 'done', completed_at: at }),
+    onSuccess: r => { putRowsInCache(qc, qk.tasks.all, [r.task]); sendWatchesSoon(qc, r.outcomes) },
+    successMessage: r => doneMessage(r.outcomes),
+    invalidates: ['taskGraph', 'media'],
+  })
+}
+
+/** An untick or a cancel: its message, with Undo when it removed a watch (Undo ticks it again at its own time). */
+function useUntickReport(lead: 'Task reopened' | 'Task cancelled') {
+  const retick = useRetickTask()
+  return {
+    message: (r: StatusChange) => (removedWatchAt(r.outcomes) ? undefined : reopenMessage(r.outcomes, lead)),
+    offerUndo: (r: StatusChange) => {
+      const at = removedWatchAt(r.outcomes)
+      if (at) toast.undo(reopenMessage(r.outcomes, lead), () => { retick.mutate({ id: r.task.id, at }) })
     },
+  }
+}
+
+export function useToggleTask() {
+  const qc = useQueryClient()
+  const untick = useUntickReport('Task reopened')
+  return useMutationWithFeedback({
+    action: 'toggle_task',
+    mutationFn: ({ id, isDone }: { id: string; isDone: boolean }) => writeStatus(id, { status: isDone ? 'done' : 'open' }),
     onMutate: async ({ id, isDone }) => {
       await qc.cancelQueries({ queryKey: qk.tasks.all })
       const snapshot = snapshotCache(qc, qk.tasks.all)
@@ -231,20 +251,42 @@ export function useToggleTask() {
       mapRowsInCache<Task>(qc, qk.tasks.all, new Set([id]), t => applyTaskPatch(t, { status: isDone ? 'done' : 'open' }, now))
       return { snapshot }
     },
-    onSuccess: r => {
+    onSuccess: (r, { isDone }) => {
       putRowsInCache(qc, qk.tasks.all, [r.task])
-      // 216: a movie or episode plan's watch was added or removed — the outbox holds it for Trakt; send it soon, as the Media page
-      // does (loaded on use: the Trakt client stays out of every page's first load).
-      if (r.outcomes.some(o => o.effect.effect === 'movie_watched' || o.effect.effect === 'episode_watched')) {
-        void import('../../media/trakt/traktAutoSync').then(m => m.scheduleTraktSync(qc), () => undefined)
-      }
+      sendWatchesSoon(qc, r.outcomes)
+      if (!isDone) untick.offerUndo(r)
     },
     onError: (_err, _vars, ctx) => { if (ctx) restoreCache(qc, ctx.snapshot) },
     // What the tick did to the thing it plans (211): "Task done · Kettle bought — check it in Shop".
-    successMessage: (r, { isDone }) => (isDone ? doneMessage(r.outcomes) : reopenMessage(r.outcomes)),
-    // The schedule reads carry each block's task status (Training's "next
-    // session", the agenda's Done) — a tick refreshes them too.
-    invalidates: ['taskGraph'],
+    successMessage: (r, { isDone }) => (isDone ? doneMessage(r.outcomes) : untick.message(r)),
+    // The schedule reads carry each block's task status (Training's "next session", the agenda's Done); a movie or
+    // episode plan's watch (216) moves Media's lists.
+    invalidates: ['taskGraph', 'media'],
+  })
+}
+
+/** Cancel (a record kept, unlike Delete). A done plan's effect is undone as a reopen undoes it (211/216), and it says
+ *  so: "Task cancelled · watch removed" (with Undo) / "· your watch kept". */
+export function useCancelTask() {
+  const qc = useQueryClient()
+  const untick = useUntickReport('Task cancelled')
+  return useMutationWithFeedback({
+    action: 'cancel_task',
+    mutationFn: ({ id, wasDone }: { id: string; wasDone: boolean }) => writeStatus(id, { status: 'cancelled' }, wasDone),
+    onMutate: async ({ id }) => {
+      await qc.cancelQueries({ queryKey: qk.tasks.all })
+      const snapshot = snapshotCache(qc, qk.tasks.all)
+      mapRowsInCache<Task>(qc, qk.tasks.all, new Set([id]), t => applyTaskPatch(t, { status: 'cancelled' }, new Date().toISOString()))
+      return { snapshot }
+    },
+    onSuccess: r => {
+      putRowsInCache(qc, qk.tasks.all, [r.task])
+      sendWatchesSoon(qc, r.outcomes)
+      untick.offerUndo(r)
+    },
+    onError: (_err, _vars, ctx) => { if (ctx) restoreCache(qc, ctx.snapshot) },
+    successMessage: r => untick.message(r),
+    invalidates: ['taskGraph', 'media'],
   })
 }
 

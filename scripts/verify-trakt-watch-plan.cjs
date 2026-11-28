@@ -289,8 +289,13 @@ ok(sameSecond('2026-01-01T12:00:00.900Z', '2026-01-01T12:00:00.000Z'), true, 'th
   ok(/from\('task_link_effects'\)\.select\('after'\)\.eq\('user_id', userId\)\.in\('effect', \['movie_watched', 'episode_watched'\]\)/.test(helper)
     && /tickPlayOnTrakt\(/.test(helper) && !/\.(delete|update|insert|upsert)\(/.test(helper), true,
     'tickAddsOnTrakt reads the ledger (the user\'s own movie / episode watch rows) and Trakt\'s history, and writes nothing')
-  ok(/const known = op === 'history_add' \? await tickAddsOnTrakt\(/.test(fn) && /outboxBody\(op, send\)/.test(fn), true,
-    'the drain sends every add but those, and removes the held-back rows with the batch')
+  ok(/const check = op === 'history_add' \? await tickAddsOnTrakt\(db, userId, token, batch, deadline, picks\)/.test(fn)
+    && /calls \+= check\?\.reads \?\? 0/.test(fn) && /outboxBody\(op, send\)/.test(fn)
+    && /ids = ids\.filter\(id => !check\.later\.has\(String\(id\)\)\)/.test(fn), true,
+    'the drain counts the reads in its call budget, sends every add but the held-back ones, and leaves the unchecked ones for the next run')
+  ok(/byTitle\.set\(title/.test(helper) && /if \(Date\.now\(\) >= deadline\) \{ for \(const r of list\) out\.later\.add/.test(helper)
+    && /if \(e instanceof TraktError && e\.status === 401\) throw e\s*continue/.test(helper), true,
+    'one history read per title, none after the deadline, and a failed read sends the add as before (only a dead sign-in stops)')
 }
 
 console.log(`verify-trakt-watch-plan: ${n} assertions passed`)
