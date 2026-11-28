@@ -123,8 +123,12 @@ check('every kind has a one-word label and a column', Object.values(LINK_KINDS).
 const types = read('src/features/items/itemTypes.ts')
 const kinds = [...(types.match(/export type ItemLinkKind = ([^\n]+)/)[1]).matchAll(/'(\w+)'/g)].map(m => m[1]).sort().join(',')
 check('the registry names every link kind', kinds === Object.keys(LINK_KINDS).sort().join(','))
-check('who closes each plan follows the owner\'s rule (synced kinds by the sync, app-owned by the tick, football by hand)',
-  ['movie', 'tv', 'game', 'book', 'training'].every(k => LINK_KINDS[k].closedBy === 'sync') && ['shop_item', 'wish'].every(k => LINK_KINDS[k].closedBy === 'tick') && LINK_KINDS.football.closedBy === 'hand')
+check('who closes each plan follows the owner\'s rule (synced kinds by the sync, app-owned by the tick, football by hand; a movie and an episode by the tick since 28.11.2026)',
+  ['game', 'book', 'training'].every(k => LINK_KINDS[k].closedBy === 'sync') && ['shop_item', 'wish', 'movie', 'tv'].every(k => LINK_KINDS[k].closedBy === 'tick') && LINK_KINDS.football.closedBy === 'hand')
+
+check('a show plan is a tick (216): its episode, or for a whole show the next one the database picks — no helper of the browser\'s decides it',
+  LINK_KINDS.tv.closedBy === 'tick' && !/planClosedBy/.test(read('src/features/items/linkKinds.ts'))
+  && /t\.movie_entry_id \|\| t\.tv_entry_id\)/.test(read('src/features/todo/hooks/taskEffects.ts')))
 
 console.log('\n== 4. The tick says what it did ==')
 const { doneMessage, reopenMessage } = require('../src/features/items/tickMessage')
@@ -136,7 +140,44 @@ check('no effect: plain "Task done" / "Task reopened"', doneMessage([]) === 'Tas
 check('reopened: "back on the wishlist" when undone, "your purchase kept" when the owner changed it',
   reopenMessage([{ ...shop, now: { title: 'Kettle', status: 'wishlist' } }]) === 'Task reopened · back on the wishlist'
   && reopenMessage([{ ...shop, now: { title: 'Kettle', status: 'bought' } }]) === 'Task reopened · your purchase kept')
-check('the toggle reports through them', /successMessage: \(r, \{ isDone \}\) => \(isDone \? doneMessage\(r\.outcomes\) : reopenMessage\(r\.outcomes\)\)/.test(read('src/features/todo/hooks/useTodos.ts')))
+const movieTick = { effect: { effect: 'movie_watched', target_id: 'm', before: { status: 'wishlist' }, after: { watch_id: 'w1' } } }
+check('a done movie plan (216): "Task done · Dune marked watched"', doneMessage([{ ...movieTick, now: { title: 'Dune', status: 'completed', watchLeft: true } }]) === 'Task done · Dune marked watched')
+check('reopened: "watch removed" when the tick\'s watch went, "your watch kept" when the owner had changed it',
+  reopenMessage([{ ...movieTick, now: { title: 'Dune', status: 'wishlist', watchLeft: false } }]) === 'Task reopened · watch removed'
+  && reopenMessage([{ ...movieTick, now: { title: 'Dune', status: 'completed', watchLeft: true } }]) === 'Task reopened · your watch kept')
+const epTick = { effect: { effect: 'episode_watched', target_id: 's', before: { status: 'watching' }, after: { watch_id: 'w2', season: 1, episode: 3 } } }
+const nextTick = { effect: { effect: 'episode_watched', target_id: 's', before: { status: 'watching' }, after: { watch_id: 'w3', season: 2, episode: 4, next: true } } }
+check('a whole-show plan ticked: "Task done · S02E04 marked watched" (the episode the database recorded)',
+  doneMessage([{ ...nextTick, now: { title: 'Shogun', status: 'watching', watchLeft: true } }]) === 'Task done · S02E04 marked watched')
+check('a done episode plan (216): "Task done · S01E03 marked watched"; reopened: "watch removed" / "your watch kept"',
+  doneMessage([{ ...epTick, now: { title: 'Severance', status: 'watching', watchLeft: true } }]) === 'Task done · S01E03 marked watched'
+  && reopenMessage([{ ...epTick, now: { title: 'Severance', status: 'watching', watchLeft: false } }]) === 'Task reopened · watch removed'
+  && reopenMessage([{ ...epTick, now: { title: 'Severance', status: 'watching', watchLeft: true } }]) === 'Task reopened · your watch kept')
+const { removedWatchAt } = require('../src/features/items/tickMessage')
+check('cancelled after done: "Task cancelled · watch removed" / "· your watch kept"; an unread watch says nothing, never a guess',
+  reopenMessage([{ ...movieTick, now: { title: 'Dune', status: 'wishlist', watchLeft: false } }], 'Task cancelled') === 'Task cancelled · watch removed'
+  && reopenMessage([{ ...movieTick, now: { title: 'Dune', status: 'completed', watchLeft: true } }], 'Task cancelled') === 'Task cancelled · your watch kept'
+  && reopenMessage([{ ...movieTick, now: { title: null, status: null } }]) === 'Task reopened')
+check('Undo of a removed watch ticks again at the tick\'s own time; none when kept or unknown', (() => {
+  const at = '2026-11-28T20:30:00+00:00'
+  const tick = { effect: { ...movieTick.effect, after: { watch_id: 'w1', watched_at: at } } }
+  return removedWatchAt([{ ...tick, now: { title: 'Dune', status: 'wishlist', watchLeft: false } }]) === at
+    && removedWatchAt([{ ...tick, now: { title: 'Dune', status: 'completed', watchLeft: true } }]) === null
+    && removedWatchAt([{ ...tick, now: { title: null, status: null } }]) === null
+})())
+const todos = read('src/features/todo/hooks/useTodos.ts')
+const effects = read('src/features/todo/hooks/taskEffects.ts')
+check('one helper for the tick, the reopen and the cancel: it reads a movie or episode plan\'s effect and sends its watch to Trakt soon',
+  /t\.movie_entry_id \|\| t\.tv_entry_id\)/.test(effects)
+  && /void import\('\.\.\/\.\.\/media\/trakt\/traktAutoSync'\)\.then\(m => m\.scheduleTraktSync\(qc\)/.test(effects)
+  && (todos.match(/sendWatchesSoon\(qc, r\.outcomes\)/g) || []).length === 3
+  && /export function useCancelTask\(\)[\s\S]*?useUntickReport\('Task cancelled'\)/.test(todos)
+  && /cancelTask\.mutateAsync\(\{ id: task\.id, wasDone: task\.status === 'done' \}\)/.test(read('src/features/todo/hooks/useTaskActions.ts')))
+check('the toggle, the cancel and the Undo refresh the task graph and Media (no media key in taskGraph)',
+  (todos.match(/invalidates: \['taskGraph', 'media'\]/g) || []).length === 3
+  && !/taskGraph: \[[^\]]*qk\.media/.test(read('src/shared/query/invalidate.ts')))
+check('the toggle reports through them', /successMessage: \(r, \{ isDone \}\) => \(isDone \? doneMessage\(r\.outcomes\) : untick\.message\(r\)\)/.test(todos)
+  && /reopenMessage\(r\.outcomes, lead\)/.test(todos))
 
 console.log(`\nverify-plan-this: ${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

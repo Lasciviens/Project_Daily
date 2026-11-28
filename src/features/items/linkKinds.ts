@@ -1,9 +1,11 @@
 // What a task plans (210's link columns), in one registry (Phase 3 A2): each kind's label and icon, its column on
 // tasks, and who closes its plan (owner, 25.11.2026):
 //   · tick — app-owned: ticking does it once, unticking undoes it (211's ledger: a wishlist thing bought as a draft,
-//     a wish fulfilled);
+//     a wish fulfilled; 216, owner 28.11.2026: a movie or an episode watched, dated at the tick and sent to Trakt — a
+//     plan of a whole show marks the show's next episode ("Yes"); a watch from Trakt or the Media page still closes a
+//     movie or episode plan too);
 //   · sync — an outside sync records it and closes the plan; the app never writes a record of its own (Hevy,
-//     Trakt, Kobo, Steam / PSN / RP6 / ES-DE); a hand tick only closes the task;
+//     Kobo, Steam / PSN / RP6 / ES-DE); a hand tick only closes the task;
 //   · hand — a plan the owner ticks (football).
 // The Plan buttons build their requests in `planThis.ts` (heavier imports); this module stays small, so the item
 // screen's Linked chip can read it.
@@ -22,8 +24,10 @@ export interface LinkKindDef {
 }
 
 export const LINK_KINDS: Record<ItemLinkKind, LinkKindDef> = {
-  movie:     { kind: 'movie', label: 'Movie', icon: Clapperboard, column: 'movie_entry_id', closedBy: 'sync' },
-  tv:        { kind: 'tv', label: 'Show', icon: Tv, column: 'tv_entry_id', closedBy: 'sync' },
+  movie:     { kind: 'movie', label: 'Movie', icon: Clapperboard, column: 'movie_entry_id', closedBy: 'tick' },
+  // A tick is a watch (216): of the plan's episode (link_season + link_episode), or for a plan of the whole show of
+  // the show's next episode, decided at the tick by the database (none known → it only closes).
+  tv:        { kind: 'tv', label: 'Show', icon: Tv, column: 'tv_entry_id', closedBy: 'tick' },
   shop_item: { kind: 'shop_item', label: 'Shop', icon: ShoppingBag, column: 'shop_item_id', closedBy: 'tick' },
   wish:      { kind: 'wish', label: 'Wish', icon: Sparkles, column: 'wish_item_id', closedBy: 'tick' },
   football:  { kind: 'football', label: 'Match', icon: Trophy, column: 'football_plan_id', closedBy: 'hand' },

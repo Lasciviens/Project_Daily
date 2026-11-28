@@ -314,6 +314,30 @@ export function playToRemove(removed: { historyId: number | null; watchedAt: str
   return open.length > claimed ? { kind: 'remove', historyId: open[0].historyId } : { kind: 'wait' }
 }
 
+const OSLO_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Oslo', year: 'numeric', month: '2-digit', day: '2-digit' })
+/** The Oslo day (YYYY-MM-DD) a play or watch falls on; '' for an unknown date. */
+export function osloWatchDay(iso: string | null | undefined): string {
+  if (!iso || isUnknownWatchedAt(iso)) return ''
+  const t = Date.parse(iso)
+  return Number.isFinite(t) ? OSLO_DAY.format(t) : ''
+}
+
+/**
+ * A done movie or episode plan's watch (migration 216) that Trakt already has: a play of that item on the watch's day
+ * (Oslo) that the other watches here don't account for (their linked plays, and one each for the unlinked ones that
+ * day) — the owner marked it on Trakt, then ticked the plan before a pull brought that play in. Its add is then not
+ * sent (Trakt doesn't check duplicates); the next pull links the watch to that play (same item, Trakt's date wins).
+ * `others` are the item's watches here without the tick's own.
+ */
+export function tickPlayOnTrakt(tick: { watchedAt: string | null }, plays: TraktPlay[], others: { historyId: number | null; watchedAt: string | null }[]): boolean {
+  const day = osloWatchDay(tick.watchedAt)
+  if (!day) return false
+  const keptIds = new Set(others.filter(k => k.historyId != null).map(k => k.historyId!))
+  const open = plays.filter(p => osloWatchDay(p.watchedAt) === day && !keptIds.has(p.historyId)).length
+  const claimed = others.filter(k => k.historyId == null && osloWatchDay(k.watchedAt) === day).length
+  return open > claimed
+}
+
 /**
  * Outbox rows that cancel out before anything is sent — every waiting row,
  * whatever its next_retry_at, in send order (seq):

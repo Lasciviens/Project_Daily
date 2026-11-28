@@ -4,7 +4,7 @@ import { useTrainingPlanActions } from '../../training/hooks/useTrainingPlanActi
 import { useMoveItemToDay, useRepeatDay } from '../../items/useItems'
 import type { TrainingPlanRef } from '../../training/api/trainingPlanApi'
 import { isOpenTask, isTrainingTask, movesToToday } from '../taskRules'
-import { useDeleteTask, useToggleTask, useUpdateTask } from './useTodos'
+import { useCancelTask, useDeleteTask, useToggleTask, useUpdateTask } from './useTodos'
 import type { Task, TaskStatus } from '../types'
 
 /** The training plan a task row stands for (the session popup's own target). */
@@ -45,6 +45,7 @@ export function doneByWorkout(task: Task): boolean {
 export function useTaskActions() {
   const modal = useEntityModal()
   const toggle = useToggleTask()
+  const cancelTask = useCancelTask()
   const update = useUpdateTask()
   const remove = useDeleteTask()
   const session = useTrainingPlanActions()
@@ -75,7 +76,8 @@ export function useTaskActions() {
     }
     const day = repeatDayOf(task)
     if (day) return quietly(repeatDay.mutateAsync({ ...day, action: 'skip', title: task.title }))
-    return quietly(update.mutateAsync({ id: task.id, patch: { status: 'cancelled' } }))
+    // A done plan's effect (a watch, a purchase draft …) is undone and said — the same helper as the untick (216).
+    return quietly(cancelTask.mutateAsync({ id: task.id, wasDone: task.status === 'done' }))
   }
 
   /** Back to open: a done one is unticked, a cancelled one restored (Undo skip for a session). */
@@ -143,6 +145,6 @@ export function useTaskActions() {
     /** A training session's own: Move (asks the day and time), Skip (asks why). */
     move: (task: Task) => session.openMove(planRefForTask(task)),
     skip: (task: Task) => session.openSkip(planRefForTask(task)),
-    busy: toggle.isPending || update.isPending || remove.busy || session.busy || repeatDay.isPending || moveItem.isPending,
+    busy: toggle.isPending || cancelTask.isPending || update.isPending || remove.busy || session.busy || repeatDay.isPending || moveItem.isPending,
   }
 }

@@ -33,9 +33,9 @@ older endpoints for completeness. How the feature works: `docs/features/media.md
 | Endpoint | Called by | When | Limits |
 |---|---|---|---|
 | `GET /sync/history/movies` (paged) | `trakt-api` `syncWatches` | a whole-history read: first sync after 149, after a reconnect, Sync now, a progress reset, more than 25 differing titles | page size clamped by Trakt ("often 250"); more than 200 pages is an error, never partial data |
-| `GET /sync/history/shows/{trakt id}` (paged) | `syncWatches`, `playIdsToRemove` | a show whose plays differ from the summary; a whole-history read, title by title (resumable: `trakt_sync_state.history_cursor`); a single-play remove without a play id | GET: 500 calls / 5 min |
-| `GET /sync/history/movies/{trakt id}` (paged) | `syncWatches`, `playIdsToRemove` | the same, for a movie | |
-| `POST /sync/history` `{movies, shows: [{ids, seasons: [{number, episodes: [{number, watched_at}]}]}]}` | outbox drain (`history_add`), import push | a watch added here | POST: one per second; Trakt does not check duplicates |
+| `GET /sync/history/shows/{trakt id}` (paged) | `syncWatches`, `playIdsToRemove`, `tickAddsOnTrakt` | a show whose plays differ from the summary; a whole-history read, title by title (resumable: `trakt_sync_state.history_cursor`); a single-play remove without a play id; before a done episode plan's watch is sent (216): does Trakt already have a play of it that day? | GET: 500 calls / 5 min |
+| `GET /sync/history/movies/{trakt id}` (paged) | `syncWatches`, `playIdsToRemove`, `tickAddsOnTrakt` | the same, for a movie; and before a done movie plan's watch is sent (216): does Trakt already have a play of it that day? | |
+| `POST /sync/history` `{movies, shows: [{ids, seasons: [{number, episodes: [{number, watched_at}]}]}]}` | outbox drain (`history_add`), import push | a watch added here — on the Media page, or by a done movie or episode plan (216: the database writes the watch, 149's trigger queues it; the drain sends it like any other) | POST: one per second; Trakt does not check duplicates |
 | `POST /sync/history/remove` `{ids: [history id, …]}` | outbox drain (`history_remove_play`) | a watch removed or re-dated here — that one play | |
 | `POST /sync/history/remove` `{movies \| shows: [{ids, seasons…}]}` | outbox drain (`history_remove`) | an item unmarked entirely ("Not watched", Wishlist, removed from the library) — every play of it | |
 | `GET /search/tmdb/{tmdb id}?type=movie\|show` | `traktIdOf` | a title the catalogue has no Trakt id for, before a lookup in its history | |
@@ -95,6 +95,29 @@ accounts) and it only changes Trakt's progress view (`reset_at`); rewatch rounds
   ordinary watches.
 - **Trakt doesn't check duplicates** on add; a watch added and removed (or deleted and put back by Undo)
   before the drain cancels out in the outbox instead of being sent twice.
+- **A done movie or episode plan's watch (216).** The database writes it when a movie plan, a plan of one episode, or
+  a plan of a whole show (its next episode) is ticked (no new endpoint: the outbox's `history_add`, an episode in the shows / seasons / episodes shape). Two
+  duplicates are guarded. (1) The film or episode already has a watch on the tick's day here (marked on the Media page,
+  or on Trakt and pulled): no watch is written. (2) Marked on Trakt and not pulled yet: before the
+  drain sends an add, `tickAddsOnTrakt` checks whether it is a tick's watch — from the ledger `task_link_effects`
+  (`effect` `movie_watched` / `episode_watched`, `after.watch_id`), which only the database's trigger writes, never
+  from the payload — and if so reads `GET /sync/history/movies/{trakt id}` (an episode: `/sync/history/shows/{trakt id}`,
+  that episode's plays); when Trakt has a play of the item on that Oslo day that no
+  other watch here accounts for (`tickPlayOnTrakt`: their linked play ids, one each for the unlinked ones that day),
+  the add is not sent (counted as `alreadyOnTrakt`, said on the Trakt card's sync result). The next pull then links
+  the tick's watch to that play (same item; Trakt's date wins), so an untick keeps it — it is the owner's Trakt watch.
+  The echo of a play we pushed is linked by the same second. An untick removes the play by the id only the sync
+  writes (`trakt_history_id`), else the exact second — never a value the browser can write. Ticked first and marked
+  on Trakt afterwards is the owner's own second play; nothing here removes it.
+  The drain reads each title's history once per run, counts those reads in its call budget, checks nothing after the
+  run's deadline (those adds wait in the outbox for the next run), and sends an add as before when its title's read
+  fails (only a dead sign-in stops the run).
+- **Two same-second edges of a held-back add (216).** (1) The owner's own Trakt play is at the very second of the tick:
+  the pull links the tick's watch to it without moving its date, so the ledger still sees "the tick's watch" and an
+  untick removes it — and with it the owner's Trakt play (by its id). (2) Unticked before any pull: the held-back add
+  was never sent, so the untick's single-play remove has no id; the drain removes a play only at that exact second when
+  no watch here accounts for it — the owner's play at another second is "gone already" and stays, one at the same second
+  would go. Both need the owner's mark and the tick in the same second; the rest of the time Trakt keeps the owner's play.
 - **Page counts.** `getAll` reads `X-Pagination-Page-Count`; a limit above the endpoint's maximum is clamped,
   not refused. More than 200 pages throws (a mirror reading half a list would remove the other half).
 - **Unknown dates** come back as the epoch; movies store NULL, episodes keep the epoch (NULL there means not
@@ -107,6 +130,11 @@ accounts) and it only changes Trakt's progress view (`reset_at`); rewatch rounds
 - **429 / 5xx**: one retry (a 5xx after 1.5 s, a 429 after `Retry-After`); writes are paced at one per second.
 
 ## Log
+
+- 28.11.2026 — no new endpoint: a done movie or episode plan's watch (216) goes through `POST /sync/history` like any
+  watch added here; the drain's same-day check reuses `GET /sync/history/movies|shows/{trakt id}` and the row shape above
+  (`id`, `watched_at`, `type`, `movie.ids.tmdb`) as `parseHistory` already reads it. No live sample (no Trakt token
+  in a development session).
 
 - 26.10.2026 (later) — `auth.trakt.tv` answers a refresh token it no longer knows with HTTP 400
   `{"error":"invalid_grant","error_description":"session not found"}` (seen live with a made-up token), not 401.

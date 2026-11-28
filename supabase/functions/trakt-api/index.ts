@@ -1551,6 +1551,30 @@ function playToRemove(removed: { historyId: number | null; watchedAt: string | n
   return open.length > claimed ? { kind: 'remove', historyId: open[0].historyId } : { kind: 'wait' }
 }
 
+const OSLO_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Oslo', year: 'numeric', month: '2-digit', day: '2-digit' })
+/** The Oslo day (YYYY-MM-DD) a play or watch falls on; '' for an unknown date. */
+function osloWatchDay(iso: string | null | undefined): string {
+  if (!iso || isUnknownWatchedAt(iso)) return ''
+  const t = Date.parse(iso)
+  return Number.isFinite(t) ? OSLO_DAY.format(t) : ''
+}
+
+/**
+ * A done movie or episode plan's watch (migration 216) that Trakt already has: a play of that item on the watch's day
+ * (Oslo) that the other watches here don't account for (their linked plays, and one each for the unlinked ones that
+ * day) — the owner marked it on Trakt, then ticked the plan before a pull brought that play in. Its add is then not
+ * sent (Trakt doesn't check duplicates); the next pull links the watch to that play (same item, Trakt's date wins).
+ * `others` are the item's watches here without the tick's own.
+ */
+function tickPlayOnTrakt(tick: { watchedAt: string | null }, plays: TraktPlay[], others: { historyId: number | null; watchedAt: string | null }[]): boolean {
+  const day = osloWatchDay(tick.watchedAt)
+  if (!day) return false
+  const keptIds = new Set(others.filter(k => k.historyId != null).map(k => k.historyId!))
+  const open = plays.filter(p => osloWatchDay(p.watchedAt) === day && !keptIds.has(p.historyId)).length
+  const claimed = others.filter(k => k.historyId == null && osloWatchDay(k.watchedAt) === day).length
+  return open > claimed
+}
+
 /**
  * Outbox rows that cancel out before anything is sent — every waiting row,
  * whatever its next_retry_at, in send order (seq):
@@ -2567,11 +2591,13 @@ function pickBatch(rows: AnyRec[]): AnyRec[] {
 }
 
 /** A title's Trakt id: the catalogue's, else Trakt's ID lookup by TMDB id (then kept on the catalogue row). */
-async function traktIdOf(db: Db, token: string, type: 'movie' | 'show', tmdb: number): Promise<number | null> {
+async function traktIdOf(db: Db, token: string, type: 'movie' | 'show', tmdb: number, onTraktCall?: () => void): Promise<number | null> {
   const table = type === 'movie' ? 'movies' : 'tv_series'
   const { data } = await db.from(table).select('trakt_id').eq('tmdb_id', tmdb).maybeSingle()
   const known = Number((data as AnyRec | null)?.trakt_id)
   if (known > 0) return known
+  // A caller that budgets its Trakt calls counts this lookup (216's drain check).
+  onTraktCall?.()
   const found = (await get(`/search/tmdb/${tmdb}?type=${type}`, token)).data as AnyRec[] | null
   const hit = (found ?? []).find(r => r?.type === type)
   const trakt = Number(((hit?.[type] as AnyRec | undefined)?.ids as AnyRec | undefined)?.trakt)
@@ -2643,8 +2669,70 @@ async function playIdsToRemove(db: Db, userId: string, token: string, rows: AnyR
   return out
 }
 
+/** What the drain does with a run of adds (216): `skip` — a tick's add Trakt already has a play of that day (not sent);
+ *  `later` — a tick's add not checked before the run's deadline (stays in the outbox for the next run); `reads` — the
+ *  Trakt calls made for it, history reads and Trakt id lookups (counted in the run's call budget). */
+interface TickAddCheck { skip: Set<string>; later: Set<string>; reads: number }
+
+/**
+ * The adds of done movie and episode plans' watches (migration 216) that Trakt already has a play of that day
+ * (tickPlayOnTrakt): the owner marked it on Trakt, then ticked the plan before a pull brought that play in. Which adds
+ * are a tick's is read from the ledger task_link_effects (written only by the database's trigger, never the browser);
+ * every other add is sent as before. One history read per title (as playIdsToRemove), none after the deadline (those
+ * adds wait for the next run), and a title whose read fails (after get's own retry) is sent as before — a failed check
+ * never holds up the outbox; only a dead sign-in (401) stops the run.
+ */
+async function tickAddsOnTrakt(db: Db, userId: string, token: string, rows: AnyRec[], deadline: number, picks?: Map<string, number>): Promise<TickAddCheck> {
+  const out: TickAddCheck = { skip: new Set(), later: new Set(), reads: 0 }
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const candidates = rows.filter(r => {
+    const p = (r.payload ?? {}) as AnyRec
+    return (p.type === 'movie' || p.type === 'episode') && typeof p.watch_id === 'string' && UUID.test(p.watch_id) && Number(p.tmdb) > 0
+  })
+  if (!candidates.length) return out
+  const { data, error } = await db.from('task_link_effects').select('after').eq('user_id', userId).in('effect', ['movie_watched', 'episode_watched'])
+    .in('after->>watch_id', candidates.map(r => String((r.payload as AnyRec).watch_id)))
+  if (error) {
+    // Before 211 (no ledger): no tick has a watch.
+    if (['42P01', 'PGRST205'].includes(String(error.code))) return out
+    throw error
+  }
+  const ticks = new Set(((data ?? []) as AnyRec[]).map(r => String(((r.after ?? {}) as AnyRec).watch_id ?? '')))
+  const byTitle = new Map<string, AnyRec[]>()
+  for (const r of candidates) {
+    const p = r.payload as AnyRec
+    if (!ticks.has(String(p.watch_id))) continue
+    const title = `${p.type === 'movie' ? 'movie' : 'show'}:${Number(p.tmdb)}`
+    byTitle.set(title, [...(byTitle.get(title) ?? []), r])
+  }
+  for (const [title, list] of byTitle) {
+    if (Date.now() >= deadline) { for (const r of list) out.later.add(String(r.id)); continue }
+    const [type, tmdb] = title.split(':')
+    let plays: KeyedPlay[]
+    try {
+      const trakt = await traktIdOf(db, token, type as 'movie' | 'show', Number(tmdb), () => { out.reads++ })
+      if (!trakt) continue
+      out.reads++
+      plays = (await readHistory(`/sync/history/${type === 'movie' ? 'movies' : 'shows'}/${trakt}`, token, picks)).plays
+    } catch (e) {
+      if (e instanceof TraktError && e.status === 401) throw e
+      continue // the check failed: these adds go as before
+    }
+    for (const r of list) {
+      const p = r.payload as AnyRec
+      const mine = plays.filter(x => x.key === String(r.item_key))
+      // The item's other watches here: all of them but one unlinked watch at the tick's own second (the tick's).
+      const all = await itemWatches(db, userId, p)
+      const own = all.findIndex(w => w.historyId == null && sameSecond(w.watchedAt, (p.watched_at as string) ?? null))
+      const others = own < 0 ? all : all.filter((_, i) => i !== own)
+      if (tickPlayOnTrakt({ watchedAt: (p.watched_at as string) ?? null }, mine, others)) out.skip.add(String(r.id))
+    }
+  }
+  return out
+}
+
 async function drainOutbox(db: Db, userId: string, token: string, deadline: number, linked: boolean, picks?: Map<string, number>) {
-  const out = { sent: 0, notFound: 0, failed: 0, left: 0, waitingForIds: 0, dropped: 0, error: null as string | null, notes: null as NoteDrain | null }
+  const out = { sent: 0, notFound: 0, failed: 0, left: 0, waitingForIds: 0, dropped: 0, alreadyOnTrakt: 0, error: null as string | null, notes: null as NoteDrain | null }
   const sentKeys: string[] = []
   // A watch added and removed (or re-dated, or deleted and put back) before
   // anything was sent: those rows cancel out across EVERY waiting row, whatever
@@ -2712,15 +2800,22 @@ async function drainOutbox(db: Db, userId: string, token: string, deadline: numb
         rows = rows.filter(x => !taken.has(x.id))
         continue
       }
-      if (path) {
-        const sent = await post(path, token, outboxBody(op, batch))
+      // A done movie or episode plan's watch that Trakt already has a play of that day (216) is not sent: a pull links
+      // the two. One not checked before the deadline waits in the outbox for the next run.
+      const check = op === 'history_add' ? await tickAddsOnTrakt(db, userId, token, batch, deadline, picks) : null
+      calls += check?.reads ?? 0
+      const send = check ? batch.filter(r => !check.skip.has(String(r.id)) && !check.later.has(String(r.id))) : batch
+      if (check?.later.size) ids = ids.filter(id => !check.later.has(String(id)))
+      if (path && send.length) {
+        const sent = await post(path, token, outboxBody(op, send))
         out.notFound += notFoundCount(sent)
         calls++
       }
-      const { error: delError } = await db.from('trakt_outbox').delete().in('id', ids)
+      const { error: delError } = ids.length ? await db.from('trakt_outbox').delete().in('id', ids) : { error: null }
       if (delError) throw delError
-      out.sent += batch.length
-      sentKeys.push(...batch.map(r => String(r.item_key)))
+      out.sent += send.length
+      out.alreadyOnTrakt += check?.skip.size ?? 0
+      sentKeys.push(...send.map(r => String(r.item_key)))
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       if (e instanceof TraktError && e.status === 401) throw e

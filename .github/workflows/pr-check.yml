@@ -551,6 +551,15 @@ jobs:
         run: node scripts/verify-db-item-details.mjs
         env:
           DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      # Migration 216 (a done movie or episode plan is a watch, sent to Trakt): on the real 149 / 161 / 184 — the tick's
+      # one watch and its history_add, a second tick or an echo adds nothing, untick removes only the tick's watch (not
+      # one the owner re-dated) and puts the status back, cancel, no link, a whole-show plan only closes, a watch that is
+      # the record already, the sync's echo, the ticked episode plan keeps its slot (043/155), the Google Tasks pull,
+      # Activity's Undo, another account; 211's own scenarios still pass after 216. 216 runs twice.
+      - name: Movie and episode tick database scenarios
+        run: node scripts/verify-db-media-tick.mjs
+        env:
+          DEPLOY_TEST_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
       # Migrations 212 (notifications, Phase 3 B1–B3) and 214 (PlayStation's refused sign-in and its settle, the feed's
       # kinds): the kinds and their shapes, the browser's read_at/acted_at only, followed-film notices from the server
